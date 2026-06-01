@@ -1,0 +1,2837 @@
+import { queryExecutionClient } from '@dynatrace-sdk/client-query';
+
+// ============================================================
+// DATA
+// ============================================================
+const MOCK_PROBLEMS = [
+  {id:'P-001',title:'Response time degradation on /api/checkout',biz:'Checkout Experience Degraded',status:'RESOLVED',sev:'PERFORMANCE',start:Date.now()-172800000,dur:60,users:3200,mz:['Production','E-Commerce'],tags:['team:checkout','tier:critical'],hasRCA:true,rca:'checkout-service',svcs:['ShopApp'],rec:80,impact:72,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-002',title:'Response time degradation on /api/checkout',biz:'Checkout Experience Degraded',status:'RESOLVED',sev:'PERFORMANCE',start:Date.now()-86400000,dur:50,users:2800,mz:['Production'],tags:['team:checkout','tier:critical'],hasRCA:true,rca:'checkout-service',svcs:['ShopApp'],rec:80,impact:68,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-003',title:'Response time degradation on /api/checkout',biz:'Checkout Experience Degraded',status:'OPEN',sev:'PERFORMANCE',start:Date.now()-7200000,dur:null,users:1900,mz:['Production'],tags:['team:checkout','tier:critical'],hasRCA:false,rca:null,svcs:['ShopApp'],rec:80,impact:65,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-004',title:'High failure rate on payment-gateway service',biz:'Payment Processing Failures',status:'RESOLVED',sev:'ERROR',start:Date.now()-259200000,dur:120,users:5600,mz:['Production'],tags:['team:payments','tier:critical'],hasRCA:true,rca:'payment-gateway',svcs:['ShopApp','MobileApp'],rec:80,impact:88,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-005',title:'High failure rate on payment-gateway service',biz:'Payment Processing Failures',status:'RESOLVED',sev:'ERROR',start:Date.now()-172800000,dur:90,users:4200,mz:['Production'],tags:['team:payments','tier:critical'],hasRCA:false,rca:null,svcs:['ShopApp'],rec:80,impact:80,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-006',title:'High failure rate on payment-gateway service',biz:'Payment Processing Failures',status:'RESOLVED',sev:'ERROR',start:Date.now()-43200000,dur:60,users:3100,mz:['Production'],tags:['team:payments','tier:critical'],hasRCA:true,rca:'payments-db',svcs:['ShopApp'],rec:80,impact:74,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-007',title:'CPU spike on inventory-service pod',biz:'Inventory System Performance Issue',status:'RESOLVED',sev:'RESOURCE_CONTENTION',start:Date.now()-345600000,dur:15,users:0,mz:['Production'],tags:['team:inventory'],hasRCA:false,rca:null,svcs:['inventory-service'],rec:100,impact:28,noise:true,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-008',title:'CPU spike on inventory-service pod',biz:'Inventory System Performance Issue',status:'RESOLVED',sev:'RESOURCE_CONTENTION',start:Date.now()-302400000,dur:15,users:0,mz:['Production'],tags:['team:inventory'],hasRCA:false,rca:null,svcs:['inventory-service'],rec:100,impact:28,noise:true,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-009',title:'CPU spike on inventory-service pod',biz:'Inventory System Performance Issue',status:'RESOLVED',sev:'RESOURCE_CONTENTION',start:Date.now()-216000000,dur:15,users:0,mz:['Production'],tags:['team:inventory'],hasRCA:false,rca:null,svcs:['inventory-service'],rec:100,impact:32,noise:true,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-010',title:'CPU spike on inventory-service pod',biz:'Inventory System Performance Issue',status:'OPEN',sev:'RESOURCE_CONTENTION',start:Date.now()-3600000,dur:null,users:0,mz:['Production'],tags:['team:inventory'],hasRCA:false,rca:null,svcs:['inventory-service'],rec:100,impact:32,noise:true,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-011',title:'Service unavailability: auth-service',biz:'Login & Authentication Outage',status:'RESOLVED',sev:'AVAILABILITY',start:Date.now()-432000000,dur:60,users:12000,mz:['Production','Critical'],tags:['team:auth','tier:critical'],hasRCA:true,rca:'auth-service',svcs:['ShopApp','AdminPortal'],rec:20,impact:95,noise:false,cloud:'aws',region:'us-east-1'},
+  {id:'P-012',title:'Memory leak detected: recommendation-engine',biz:'Personalisation Engine Degraded',status:'RESOLVED',sev:'RESOURCE_CONTENTION',start:Date.now()-518400000,dur:240,users:800,mz:['Production'],tags:['team:ml'],hasRCA:true,rca:'recommendation-engine',svcs:['ShopApp'],rec:20,impact:55,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-013',title:'Slow database queries detected: product-catalog-db',biz:'Product Search Performance Impact',status:'RESOLVED',sev:'PERFORMANCE',start:Date.now()-604800000,dur:60,users:4500,mz:['Production'],tags:['team:catalog','tier:critical'],hasRCA:true,rca:'product-catalog-db',svcs:['ShopApp','MobileApp'],rec:40,impact:70,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-014',title:'Slow database queries detected: product-catalog-db',biz:'Product Search Performance Impact',status:'RESOLVED',sev:'PERFORMANCE',start:Date.now()-360000000,dur:60,users:3800,mz:['Production'],tags:['team:catalog','tier:critical'],hasRCA:true,rca:'product-catalog-db',svcs:['ShopApp'],rec:40,impact:66,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-015',title:'External API timeout: shipping-provider',biz:'Order Shipping Estimate Delays',status:'RESOLVED',sev:'ERROR',start:Date.now()-691200000,dur:60,users:2100,mz:['Production'],tags:['team:fulfillment'],hasRCA:false,rca:null,svcs:['ShopApp'],rec:20,impact:50,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-016',title:'High GC pause rate: search-indexer',biz:'Search & Discovery Performance Drop',status:'RESOLVED',sev:'PERFORMANCE',start:Date.now()-129600000,dur:60,users:7200,mz:['Production'],tags:['team:search'],hasRCA:true,rca:'search-indexer',svcs:['ShopApp','MobileApp'],rec:20,impact:78,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-017',title:'Network latency: cross-region replication',biz:'Regional Connectivity Issue',status:'OPEN',sev:'PERFORMANCE',start:Date.now()-1800000,dur:null,users:320,mz:['Production'],tags:['team:platform'],hasRCA:false,rca:null,svcs:['MobileApp'],rec:20,impact:42,noise:false,cloud:'aws',region:'us-east-1'},
+  {id:'P-018',title:'Container OOMKilled: session-service',biz:'User Session Interruption',status:'RESOLVED',sev:'AVAILABILITY',start:Date.now()-388800000,dur:30,users:1500,mz:['Production'],tags:['team:auth'],hasRCA:false,rca:null,svcs:['ShopApp'],rec:40,impact:58,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-019',title:'Container OOMKilled: session-service',biz:'User Session Interruption',status:'RESOLVED',sev:'AVAILABILITY',start:Date.now()-259200000,dur:30,users:1200,mz:['Production'],tags:['team:auth'],hasRCA:false,rca:null,svcs:['ShopApp'],rec:40,impact:54,noise:false,cloud:'aws',region:'ap-southeast-2'},
+  {id:'P-020',title:'Disk I/O saturation: log-aggregator',biz:'Platform Logging Disruption',status:'RESOLVED',sev:'RESOURCE_CONTENTION',start:Date.now()-475200000,dur:60,users:0,mz:['Production'],tags:['team:platform'],hasRCA:true,rca:'log-aggregator',svcs:['log-aggregator'],rec:20,impact:25,noise:true,cloud:'aws',region:'ap-southeast-2'},
+];
+
+let PROBLEMS = MOCK_PROBLEMS;
+
+// ============================================================
+// PERSONA CONFIG
+// ============================================================
+const PMETA = {
+  executive:{label:'Executive',icon:'👔',color:'#4db8ff',desc:'Business impact · customer-facing incidents only',
+    filter:p=>!(p.users===0&&['RESOURCE_CONTENTION','CUSTOM_ALERT'].includes(p.sev))&&!['CPU spike','GC pause','Disk I/O','OOMKilled','Network latency: cross'].some(n=>p.title.includes(n)),
+    rank:(a,b)=>((b.users||0)*(b.dur||30))-((a.users||0)*(a.dur||30)),
+    cols:['exp','check','biz','cost','users','dur','rec','status']},
+  developer:{label:'Developer',icon:'💻',color:'#3dd68c',desc:'Service errors · root causes · traces',
+    filter:p=>!['Disk I/O'].some(n=>p.title.includes(n)),
+    rank:(a,b)=>{const w={AVAILABILITY:5,ERROR:4,PERFORMANCE:3,RESOURCE_CONTENTION:2,CUSTOM_ALERT:1};return (w[b.sev]||0)-(w[a.sev]||0)},
+    cols:['exp','check','sev','title','svc','rca','mttr','rec','users','open']},
+  sre:{label:'SRE / Platform',icon:'🔧',color:'#9b8fe4',desc:'Full operational view · all signals · noise analysis',
+    filter:()=>true,
+    rank:(a,b)=>(b.impact||0)-(a.impact||0),
+    cols:['exp','check','sev','title','impact','cost','rec','mttr','users','rca','noise','cloud','open']},
+};
+
+// ============================================================
+// COST MODEL
+// ============================================================
+let CC = {rev:0.08,eng:150,resp:3};
+const SEV_MULT = {AVAILABILITY:1.0,ERROR:0.7,PERFORMANCE:0.3,RESOURCE_CONTENTION:0.15,CUSTOM_ALERT:0.05};
+
+function calcCost(p){
+  const d=p.dur??30,m=SEV_MULT[p.sev]??0.3;
+  const rev=Math.round((p.users||0)*CC.rev*d*m);
+  const eng=Math.round((d/60)*CC.eng*CC.resp);
+  return {rev,eng,total:rev+eng};
+}
+
+function calcRecurringWaste(ps){
+  return ps.filter(p=>p.rec>=60).reduce((s,p)=>s+calcCost(p).total*(p.rec/100),0);
+}
+
+// ── Math utilities ──
+const arrMean   = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
+const arrStddev = a => { if(a.length<2)return 0; const m=arrMean(a); return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length); };
+const arrMode   = a => { const c={}; a.forEach(v=>{c[v]=(c[v]||0)+1;}); return Object.entries(c).sort((x,y)=>y[1]-x[1])[0]?.[0]; };
+const arrGini   = a => { if(!a.length)return 0; const s=[...a].sort((x,y)=>x-y),n=s.length,sum=s.reduce((t,v)=>t+v,0); if(!sum)return 0; return s.reduce((g,v,i)=>g+v*(2*(i+1)-n-1),0)/(n*sum); };
+const clamp     = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
+
+// ── Value Delivered ──
+// Estimates engineer effort saved per problem via AI correlation, noise suppression, incident grouping.
+function calcValueDelivered(p, patternOccurrences=1) {
+  const engPerMin = CC.eng/60*CC.resp;
+  const rcaSavings      = p.hasRCA ? 45*engPerMin : 0;
+  const noiseSavings    = p.noise  ? 8*8*engPerMin : 0;
+  const groupingSavings = patternOccurrences>1 ? ((patternOccurrences-1)*5*engPerMin)/patternOccurrences : 0;
+  return {
+    rcaSavings:      Math.round(rcaSavings),
+    noiseSavings:    Math.round(noiseSavings),
+    groupingSavings: Math.round(groupingSavings),
+    total:           Math.round(rcaSavings+noiseSavings+groupingSavings),
+  };
+}
+
+// ── Confidence Scoring ──
+function costConfidence(p) {
+  if(p.users>0 && p.dur>0) return 0.80;
+  if(p.dur>0)              return 0.55;
+  return 0.30;
+}
+function patternConfidence(pattern) {
+  return clamp((pattern.qualityScore||0)/100 + clamp((pattern.occurrences-2)/8,0,0.15), 0, 1);
+}
+function rcaConfidence(p, pattern) {
+  if(!p.hasRCA) return 0.15;
+  if(!pattern)  return 0.55;
+  const c = pattern.rcaConsistency??0;
+  return c>=0.8 ? 0.90 : c>=0.5 ? 0.65 : 0.35;
+}
+function subBucketConfidence(sb) {
+  const rcaFrac  = sb.problems.filter(p=>p.hasRCA).length/sb.problems.length;
+  const sizeFac  = clamp(sb.problems.length/5,0.2,1.0);
+  return clamp(rcaFrac*0.7+sizeFac*0.3,0.10,0.95);
+}
+function confClass(score) {
+  return score>=0.75?'conf-high':score>=0.50?'conf-med':score>=0.25?'conf-low':'conf-vlow';
+}
+function confLabel(score) {
+  return score>=0.75?'':score>=0.50?'~':score>=0.25?'⚠ ~':'⚠';
+}
+
+function fmtC(n){if(n>=1e6)return`$${(n/1e6).toFixed(1)}M`;if(n>=1e3)return`$${(n/1e3).toFixed(1)}K`;return`$${Math.round(n)}`}
+function fmtM(m){if(!m||m===0)return'—';if(m<60)return Math.round(m)+'m';const h=Math.floor(m/60),r=Math.round(m%60);return r>0?`${h}h ${r}m`:`${h}h`}
+function fmtR(ms){const d=Date.now()-ms,m=Math.floor(d/60000);if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;return`${Math.floor(h/24)}d ago`}
+const SEV_LBL={AVAILABILITY:'Avail',ERROR:'Error',PERFORMANCE:'Perf',RESOURCE_CONTENTION:'Rsrc',CUSTOM_ALERT:'Custom'};
+
+// ============================================================
+// DQL DATA LOADER
+// ============================================================
+function toMs(v) {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    // Grail returns nanosecond precision: "2026-05-28T02:52:00.123456789Z"
+    // JS Date only parses up to milliseconds, so truncate extra digits to avoid NaN
+    const ms3 = v.replace(/(\.\d{3})\d+(Z)$/, '$1$2').replace(/(\d)(Z)$/, '$1.000$2');
+    const t = new Date(ms3).getTime();
+    return isNaN(t) ? null : t;
+  }
+  if (typeof v === 'number') return v > 1e15 ? Math.floor(v / 1e6) : v;
+  if (typeof v === 'object' && 'seconds' in v) return v.seconds * 1000 + Math.floor((v.nanos ?? 0) / 1e6);
+  return null;
+}
+
+function getTimeLabel() {
+  const v = document.getElementById('timeRange')?.value ?? '7d';
+  return v === '7d' ? 'last 7 days' : v === '14d' ? 'last 14 days' : 'last 30 days';
+}
+
+async function loadProblems() {
+  const timeRange = document.getElementById('timeRange')?.value ?? '7d';
+  try {
+    const result = await queryExecutionClient.queryExecute({
+      body: {
+        query: `fetch dt.davis.problems, from: now()-${timeRange}
+| fields display_id, event.name, event.status, event.category, event.start, event.end,
+         dt.davis.impact_level, dt.davis.is_frequent_event, dt.davis.affected_users_count,
+         entity_tags, management_zones, root_cause_entity_name,
+         cloud.provider, cloud.region, affected_entity_ids, resolved_problem_duration
+| sort event.start desc
+| limit 500`,
+        requestTimeoutMilliseconds: 15000,
+        fetchTimeoutSeconds: 60,
+      }
+    });
+
+    const records = result?.result?.records;
+    if (!records || records.length === 0) return;
+
+    // event.category values: ERROR, AVAILABILITY, SLOWDOWN, CUSTOM_ALERT
+    // map to app's sev values: ERROR, AVAILABILITY, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT
+    const SEV_MAP = { ERROR: 'ERROR', AVAILABILITY: 'AVAILABILITY', SLOWDOWN: 'PERFORMANCE', CUSTOM_ALERT: 'CUSTOM_ALERT' };
+    // event.status: OPEN, ACTIVE → 'OPEN'; CLOSED → 'RESOLVED'
+    const STATUS_MAP = { OPEN: 'OPEN', ACTIVE: 'OPEN', CLOSED: 'RESOLVED' };
+    // dt.davis.impact_level is an array; pick highest impact value
+    const IMPACT_RANK = { Environment: 95, Application: 75, Services: 55, Infrastructure: 35, Synthetic: 20 };
+
+    PROBLEMS = records.map((r, i) => {
+      const rawStatus = String(r['event.status'] ?? 'CLOSED').toUpperCase();
+      const status = STATUS_MAP[rawStatus] ?? 'RESOLVED';
+
+      const start = toMs(r['event.start']) ?? Date.now();
+      let dur = null;
+      if (status === 'RESOLVED') {
+        // resolved_problem_duration: Grail field in milliseconds
+        const rpd = r['resolved_problem_duration'];
+        const rpdMs = typeof rpd === 'number' ? rpd
+          : (rpd && typeof rpd === 'object' && 'seconds' in rpd)
+            ? rpd.seconds * 1000 + Math.floor((rpd.nanos ?? 0) / 1e6)
+          : null;
+        if (rpdMs > 0) {
+          dur = Math.round(rpdMs / 60000);
+        } else {
+          const end = toMs(r['event.end']);
+          if (end && end > start) dur = Math.round((end - start) / 60000);
+        }
+      }
+
+      const impactArr = Array.isArray(r['dt.davis.impact_level']) ? r['dt.davis.impact_level'] : [];
+      const impact = impactArr.reduce((best, lv) => Math.max(best, IMPACT_RANK[lv] ?? 30), 30);
+
+      const mz = Array.isArray(r['management_zones']) ? r['management_zones'].map(String).filter(Boolean) : [];
+      const tags = Array.isArray(r['entity_tags']) ? r['entity_tags'].map(String) : [];
+      const entityIds = Array.isArray(r['affected_entity_ids']) ? r['affected_entity_ids'] : [];
+      const rca = r['root_cause_entity_name'] ? String(r['root_cause_entity_name']) : null;
+      const svcs = rca ? [rca] : entityIds.map(id => String(id).split('-')[0]).filter((v, i, a) => a.indexOf(v) === i);
+      const cloud = Array.isArray(r['cloud.provider']) ? (r['cloud.provider'][0] ?? '') : (r['cloud.provider'] ?? '');
+      const region = Array.isArray(r['cloud.region']) ? (r['cloud.region'][0] ?? '') : (r['cloud.region'] ?? '');
+
+      return {
+        id: String(r['display_id'] ?? `P-${String(i + 1).padStart(3, '0')}`),
+        title: String(r['event.name'] ?? 'Unknown problem'),
+        biz: String(r['event.name'] ?? 'Unknown problem'),
+        status,
+        sev: SEV_MAP[String(r['event.category'] ?? '').toUpperCase()] ?? 'CUSTOM_ALERT',
+        start,
+        dur,
+        users: typeof r['dt.davis.affected_users_count'] === 'number' ? r['dt.davis.affected_users_count'] : (entityIds.length || 0),
+        mz: mz.length ? mz : ['Production'],
+        tags,
+        hasRCA: rca !== null,
+        rca,
+        svcs,
+        rec: 0,
+        impact,
+        noise: r['dt.davis.is_frequent_event'] === true,
+        cloud: cloud || 'unknown',
+        region: region || '',
+      };
+    });
+
+    patternInsights.clear();
+    subBucketInsights.clear();
+    render();
+    if (typeof renderPatternIntelligence === 'function' && currentView === 'patterns') renderPatternIntelligence();
+    // Auto-populate AI Analysis panel with the highest-impact open problem
+    const openProb = PROBLEMS.find(p => p.status === 'OPEN') || PROBLEMS[0];
+    if (openProb && aiState === 'idle') {
+      console.log('[OpInt Davis] Auto-triggering analysis for:', openProb.title);
+      deepAnalyze(openProb.id);
+    }
+  } catch (err) {
+    console.warn('[OpInt] DQL fetch failed:', err.message ?? err);
+    console.warn('[OpInt] cause:', err.cause);
+    console.warn('[OpInt] full error:', err);
+  }
+}
+
+// ============================================================
+// STATE
+// ============================================================
+let persona='executive';
+let selectedIds=new Set();
+let expandedIds=new Set();
+let expandCache={};
+let aiSrc='davis';
+let aiState='idle';
+let lastAIResult=null;
+let remProblem=null;
+let awsModalProblem=null;
+let davisConversationId=null; // unused, kept for backwards compat
+
+// ============================================================
+// RENDER
+// ============================================================
+function getFiltered(){
+  const m=PMETA[persona], af=document.getElementById('appFilter').value;
+  return PROBLEMS.filter(m.filter).filter(p=>!af||p.svcs.includes(af)).sort(m.rank);
+}
+
+function render(){
+  const ps=getFiltered();
+  // persona bar
+  const m=PMETA[persona];
+  document.documentElement.style.setProperty('--persona',m.color);
+  document.getElementById('pbarIcon').textContent=m.icon;
+  document.getElementById('pbarText').innerHTML=`<strong>${m.label} View</strong> — ${m.desc}`;
+  if(persona==='executive'){const eg=groupForExecutive(ps);document.getElementById('pbarChip').textContent=`${eg.length} pattern${eg.length!==1?'s':''} · ${ps.length} occurrences`;}
+  else document.getElementById('pbarChip').textContent=`${ps.length} of ${PROBLEMS.length} visible`;
+  // cost banner
+  const showCost=persona!=='developer';
+  document.getElementById('costBanner').classList.toggle('hidden',!showCost);
+  if(showCost) renderCostBanner(ps);
+  // kpis
+  renderKPIs(ps);
+  // table
+  renderTable(ps);
+  // update tab counts
+  document.getElementById('explorerTabCount').textContent = ps.length;
+  const { patterns } = detectPatterns(ps);
+  document.getElementById('patternTabCount').textContent = patterns.length;
+  // if on pattern view, re-render it
+  if (currentView === 'patterns') renderPatternIntelligence();
+}
+
+// ── KPIs ──
+function renderKPIs(ps){
+  const res=ps.filter(p=>p.status==='RESOLVED'&&p.dur);
+  const durs=res.map(p=>p.dur);
+  const avg=durs.length?durs.reduce((a,b)=>a+b,0)/durs.length:0;
+  const p95=durs.length?[...durs].sort((a,b)=>a-b)[Math.floor(durs.length*.95)]??0:0;
+  const costs=ps.map(calcCost),total=costs.reduce((a,c)=>a+c.total,0);
+  const waste=calcRecurringWaste(ps);
+  const open=ps.filter(p=>p.status==='OPEN').length;
+  const noisy=ps.filter(p=>p.noise).length;
+  const miss=ps.filter(p=>!p.hasRCA).length;
+  const rec=ps.filter(p=>p.rec>=60).length;
+  const svcs=new Set(ps.flatMap(p=>p.svcs)).size;
+  const groups=groupForExecutive(ps);
+  const openGroups=groups.filter(g=>g.status==='OPEN').length;
+  const hiImpactGroups=groups.filter(g=>g.impact>=75).length;
+  const KPIS={
+    executive:[
+      {lbl:'Distinct Incident Patterns',val:groups.length,sub:`${openGroups} active now`,c:'kc-amber'},
+      {lbl:'High-Impact Patterns',val:hiImpactGroups,sub:'Application or Environment level',c:'kc-coral'},
+      {lbl:'Total Occurrences',val:ps.length,sub:getTimeLabel(),c:'kc-blue'},
+      {lbl:'Avg Resolution Time',val:fmtM(avg),sub:`p95: ${fmtM(p95)}`,c:'kc-teal'},
+    ],
+    developer:[
+      {lbl:'Active Problems',val:ps.length,sub:`${open} open`,c:'kc-blue'},
+      {lbl:'Services Affected',val:svcs,sub:'unique entities',c:'kc-coral'},
+      {lbl:'Missing Root Cause',val:miss,sub:`${Math.round(miss/ps.length*100)||0}% of total`,c:'kc-amber'},
+      {lbl:'Avg MTTR',val:fmtM(avg),sub:`p95: ${fmtM(p95)}`,c:'kc-green'},
+    ],
+    sre:[
+      {lbl:'Total Problems',val:ps.length,sub:`${open} open now`,c:'kc-blue'},
+      {lbl:'Recurring Waste',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'}},
+      {lbl:'Noisy Alerts',val:noisy,sub:'noise candidates',c:'kc-amber'},
+      {lbl:'P95 MTTR',val:fmtM(p95),sub:`avg: ${fmtM(avg)}`,c:'kc-violet'},
+    ],
+  };
+  document.getElementById('kpiRow').innerHTML=KPIS[persona].map(k=>`
+    <div class="kcard ${k.c} fade-in">
+      <div class="k-lbl">${k.lbl}</div>
+      <div class="k-val">${k.val}</div>
+      <div class="k-sub">${k.sub}${k.badge?`<span class="badge ${k.badge.cls}">${k.badge.t}</span>`:''}</div>
+    </div>`).join('');
+}
+
+// ── COST BANNER ──
+function renderCostBanner(ps){
+  if(persona==='executive'){
+    const groups=groupForExecutive(ps);
+    const openGroups=groups.filter(g=>g.status==='OPEN');
+    const hiImpact=groups.filter(g=>g.impact>=75);
+    const allResolved=ps.filter(p=>p.status==='RESOLVED'&&p.dur);
+    const avgDur=allResolved.length?Math.round(allResolved.reduce((s,p)=>s+(p.dur||0),0)/allResolved.length):0;
+    document.getElementById('cbHead').textContent=`${groups.length} distinct incident pattern${groups.length!==1?'s':''} across ${ps.length} occurrences in the ${getTimeLabel()}`;
+    document.getElementById('cbSub').textContent=`${openGroups.length} patterns currently active · ${hiImpact.length} high-impact patterns`;
+    document.getElementById('cbStats').innerHTML=`
+      <div class="cb-stat"><div class="cb-stat-val">${groups.length}</div><div class="cb-stat-lbl">Incident Patterns</div></div>
+      <div class="cb-stat"><div class="cb-stat-val" style="color:var(--amber)">${openGroups.length}</div><div class="cb-stat-lbl">Active Now</div></div>
+      <div class="cb-stat"><div class="cb-stat-val recurring">${hiImpact.length}</div><div class="cb-stat-lbl">High Impact</div></div>
+      <div class="cb-stat"><div class="cb-stat-val">${fmtM(avgDur)}</div><div class="cb-stat-lbl">Avg Resolution</div></div>`;
+    return;
+  }
+  const costs=ps.map(calcCost);
+  const rev=costs.reduce((a,c)=>a+c.rev,0);
+  const eng=costs.reduce((a,c)=>a+c.eng,0);
+  const waste=calcRecurringWaste(ps);
+  const total=rev+eng;
+  document.getElementById('cbHead').textContent=`Estimated ${fmtC(total)} operational losses this period`;
+  document.getElementById('cbSub').textContent=`${ps.filter(p=>p.rec>=60).length} recurring issues · ${ps.filter(p=>p.status==='OPEN').length} still open`;
+  document.getElementById('cbStats').innerHTML=`
+    <div class="cb-stat" title="Direct revenue loss from affected users × duration × severity"><div class="cb-stat-val">${fmtC(rev)}</div><div class="cb-stat-lbl">Revenue Loss</div></div>
+    <div class="cb-stat" title="Engineering time: MTTR × rate × responders"><div class="cb-stat-val">${fmtC(eng)}</div><div class="cb-stat-lbl">Eng Cost</div></div>
+    <div class="cb-stat" title="Cost of recurring problems you haven't fixed — this money will be spent again"><div class="cb-stat-val recurring">${fmtC(waste)}</div><div class="cb-stat-lbl">Recurring Waste</div></div>`;
+}
+
+// ── TABLE ──
+const HDR={exp:'',check:'',biz:'Business Incident',title:'Problem',sev:'Severity',cost:'Est. Cost',users:'Users Affected',dur:'Duration',rec:'Recurrence',status:'Status',svc:'Service',rca:'Root Cause',mttr:'MTTR',open:'',impact:'Impact',noise:'Noise?',cloud:'Cloud'};
+
+// ── EXECUTIVE GROUPING ──
+function groupForExecutive(ps) {
+  const map = new Map();
+  ps.forEach(p => {
+    const key = p.title;
+    if (!map.has(key)) {
+      map.set(key, { key, title: p.title, items: [] });
+    }
+    map.get(key).items.push(p);
+  });
+  return Array.from(map.values()).map(g => {
+    const items = g.items;
+    const openItems = items.filter(p => p.status === 'OPEN');
+    const resolved = items.filter(p => p.status === 'RESOLVED' && p.dur);
+    const avgDur = resolved.length ? Math.round(resolved.reduce((s,p)=>s+(p.dur||0),0)/resolved.length) : null;
+    const lastSeen = Math.max(...items.map(p => p.start));
+    const firstSeen = Math.min(...items.map(p => p.start));
+    const impact = Math.max(...items.map(p => p.impact||0));
+    const ic = impact>=75?'hi':impact>=45?'md':'lo';
+    const sev = items.reduce((best,p)=>{
+      const w={AVAILABILITY:5,ERROR:4,PERFORMANCE:3,RESOURCE_CONTENTION:2,CUSTOM_ALERT:1};
+      return (w[p.sev]||0)>(w[best]||0)?p.sev:best;
+    }, items[0].sev);
+    const status = openItems.length > 0 ? 'OPEN' : 'RESOLVED';
+    // Pick a representative problem ID for row click
+    const repId = (openItems[0] || items[items.length-1]).id;
+    // Days since first seen
+    const ageMs = Date.now() - firstSeen;
+    const ageDays = Math.floor(ageMs / 86400000);
+    // Trend: split selected timeframe in half, compare occurrence rates
+    const rangeDays = parseInt(document.getElementById('timeRange')?.value ?? '7d', 10);
+    const halfDays  = rangeDays / 2;
+    const midpoint  = Date.now() - halfDays * 86400000;
+    const recentCount = items.filter(p => p.start >= midpoint).length;
+    const priorCount  = items.filter(p => p.start <  midpoint).length;
+    const recentRate  = recentCount / halfDays;
+    const priorRate   = priorCount  / halfDays;
+    // Guardrails: need both a meaningful ratio AND ≥2 absolute difference to avoid
+    // noise from low-volume patterns (e.g. 0→1 or 1→2 should not trigger worsening)
+    const delta = recentCount - priorCount;
+    let trend;
+    if (priorRate === 0 && recentCount >= 3) trend = 'worsening';   // brand-new pattern, needs ≥3 to flag
+    else if (priorRate === 0) trend = 'stable';
+    else {
+      const ratio = recentRate / priorRate;
+      const significant = Math.abs(delta) >= 2;                     // at least 2 extra/fewer events
+      trend = (ratio >= 1.5 && significant) ? 'worsening'
+            : (ratio <= 0.5 && significant) ? 'improving'
+            : 'stable';
+    }
+    return { key:g.key, title:g.title, status, count:items.length, openCount:openItems.length,
+             sev, impact, ic, avgDur, lastSeen, firstSeen, ageDays, repId,
+             trend, recentCount, priorCount };
+  }).sort((a,b)=>{
+    // Open first, then by impact desc
+    if(a.status!==b.status) return a.status==='OPEN'?-1:1;
+    return b.impact-a.impact;
+  });
+}
+
+const EXEC_TREND = {
+  worsening: { icon: '↑', label: 'Worsening', color: '#f87171', bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.25)' },
+  stable:    { icon: '→', label: 'Stable',    color: '#94a3b8', bg: 'rgba(148,163,184,.10)', border: 'rgba(148,163,184,.20)' },
+  improving: { icon: '↓', label: 'Improving', color: '#34d399', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.25)' },
+};
+
+function renderExecutiveTable(ps) {
+  document.getElementById('tHead').innerHTML=`<tr>
+    <th>Incident Pattern</th>
+    <th style="width:120px">Occurrences</th>
+    <th style="width:80px">Severity</th>
+    <th style="width:80px">Impact</th>
+    <th style="width:110px">Last Seen</th>
+    <th style="width:90px">Avg Duration</th>
+    <th style="width:110px">30-Day Trend</th>
+  </tr>`;
+  const groups = groupForExecutive(ps);
+  let rows = '';
+  groups.forEach(g => {
+    const occLabel = g.openCount > 0
+      ? `<span style="color:var(--amber);font-weight:600">${g.openCount} open</span>&nbsp;/ ${g.count} total`
+      : `${g.count}×`;
+    const tr = EXEC_TREND[g.trend] || EXEC_TREND.stable;
+    const trendChip = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;background:${tr.bg};border:1px solid ${tr.border};color:${tr.color}">${tr.icon} ${tr.label}</span>`;
+    const subtitle = g.trend === 'worsening'
+      ? `<span style="font-size:10px;color:var(--text-3);display:block;margin-top:2px">${g.recentCount} in last 15d vs ${g.priorCount} prior</span>`
+      : g.trend === 'improving'
+      ? `<span style="font-size:10px;color:var(--text-3);display:block;margin-top:2px">${g.recentCount} in last 15d vs ${g.priorCount} prior</span>`
+      : '';
+    rows += `<tr class="prob-row" data-action="onRowClick" data-pid="${g.repId}">
+      <td class="tdp" style="max-width:300px;font-weight:${g.status==='OPEN'?'600':'400'}">
+        <span class="sdot ${g.status}"></span>${g.title}
+        ${g.ageDays>0?`<span style="font-size:10px;color:var(--text-3);margin-left:6px">· ${g.ageDays}d pattern</span>`:''}
+      </td>
+      <td class="tdm" style="font-size:12px">${occLabel}</td>
+      <td><span class="sev ${g.sev}">${SEV_LBL[g.sev]||g.sev}</span></td>
+      <td><span class="ic ${g.ic}">${g.impact}</span></td>
+      <td class="tdm" style="font-size:11px">${fmtR(g.lastSeen)}</td>
+      <td class="tdm">${g.avgDur?fmtM(g.avgDur):'<span style="color:var(--amber)">Ongoing</span>'}</td>
+      <td>${trendChip}${subtitle}</td>
+    </tr>`;
+  });
+  document.getElementById('tBody').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-3)">No incidents in selected period</td></tr>';
+  updateAnalyzeBtns();
+}
+
+function renderTable(ps){
+  if(persona==='executive'){renderExecutiveTable(ps);return;}
+  const cols=PMETA[persona].cols;
+  document.getElementById('tHead').innerHTML=`<tr>${cols.map(c=>`<th>${HDR[c]||c}</th>`).join('')}</tr>`;
+  let rows='';
+  ps.forEach((p,idx)=>{
+    const cost=calcCost(p);
+    const sel=selectedIds.has(p.id);
+    const exp=expandedIds.has(p.id);
+    const ic=p.impact>=75?'hi':p.impact>=45?'md':'lo';
+    const CELLS={
+      exp:`<td><button class="exp-btn ${exp?'open':''}" data-action="toggleExpand" data-pid="${p.id}">▶</button></td>`,
+      check:`<td><input class="rc" type="checkbox" ${sel?'checked':''} data-action="toggleSel" data-pid="${p.id}"></td>`,
+      biz:`<td class="tdp" style="max-width:260px"><span class="sdot ${p.status}"></span>${p.biz}</td>`,
+      title:`<td class="tdp" style="max-width:250px;font-size:12px"><span class="sdot ${p.status}"></span>${p.title}</td>`,
+      sev:`<td><span class="sev ${p.sev}">${SEV_LBL[p.sev]}</span></td>`,
+      cost:`<td class="ccell">${fmtC(cost.total)}</td>`,
+      users:`<td class="tdm">${p.users>0?p.users.toLocaleString():'—'}</td>`,
+      dur:`<td class="tdm">${p.dur?fmtM(p.dur):`<span style="color:var(--amber)">Ongoing</span>`}</td>`,
+      mttr:`<td class="tdm">${p.dur?fmtM(p.dur):'—'}</td>`,
+      rec:`<td><div class="rb"><div class="rt"><div class="rf" style="width:${p.rec}%"></div></div><span style="font-size:11px;font-family:var(--mono);color:var(--text-3)">${p.rec}</span></div></td>`,
+      status:`<td><span class="sdot ${p.status}"></span><span style="font-size:11px;color:var(--text-3)">${p.status}</span></td>`,
+      svc:`<td style="font-size:11px;color:var(--text-3)">${p.svcs.join(', ')}</td>`,
+      rca:`<td>${p.hasRCA?`<span style="font-size:11px;font-family:var(--mono);color:var(--text-2)">${p.rca}</span>`:`<span class="rca-miss">⚠ Missing</span>`}</td>`,
+      open:`<td><span class="lbtn" data-action="openP" data-pid="${p.id}">↗</span></td>`,
+      impact:`<td><span class="ic ${ic}">${p.impact}</span></td>`,
+      noise:`<td>${p.noise?`<span class="nf">⚠ Yes</span>`:''}</td>`,
+      cloud:`<td><span style="font-size:10px;color:#ff9900;font-family:var(--mono)">${p.cloud?.toUpperCase()??'—'}</span></td>`,
+    };
+    rows+=`<tr class="prob-row ${sel?'selected':''}" data-action="onRowClick" data-pid="${p.id}">
+      ${cols.map(c=>CELLS[c]||'<td>—</td>').join('')}
+    </tr>`;
+    if(exp){
+      const colCount=cols.length;
+      rows+=`<tr class="exp-row"><td colspan="${colCount}"><div class="exp-content" id="exp-${p.id}">${renderExpContent(p)}</div></td></tr>`;
+    }
+  });
+  document.getElementById('tBody').innerHTML=rows;
+  updateAnalyzeBtns();
+}
+
+// ── EXPANSION CONTENT ──
+function renderExpContent(p){
+  const cache=expandCache[p.id];
+  if(!cache){
+    // Trigger async load
+    setTimeout(()=>loadExpSummary(p),50);
+    return`<div class="exp-loading"><div class="exp-spinner"></div><span>Davis CoPilot summarising…</span></div>`;
+  }
+  const cloudTag=p.cloud?`<span class="cloud-tag">☁ ${p.cloud.toUpperCase()} · ${p.region}</span>`:'';
+  return`
+    <div class="exp-summary">${cache.summary}</div>
+    <div class="exp-topfix">
+      <span class="exp-fix-label">✅ Top Fix</span>
+      <span class="exp-fix-text">${cache.topFix}</span>
+    </div>
+    <div class="exp-actions">
+      ${cloudTag}
+      <button class="exp-ai-btn exp-davis" data-action="deepAnalyze" data-pid="${p.id}">✦ Deep Analysis</button>
+      <button class="exp-ai-btn exp-ext" data-action="extTriage" data-pid="${p.id}">🔌 External AI Triage</button>
+      ${p.cloud==='aws'?`<button class="exp-ai-btn exp-aws" data-action="showRemPanel" data-pid="${p.id}">🟠 AWS DevOps Agent</button>`:''}
+    </div>`;
+}
+
+async function loadExpSummary(p){
+  try{
+    const result=await callInlineAI(p,persona);
+    expandCache[p.id]=result;
+  }catch(e){
+    expandCache[p.id]=getFallbackInline(p,persona);
+  }
+  const el=document.getElementById(`exp-${p.id}`);
+  if(el) el.innerHTML=renderExpContent(p);
+}
+
+// ── REMEDIATION PANEL ──
+
+// ---- Problem Classifier ----
+// Maps problem signals → RESOURCE | CONFIG | CODE_DEFECT | DEPENDENCY | UNKNOWN
+const PROBLEM_TYPE_SIGNALS = {
+  RESOURCE:    ['cpu spike','memory leak','oomkilled','disk i/o','gc pause','heap','resource saturation','out of memory','resource contention'],
+  CONFIG:      ['connection pool','timeout','max_connections','configuration','thread pool','queue depth','rate limit','pool exhausted'],
+  CODE_DEFECT: ['nullpointerexception','exception','error rate','failure rate','javascript error','stack trace','unhandled','crash','assertion','runtime error'],
+  DEPENDENCY:  ['external api','shipping-provider','third-party','downstream','upstream','dependency','integration','webhook'],
+};
+
+function classifyProblem(p) {
+  const titleLower = p.title.toLowerCase();
+  const tags = (p.tags || []).join(' ').toLowerCase();
+  const combined = titleLower + ' ' + tags;
+
+  for (const [type, signals] of Object.entries(PROBLEM_TYPE_SIGNALS)) {
+    if (signals.some(s => combined.includes(s))) return type;
+  }
+
+  // Fallback: use severity + RCA presence
+  if (!p.hasRCA) return 'UNKNOWN';
+  if (p.sev === 'RESOURCE_CONTENTION') return 'RESOURCE';
+  if (p.sev === 'ERROR') return 'CODE_DEFECT';
+  if (p.sev === 'PERFORMANCE') return 'CONFIG';
+  return 'UNKNOWN';
+}
+
+// ---- Infrastructure Detector ----
+// In production: reads from Dynatrace entity properties
+// p.cloud + p.k8s + p.hostType derived from entity metadata
+function detectInfrastructure(p) {
+  // Production: entitiesClient().getEntity(rootCauseEntityId)
+  //   → properties.cloudType (AWS | AZURE | GCP | null)
+  //   → properties.awsRegion / azureLocation / gcpZone
+  //   → properties.kubernetesCluster (present = k8s)
+  //   → osType (LINUX | WINDOWS)
+  const cloud = p.cloud || null;
+  const isK8s = p.tags && p.tags.some(t => t.includes('kubernetes') || t.includes('k8s'));
+  return {
+    cloud,           // 'aws' | 'azure' | 'gcp' | null
+    isK8s,
+    isLinux: !cloud && !isK8s,
+    region: p.region || null,
+    label: cloud ? cloud.toUpperCase() + (p.region ? ' · ' + p.region : '') : isK8s ? 'Kubernetes' : 'Linux Host',
+    chipClass: cloud === 'aws' ? 'aws' : cloud === 'azure' ? 'azure' : cloud === 'gcp' ? 'gcp' : isK8s ? 'k8s' : 'linux',
+    icon: cloud === 'aws' ? '🟠' : cloud === 'azure' ? '🔵' : cloud === 'gcp' ? '🔵' : isK8s ? '☸' : '🐧',
+  };
+}
+
+// ---- Option Resolver ----
+// Returns ordered list of remediation options based on infra + problem type
+function resolveOptions(p, infra, problemType) {
+  const options = [];
+  const unavailable = [];
+
+  // ── DYNATRACE WORKFLOWS — always available ──
+  options.push({
+    id: 'dt-workflows',
+    icon: '⚡',
+    label: 'Dynatrace Workflows',
+    tier: 'semi',
+    time: '~10–20 min',
+    desc: 'Native Dynatrace automation — trigger remediation actions, notifications, and runbooks directly from the problem without any external integration.',
+    confidence: problemType === 'UNKNOWN' ? 30 : problemType === 'CODE_DEFECT' ? 45 : 75,
+    actionLabel: 'Configure Workflow',
+    actionClass: 'act-semi',
+    recommended: false,
+  });
+
+  // ── LIVE DEBUGGER — for code defects only ──
+  if (problemType === 'CODE_DEFECT' || problemType === 'DEPENDENCY') {
+    options.push({
+      id: 'live-debugger',
+      icon: '⚡',
+      label: 'Dynatrace Live Debugger',
+      tier: 'semi',
+      time: '~5 min to insight',
+      desc: 'Captures a non-breaking snapshot at the exact failing line in production. No redeployment or code change required.',
+      confidence: 82,
+      actionLabel: 'Activate Live Debugger',
+      actionClass: 'act-ld',
+      isLiveDebugger: true,
+      recommended: true,
+    });
+  } else {
+    unavailable.push({ icon: '⚡', label: 'Live Debugger', reason: 'Not a code-level issue — no production snapshot needed' });
+  }
+
+  // ── CLOUD AGENTS — resource/config issues only ──
+  const isAutomatable = (problemType === 'RESOURCE' || problemType === 'CONFIG');
+
+  if (infra.cloud === 'aws') {
+    if (isAutomatable) {
+      options.push({
+        id: 'aws-agent',
+        icon: '🟠',
+        label: 'AWS DevOps Agent',
+        tier: 'auto',
+        time: '~2–5 min',
+        desc: 'Dynatrace triggers AWS DevOps Agent via EventBridge → Systems Manager. Executes remediation runbook in ' + (infra.region || 'your AWS region') + ' autonomously.',
+        confidence: p.hasRCA ? 85 : 45,
+        actionLabel: 'Trigger AWS DevOps Agent',
+        actionClass: 'act-auto',
+        recommended: isAutomatable && p.hasRCA,
+      });
+    } else {
+      unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: problemType === 'CODE_DEFECT' ? 'Code defect — agent cannot fix source code' : 'Root cause unknown — unsafe to automate without RCA' });
+    }
+    unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: 'Infrastructure is AWS, not Azure' });
+    unavailable.push({ icon: '🔵', label: 'GCP Workflows', reason: 'Infrastructure is AWS, not GCP' });
+  } else if (infra.cloud === 'azure') {
+    if (isAutomatable) {
+      options.push({
+        id: 'azure-auto',
+        icon: '🔵',
+        label: 'Azure Automation Runbooks',
+        tier: 'auto',
+        time: '~3–8 min',
+        desc: 'Dynatrace problem triggers Azure Automation via webhook. Runbook executes in your Azure subscription — scale, restart, or reconfigure resources.',
+        confidence: p.hasRCA ? 80 : 40,
+        actionLabel: 'Trigger Azure Automation',
+        actionClass: 'act-auto',
+        recommended: isAutomatable && p.hasRCA,
+      });
+    } else {
+      unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: problemType === 'CODE_DEFECT' ? 'Code defect — automation cannot fix source code' : 'Root cause unknown — unsafe to automate' });
+    }
+    unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: 'Infrastructure is Azure, not AWS' });
+    unavailable.push({ icon: '🔵', label: 'GCP Workflows', reason: 'Infrastructure is Azure, not GCP' });
+  } else if (infra.cloud === 'gcp') {
+    if (isAutomatable) {
+      options.push({
+        id: 'gcp-workflows',
+        icon: '🔵',
+        label: 'GCP Cloud Workflows',
+        tier: 'auto',
+        time: '~3–6 min',
+        desc: 'Dynatrace triggers GCP Cloud Workflows via Pub/Sub. Executes remediation steps — scale Cloud Run, restart GKE pods, update config — in your GCP project.',
+        confidence: p.hasRCA ? 78 : 38,
+        actionLabel: 'Trigger GCP Workflow',
+        actionClass: 'act-auto',
+        recommended: isAutomatable && p.hasRCA,
+      });
+    } else {
+      unavailable.push({ icon: '🔵', label: 'GCP Cloud Workflows', reason: problemType === 'CODE_DEFECT' ? 'Code defect — workflow cannot fix source code' : 'Root cause unknown — unsafe to automate' });
+    }
+    unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: 'Infrastructure is GCP, not AWS' });
+    unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: 'Infrastructure is GCP, not Azure' });
+  } else {
+    // Linux / on-prem / unknown cloud
+    if (isAutomatable) {
+      options.push({
+        id: 'ansible',
+        icon: '🔧',
+        label: 'Ansible / AWX Runbook',
+        tier: 'semi',
+        time: '~15–30 min',
+        desc: 'No cloud agent available for this host. Dynatrace Workflows can trigger an Ansible playbook via AWX/Tower webhook to execute remediation on the Linux host.',
+        confidence: 60,
+        actionLabel: 'Trigger Ansible Playbook',
+        actionClass: 'act-semi',
+        recommended: isAutomatable,
+      });
+    }
+    unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: 'Host is not running on AWS infrastructure' });
+    unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: 'Host is not running on Azure infrastructure' });
+    unavailable.push({ icon: '🔵', label: 'GCP Cloud Workflows', reason: 'Host is not running on GCP infrastructure' });
+  }
+
+  // ── KUBERNETES — any cloud ──
+  if (infra.isK8s && isAutomatable) {
+    options.push({
+      id: 'kubectl',
+      icon: '☸',
+      label: 'Kubernetes Auto-Remediation',
+      tier: 'semi',
+      time: '~5–10 min',
+      desc: 'Dynatrace Workflows execute kubectl commands — scale deployment, restart pods, update ConfigMap — via a connected Kubernetes operator.',
+      confidence: 70,
+      actionLabel: 'Configure K8s Remediation',
+      actionClass: 'act-semi',
+      recommended: false,
+    });
+  }
+
+  // ── MANUAL — always last resort ──
+  options.push({
+    id: 'manual',
+    icon: '🎫',
+    label: 'Manual — Engineering Ticket',
+    tier: 'manual',
+    time: '~2–8 hrs',
+    desc: problemType === 'UNKNOWN' || !p.hasRCA
+      ? 'Root cause not identified yet. Investigate first — automation is not safe until the problem is understood.'
+      : 'Engineer reviews, implements fix, deploys. Full control. Slowest path.',
+    confidence: 100,
+    actionLabel: 'Create Engineering Ticket',
+    actionClass: 'act-manual',
+    recommended: (problemType === 'UNKNOWN' || !p.hasRCA),
+  });
+
+  // Sort: recommended first, then by tier (auto > semi > manual)
+  const tierOrder = { auto: 0, semi: 1, manual: 2 };
+  options.sort((a, b) => {
+    if (a.recommended && !b.recommended) return -1;
+    if (!a.recommended && b.recommended) return 1;
+    return (tierOrder[a.tier] || 2) - (tierOrder[b.tier] || 2);
+  });
+
+  return { options, unavailable };
+}
+
+// ---- Maturity Stage ----
+function getMaturityStage(options) {
+  const hasAuto = options.some(o => o.tier === 'auto' && o.recommended);
+  const hasSemi = options.some(o => o.tier === 'semi');
+  const hasRCA  = remProblem?.hasRCA;
+  if (hasAuto && hasRCA) return 3;
+  if (hasSemi && hasRCA) return 2;
+  if (hasRCA) return 1;
+  return 0;
+}
+
+// ---- Render ----
+function showRemPanel(pid) {
+  remProblem = PROBLEMS.find(p => p.id === pid);
+  if (!remProblem) return;
+  renderRemPanel();
+  document.getElementById('remPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderRemPanel() {
+  const el = document.getElementById('remBody');
+  if (!remProblem) {
+    el.innerHTML = '<div class="rem-empty"><div class="rem-empty-icon">🛸</div><div style="font-size:12px;color:var(--text-3)">Select a problem to see remediation options</div></div>';
+    return;
+  }
+  const p = remProblem;
+  const infra = detectInfrastructure(p);
+  const problemType = classifyProblem(p);
+  const { options, unavailable } = resolveOptions(p, infra, problemType);
+  const matStage = getMaturityStage(options);
+  const matLabels = ['Observe', 'Recommend', 'Semi-Auto', 'Autonomous'];
+
+  const TYPE_META = {
+    RESOURCE:    { label: 'Resource / Scaling',  cls: 'resource',    auto: 'yes',     autoLabel: 'Automatable' },
+    CONFIG:      { label: 'Configuration',        cls: 'config',      auto: 'yes',     autoLabel: 'Automatable' },
+    CODE_DEFECT: { label: 'Code Defect',          cls: 'code',        auto: 'no',      autoLabel: 'Not auto-fixable' },
+    DEPENDENCY:  { label: 'External Dependency',  cls: 'dependency',  auto: 'partial', autoLabel: 'Partially automatable' },
+    UNKNOWN:     { label: 'Unknown — needs RCA',  cls: 'unknown',     auto: 'no',      autoLabel: 'Unsafe to automate' },
+  };
+  const tm = TYPE_META[problemType] || TYPE_META.UNKNOWN;
+
+  const optCardsHtml = options.map(opt => {
+    const confColor = opt.confidence >= 75 ? 'var(--green)' : opt.confidence >= 50 ? 'var(--amber)' : 'var(--coral)';
+    const tierLabel = opt.tier === 'auto' ? 'Autonomous' : opt.tier === 'semi' ? 'Semi-Auto' : 'Manual';
+    const ldDetails = opt.isLiveDebugger ? `
+      <div class="ld-details">
+        <div class="ld-details-title">What you get</div>
+        <div class="ld-item"><span class="ld-dot"></span>Variable state at the exact failing line</div>
+        <div class="ld-item"><span class="ld-dot"></span>Full call stack with local values</div>
+        <div class="ld-item"><span class="ld-dot"></span>Request context — headers, payload shape</div>
+        <div class="ld-item"><span class="ld-dot"></span>Reproducible snapshot — no reproduction needed</div>
+        <div class="ld-item"><span class="ld-dot"></span>Zero code changes or redeployment required</div>
+      </div>` : '';
+    const actionFn = opt.id === 'aws-agent' || opt.id === 'azure-auto' || opt.id === 'gcp-workflows'
+      ? `openAgentModal('${p.id}','${opt.id}')`
+      : opt.id === 'live-debugger'
+        ? `activateLiveDebugger('${p.id}')`
+        : opt.id === 'dt-workflows'
+          ? `openDTWorkflows('${p.id}')`
+          : opt.id === 'manual'
+            ? `openP('${p.id}')`
+            : `alert('Triggering: ${opt.label}')`;
+    return `
+      <div class="rem-opt tier-${opt.tier} ${opt.recommended ? 'recommended' : ''}">
+        <div class="rem-opt-header">
+          <span class="rem-opt-icon">${opt.icon}</span>
+          <span class="rem-opt-label">${opt.label}</span>
+          <span class="tier-badge ${opt.tier}">${tierLabel}</span>
+          <span class="rem-opt-time">⏱ ${opt.time}</span>
+        </div>
+        <div class="rem-opt-desc">${opt.desc}</div>
+        ${ldDetails}
+        <div class="rem-conf">
+          <span class="rem-conf-lbl">Confidence</span>
+          <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${opt.confidence}%;background:${confColor}"></div></div>
+          <span class="rem-conf-pct" style="color:${confColor}">${opt.confidence}%</span>
+        </div>
+        <button class="rem-action ${opt.actionClass}" data-action="remAction" data-pid="${p.id}" data-opt="${opt.id}">${opt.icon} ${opt.actionLabel}</button>
+      </div>`;
+  }).join('');
+
+  const unavailHtml = unavailable.length ? `
+    <div class="rem-unavail">
+      <div class="rem-unavail-title">Not Available for This Problem</div>
+      ${unavailable.map(u => `<div class="unavail-item"><span class="unavail-x">✗</span><strong style="color:var(--text-2);margin-right:4px">${u.icon} ${u.label}</strong><span>— ${u.reason}</span></div>`).join('')}
+    </div>` : '';
+
+  const matSegsHtml = matLabels.map((_, i) => `<div class="mat-seg ${i <= matStage ? 'lit-' + i : ''}"></div>`).join('');
+
+  el.innerHTML = `
+    <div class="rem-context">
+      <div class="rem-ctx-row">
+        <span class="rem-ctx-label">Infrastructure</span>
+        <span class="rem-ctx-val">
+          <span class="infra-chip ${infra.chipClass}">${infra.icon} ${infra.label}</span>
+          ${infra.isK8s ? '<span class="infra-chip k8s">☸ Kubernetes</span>' : ''}
+        </span>
+      </div>
+      <div class="rem-ctx-row">
+        <span class="rem-ctx-label">Problem Type</span>
+        <span class="rem-ctx-val">
+          <span class="type-chip ${tm.cls}">${tm.label}</span>
+          <span class="auto-chip ${tm.auto}">${tm.autoLabel}</span>
+        </span>
+      </div>
+      <div class="rem-ctx-row">
+        <span class="rem-ctx-label">Root Cause</span>
+        <span class="rem-ctx-val" style="font-size:12px;font-family:var(--mono);color:${p.hasRCA ? 'var(--text-1)' : 'var(--amber)'}">
+          ${p.hasRCA ? p.rca : '⚠ Not identified — automation unsafe'}
+        </span>
+      </div>
+    </div>
+    <div class="rem-options">${optCardsHtml}</div>
+    ${unavailHtml}
+    <div class="maturity-bar">
+      <div class="mat-title">Autonomous Operations Maturity</div>
+      <div class="mat-track">${matSegsHtml}</div>
+      <div class="mat-labels">${matLabels.map((l, i) => `<div class="mat-label ${i === matStage ? 'active' : ''}">${l}</div>`).join('')}</div>
+    </div>`;
+}
+
+// ---- Action Handlers ----
+function activateLiveDebugger(pid) {
+  const p = PROBLEMS.find(x => x.id === pid);
+  if (!p) return;
+  openAgentModal(pid, 'live-debugger');
+}
+
+function openDTWorkflows(pid) {
+  openAgentModal(pid, 'dt-workflows');
+}
+
+function openAgentModal(pid, agentId) {
+  awsModalProblem = PROBLEMS.find(p => p.id === pid);
+  if (!awsModalProblem) return;
+  const p = awsModalProblem;
+  const infra = detectInfrastructure(p);
+  const problemType = classifyProblem(p);
+
+  const AGENT_CONFIGS = {
+    'aws-agent': {
+      title: '🟠 AWS DevOps Agent — Autonomous Remediation',
+      steps: [
+        { n: 1, title: 'Dynatrace OpInt', body: `Root cause identified: <strong>${p.rca || 'Unknown'}</strong><br><span style="color:var(--text-3);font-size:11px">Problem: ${p.title}</span>` },
+        { n: 2, title: 'Davis CoPilot', body: `Generated remediation runbook for <strong>${infra.region || 'your region'}</strong><br><span style="color:var(--text-3);font-size:11px">Confidence: ${p.hasRCA ? '85%' : '45%'}</span>` },
+        { n: 3, title: 'AWS DevOps Agent', body: `Executes via <strong>EventBridge → Systems Manager</strong> in ${infra.region || 'ap-southeast-2'}<br><span style="color:var(--text-3);font-size:11px">No human approval required — confidence threshold met</span>` },
+      ],
+      runbook: getRunbook(p, 'aws'),
+      confirmLabel: '🟠 Trigger Autonomous Remediation',
+      confirmClass: 'background:linear-gradient(135deg,#ff9900,#e67e00);color:#000',
+    },
+    'azure-auto': {
+      title: '🔵 Azure Automation — Autonomous Remediation',
+      steps: [
+        { n: 1, title: 'Dynatrace OpInt', body: `Root cause: <strong>${p.rca || 'Unknown'}</strong>` },
+        { n: 2, title: 'Davis CoPilot', body: 'Generated Azure Automation runbook via webhook trigger' },
+        { n: 3, title: 'Azure Automation', body: `Executes in your <strong>Azure subscription</strong> — scales, restarts, or reconfigures resources` },
+      ],
+      runbook: getRunbook(p, 'azure'),
+      confirmLabel: '🔵 Trigger Azure Automation',
+      confirmClass: 'background:linear-gradient(135deg,#0078d4,#005a9e);color:#fff',
+    },
+    'gcp-workflows': {
+      title: '🔵 GCP Cloud Workflows — Autonomous Remediation',
+      steps: [
+        { n: 1, title: 'Dynatrace OpInt', body: `Root cause: <strong>${p.rca || 'Unknown'}</strong>` },
+        { n: 2, title: 'Davis CoPilot', body: 'Generated GCP Workflow definition via Pub/Sub trigger' },
+        { n: 3, title: 'GCP Cloud Workflows', body: `Executes in your <strong>GCP project</strong> — scales Cloud Run, restarts GKE pods` },
+      ],
+      runbook: getRunbook(p, 'gcp'),
+      confirmLabel: '🔵 Trigger GCP Workflow',
+      confirmClass: 'background:linear-gradient(135deg,#4285f4,#1a73e8);color:#fff',
+    },
+    'live-debugger': {
+      title: '⚡ Dynatrace Live Debugger',
+      steps: [
+        { n: 1, title: 'Dynatrace OpInt', body: `Code defect detected on <strong>${p.svcs?.[0] || 'service'}</strong><br><span style="color:var(--text-3);font-size:11px">Problem: ${p.title}</span>` },
+        { n: 2, title: 'Live Debugger', body: 'Non-breaking snapshot placed at <strong>exact failing line</strong> in production — no redeployment required' },
+        { n: 3, title: 'Developer', body: 'Reviews snapshot — <strong>variable state, call stack, request context</strong> — and implements targeted fix' },
+      ],
+      runbook: `# Live Debugger Snapshot Config
+service: ${p.svcs?.[0] || 'target-service'}
+trigger: exception | error-rate-spike
+capture:
+  - local_variables: true
+  - call_stack: true
+  - request_context: true
+  - heap_snapshot: false  # non-breaking
+max_snapshots: 5
+ttl: 30m
+
+# Dynatrace will notify via problem comment
+# when snapshot is ready for developer review`,
+      confirmLabel: '⚡ Activate Live Debugger',
+      confirmClass: 'background:linear-gradient(135deg,#9b8fe4,#7b6fd4);color:#fff',
+    },
+    'dt-workflows': {
+      title: '⚡ Dynatrace Workflows',
+      steps: [
+        { n: 1, title: 'Dynatrace OpInt', body: `Problem detected: <strong>${p.title}</strong>` },
+        { n: 2, title: 'Dynatrace Workflows', body: 'Executes configured actions — notify, scale, restart, create ticket — natively within Dynatrace' },
+        { n: 3, title: 'Outcome', body: 'Actions completed and logged in problem timeline. No external integration required.' },
+      ],
+      runbook: `# Dynatrace Workflow Config
+trigger:
+  type: problem
+  filter: problemId == "${p.id}"
+
+actions:
+  - type: notification
+    target: slack:#ops-incidents
+    message: "Problem ${p.id} detected: ${p.title}"
+
+  - type: http_request
+    url: https://your-runbook-endpoint/execute
+    method: POST
+    body: { problemId: "${p.id}", action: "auto-remediate" }
+
+  - type: create_jira_issue
+    project: OPS
+    summary: "${p.title}"`,
+      confirmLabel: '⚡ Configure Workflow',
+      confirmClass: 'background:linear-gradient(135deg,#00d4b4,#00a896);color:#000',
+    },
+  };
+
+  const cfg = AGENT_CONFIGS[agentId];
+  if (!cfg) { alert('Triggering: ' + agentId); return; }
+
+  document.getElementById('awsModalBody').innerHTML = `
+    <div class="modal-sec">
+      <div class="modal-sec-title">${cfg.title}</div>
+      ${cfg.steps.map(s => `<div class="aws-step"><div class="aws-step-num">${s.n}</div><div class="aws-step-body"><strong>${s.title}</strong><br>${s.body}</div></div>`).join('')}
+    </div>
+    <div class="modal-sec">
+      <div class="modal-sec-title">Generated Runbook / Config</div>
+      <div class="aws-runbook">${cfg.runbook}</div>
+    </div>
+    <div class="aws-action">
+      <button class="aws-cancel" data-action="closeAwsModal">Cancel</button>
+      <button class="aws-confirm" style="${cfg.confirmClass}" data-action="triggerAgent" data-pid="${p.id}" data-agent="${agentId}">${cfg.confirmLabel}</button>
+    </div>`;
+  document.getElementById('awsModal').classList.remove('hidden');
+}
+
+function triggerAgent(pid, agentId) {
+  const p = PROBLEMS.find(x => x.id === pid);
+  const LABELS = { 'aws-agent': 'AWS DevOps Agent', 'azure-auto': 'Azure Automation', 'gcp-workflows': 'GCP Cloud Workflows', 'live-debugger': 'Live Debugger', 'dt-workflows': 'Dynatrace Workflows', 'ansible': 'Ansible Playbook' };
+  const DETAILS = {
+    'live-debugger': `Snapshot will appear in Dynatrace Live Debugger within ~2 minutes.<br><br>Developer notification sent to <strong>team:${(p?.tags||[]).find(t=>t.startsWith('team:'))||'engineering'}</strong>.<br>Snapshot expires in <strong>30 minutes</strong>.`,
+    'dt-workflows': `Workflow executing — actions in progress. Check the Dynatrace Workflows dashboard for execution status and logs.`,
+    default: `Runbook executing in <strong>${p?.region || 'your environment'}</strong>. Estimated completion: <strong>2–5 minutes</strong>.<br><br>Dynatrace will verify resolution and close this problem when metrics return to baseline.`,
+  };
+  const detail = DETAILS[agentId] || DETAILS.default;
+  const execId = Math.random().toString(36).substring(2, 10).toUpperCase();
+  document.getElementById('awsModalBody').innerHTML = `
+    <div class="aws-sent">
+      <div class="aws-sent-icon">${agentId === 'live-debugger' ? '⚡' : agentId === 'dt-workflows' ? '⚡' : '🟢'}</div>
+      <div class="aws-sent-title">Dispatched to ${LABELS[agentId] || agentId}</div>
+      <div class="aws-sent-sub">${detail}</div>
+      <div style="margin-top:12px;padding:8px 14px;background:rgba(61,214,140,.06);border:1px solid rgba(61,214,140,.2);border-radius:var(--r);font-size:11px;color:var(--green);font-family:var(--mono)">
+        Execution ID: opint-${execId}<br>
+        Status: RUNNING ⟳<br>
+        Problem: ${p?.id || pid}
+      </div>
+      <button class="aws-cancel" style="margin-top:8px;width:100%" data-action="closeAwsModal">Close</button>
+    </div>`;
+}
+
+function getRunbook(p, platform) {
+  const rcaRunbooks = {
+    'checkout-service': {
+      aws: `# Scale checkout-service\naws autoscaling set-desired-capacity \\\n  --auto-scaling-group-name checkout-asg \\\n  --desired-capacity 6 --region ${p.region||'ap-southeast-2'}`,
+      azure: `# Scale Azure Container App\naz containerapp update \\\n  --name checkout-service \\\n  --min-replicas 3 --max-replicas 10`,
+      gcp: `# Scale Cloud Run\ngcloud run services update checkout-service \\\n  --min-instances=3 --max-instances=10 \\\n  --region ${p.region||'asia-southeast1'}`,
+    },
+    'payment-gateway': {
+      aws: `# Increase RDS connection limit\naws rds modify-db-parameter-group \\\n  --db-parameter-group-name payments-pg \\\n  --parameters "ParameterName=max_connections,ParameterValue=300"`,
+      azure: `# Update Azure SQL connection\naz sql db update --name payments-db \\\n  --connection-policy Redirect`,
+      gcp: `# Update Cloud SQL flags\ngcloud sql instances patch payments-db \\\n  --database-flags max_connections=300`,
+    },
+  };
+  const runbook = rcaRunbooks[p.rca]?.[platform];
+  if (runbook) return runbook;
+  return `# Auto-generated remediation\n# Problem: ${p.id} — ${p.title}\n# Platform: ${platform}\n# Root cause: ${p.rca || 'unknown'}\n\n# Dynatrace generated runbook will appear here\n# based on Davis AI evidence and entity metadata`;
+}
+
+
+// ── AWS MODAL ──
+function closeAwsModal(e){
+  if(e&&e.target!==document.getElementById('awsModal'))return;
+  document.getElementById('awsModal').classList.add('hidden');
+}
+
+// ── SELECTION ──
+function toggleSel(id,checked,e){
+  e.stopPropagation();
+  if(checked&&selectedIds.size>=5){alert('Max 5 problems');return}
+  if(checked)selectedIds.add(id);else selectedIds.delete(id);
+  updateAnalyzeBtns();
+  render();
+}
+
+function onRowClick(id){
+  const p=PROBLEMS.find(x=>x.id===id);
+  if(p) showRemPanel(id);
+}
+
+function updateAnalyzeBtns(){
+  const n=selectedIds.size;
+  document.getElementById('selCount').textContent=`${n} selected`;
+  document.getElementById('analyzeBtnMulti').disabled=n===0;
+}
+
+function toggleExpand(id,e){
+  e.stopPropagation();
+  if(expandedIds.has(id))expandedIds.delete(id);else expandedIds.add(id);
+  render();
+}
+
+// ── AI SOURCE ──
+function switchAISrc(src){
+  aiSrc=src;
+  document.querySelectorAll('.ai-src-btn').forEach(b=>b.classList.toggle('active',b.dataset.src===src));
+  document.getElementById('extCfg').classList.toggle('hidden',src!=='external');
+}
+
+function onProviderChange(){
+  const p=document.getElementById('extProvider').value;
+  const notes={
+    anthropic:'⚠ Problem data will be sent to Anthropic. Customer provides their own API key.',
+    mcp:'Customer MCP Server — data sent to your configured endpoint. Full control over what is shared.',
+    bedrock:'AWS Bedrock — data stays within your AWS account. No external transfer.',
+    azure:'Azure OpenAI — data sent to your Azure tenant. Customer manages endpoint and key.',
+  };
+  document.getElementById('extNote').textContent=notes[p]||'';
+  document.getElementById('extEndpointRow').style.display=p==='bedrock'?'none':'';
+}
+
+function extTriage(pid){
+  const p=PROBLEMS.find(x=>x.id===pid);
+  if(!p)return;
+  switchAISrc('external');
+  document.getElementById('aiCard').scrollIntoView({behavior:'smooth',block:'nearest'});
+  setTimeout(()=>{
+    selectedIds.clear();selectedIds.add(pid);
+    analyzeMulti();
+  },300);
+}
+
+function deepAnalyze(pid){
+  selectedIds.clear();selectedIds.add(pid);
+  switchAISrc('davis');
+  analyzeMulti();
+}
+
+// ── MULTI-PROBLEM AI ANALYSIS ──
+async function analyzeMulti(){
+  if(selectedIds.size===0)return;
+  const ps=getFiltered().filter(p=>selectedIds.has(p.id));
+  aiState='loading';
+  renderAIPanel(ps);
+  try{
+    const costs=ps.map(calcCost);
+    const total=costs.reduce((a,c)=>a+c.total,0);
+    const result=aiSrc==='external'?await callExternalAI(ps,persona,costs,total):await callDavisCopilot(ps,persona,costs,total);
+    lastAIResult=result;aiState='result';
+  }catch(e){
+    console.warn('[OpInt Davis] analyzeMulti failed, using fallback:', e.message, e);
+    lastAIResult=getFallbackMulti(ps,persona,ps.map(calcCost));aiState='result';
+  }
+  renderAIPanel(ps);
+}
+
+function renderAIPanel(ps){
+  const el=document.getElementById('aiContent');
+  if(aiState==='idle'){
+    el.innerHTML=`<div class="ai-idle"><div class="ai-idle-icon">${PMETA[persona].icon}</div><div style="font-size:12px;color:var(--text-3)">Expand a row for inline summary · select problems for cross-problem analysis</div><div class="ai-idle-hint">✦ Persona-tuned insights · plain language · ranked actions</div></div>`;
+    return;
+  }
+  if(aiState==='loading'){
+    const steps=aiSrc==='external'?
+      ['Connecting to external AI provider...','Preparing problem context...','Sending to '+getProviderLabel()+'...','Parsing AI response...','Structuring recommendations...']:
+      ['Connecting to Davis CoPilot...','Fetching problem context...','Correlating entity signals...','Generating '+PMETA[persona].label+' analysis...','Structuring recommendations...'];
+    el.innerHTML=`<div class="ai-loading"><div class="ai-ring"></div><div style="font-size:12px;color:var(--text-3)">Analysing with ${aiSrc==='external'?getProviderLabel():'Davis CoPilot'}…</div><div class="ai-steps">${steps.map((s,i)=>`<div class="ai-step ${i===0?'active':''}" id="ais-${i}"><span class="ai-step-ic">${i===0?'⟳':'○'}</span>${s}</div>`).join('')}</div></div>`;
+    let step=0;
+    const iv=setInterval(()=>{
+      const prev=document.getElementById(`ais-${step}`);
+      if(prev){prev.className='ai-step done';prev.querySelector('.ai-step-ic').textContent='✓';}
+      step++;
+      if(step<steps.length){const cur=document.getElementById(`ais-${step}`);if(cur){cur.className='ai-step active';cur.querySelector('.ai-step-ic').textContent='⟳';}}
+      if(step>=steps.length)clearInterval(iv);
+    },280);
+    return;
+  }
+  // result
+  const r=lastAIResult;
+  el.innerHTML=`<div class="ai-result fade-in">
+    <div class="ai-sec"><div class="ai-sec-lbl">📝 Summary — ${PMETA[persona].label}</div><div class="ai-summ">${r.summary}</div></div>
+    <div class="ai-sec"><div class="ai-sec-lbl">🔍 Patterns</div>${r.patterns.map(p=>`<div class="ai-pat-item"><span class="ai-pat-bullet">◆</span><span>${p}</span></div>`).join('')}</div>
+    ${r.costNarrative&&persona!=='developer'?`<div class="ai-sec"><div class="ai-sec-lbl">💰 Cost Narrative</div><div class="ai-cost-box">${r.costNarrative}</div></div>`:''}
+    <div class="ai-sec"><div class="ai-sec-lbl">✅ Recommendations</div>${r.recommendations.map(rec=>`
+      <div class="ai-rec">
+        <div class="ai-rec-top"><span class="pri ${rec.priority}">${rec.priority.replace('_',' ')}</span><span class="ai-rec-title">${rec.title}</span></div>
+        <div class="ai-rec-desc">${rec.description}</div>
+        <div class="ai-rec-footer"><span class="ai-rec-impact">✓ ${rec.estimatedImpact}</span><span class="ai-rec-owner">${rec.owner}</span></div>
+      </div>`).join('')}</div>
+    <div class="ai-meta"><div class="ai-meta-txt">${r.generatedBy==='davis-copilot'?'✦ Davis CoPilot':r.generatedBy==='external'?`🔌 ${getProviderLabel()}`:'✦ Demo mode'} · ${PMETA[persona].label} · ${ps?ps.length:selectedIds.size} problem${(ps?ps.length:selectedIds.size)!==1?'s':''}</div><div class="ai-meta-ms">${r.latencyMs}ms</div></div>
+  </div>`;
+}
+
+function getProviderLabel(){
+  const p=document.getElementById('extProvider')?.value||'anthropic';
+  return{anthropic:'Anthropic Claude',mcp:'MCP Server',bedrock:'AWS Bedrock',azure:'Azure OpenAI'}[p]||p;
+}
+
+// ── DAVIS COPILOT ──
+// Stateless single call — text only in body, response.text is the answer
+async function callDavisSkill(text) {
+  console.log('[OpInt Davis] → prompt:', text.slice(0, 200) + (text.length > 200 ? '…' : ''));
+  const res = await fetch('/platform/davis/copilot/v1/skills/conversations:message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    console.warn('[OpInt Davis] HTTP error', res.status, errBody);
+    throw new Error(`Davis CoPilot: ${res.status}`);
+  }
+  const data = await res.json();
+  console.log('[OpInt Davis] ← raw response:', data);
+  if (data.status === 'FAILED') throw new Error('Davis CoPilot: FAILED status');
+  return data.text ?? '';
+}
+
+// Extract the first JSON object from a string that may contain surrounding text
+function extractJSON(raw) {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('No JSON object found in Davis response');
+  return JSON.parse(m[0]);
+}
+
+// ── PATTERN INSIGHTS — two-level: bucket → sub-bucket ──
+const patternInsights = new Map();      // kept for legacy callers that may reference it
+const subBucketInsights = new Map();    // keyed by subBucket.id
+
+const TOOL_ICONS = {
+  'aws-agent': '🟠', 'azure-auto': '🔵', 'gcp-workflows': '🔵',
+  'live-debugger': '⚡', 'dt-workflows': '⚡', 'k8s-auto': '☸',
+  'ansible': '🔧', 'manual': '🎫',
+};
+
+// Group a pattern's problems into sub-buckets by {primaryEntity, rca}
+function groupIntoSubBuckets(pat) {
+  const map = new Map();
+  pat.problems.forEach(p => {
+    const entity = p.rca || p.svcs[0] || 'Unknown';
+    const rca    = p.rca || null;
+    const key    = entity + '||' + (rca || 'no-rca');
+    if (!map.has(key)) {
+      map.set(key, {
+        id: pat.id + '::' + key,
+        patId: pat.id,
+        patTitle: pat.title,
+        entityLabel: entity,
+        rcaLabel: rca,
+        problems: [],
+      });
+    }
+    map.get(key).problems.push(p);
+  });
+  return [...map.values()].sort((a, b) => b.problems.length - a.problems.length);
+}
+
+function renderSubBucketContent(sbId) {
+  const ins = subBucketInsights.get(sbId);
+  if (!ins || ins.state === 'loading') {
+    return `<div class="pc-ai-loading"><span class="pc-ai-spinner"></span>Davis is analyzing…</div>`;
+  }
+  if (ins.state === 'error') return `<div class="pc-ai-loading" style="color:var(--coral);font-style:normal">Analysis unavailable</div>`;
+
+  const rp = ins.remediationPath;
+  let remHtml = '';
+  if (rp) {
+    const row = (cls, label, tier) => {
+      if (!tier) return '';
+      const icon = TOOL_ICONS[tier.tool] || '🔧';
+      return `<div class="pc-ai-rem-row">
+        <span class="pc-ai-rem-tier ${cls}">${label}</span>
+        <span>${icon} <strong>${tier.label}</strong><span class="pc-ai-rem-time"> · ${tier.time}</span>
+        ${tier.reason ? `<div class="pc-ai-rem-reason">${tier.reason}</div>` : ''}</span>
+      </div>`;
+    };
+    remHtml = `<div class="pc-ai-rem">
+      <div class="pc-ai-rem-label">Remediation Path</div>
+      ${row('pc-ai-rem-now',  'Auto',   rp.auto)}
+      ${row('pc-ai-rem-soon', 'Semi',   rp.semi)}
+      ${row('pc-ai-rem-arch', 'Manual', rp.manual)}
+    </div>`;
+  }
+
+  const confBadge = ins.confidence != null
+    ? `<span class="sb-conf-badge ${confClass(ins.confidence)}">${confLabel(ins.confidence)}${Math.round(ins.confidence * 100)}% confidence</span>` : '';
+  return `<div class="pc-ai-summary-row">${confBadge}<div class="pc-ai-summary">${ins.summary || ''}</div></div>${remHtml}`;
+}
+
+const REMEDIATION_CATALOG = `Auto (fully autonomous):
+  aws-agent | AWS DevOps Agent | ~2–5 min — AWS resource/config issues with known root cause
+  azure-auto | Azure Automation Runbooks | ~3–8 min — Azure resource/config issues
+  gcp-workflows | GCP Cloud Workflows | ~3–6 min — GCP resource/config issues
+Semi-auto (human initiates, tool executes):
+  live-debugger | Dynatrace Live Debugger | ~5 min — code defects, error rate spikes, exceptions
+  dt-workflows | Dynatrace Workflows | ~10–20 min — any problem, triggers runbooks/notifications
+  k8s-auto | Kubernetes Auto-Remediation | ~5–10 min — Kubernetes pod/deployment issues
+  ansible | Ansible / AWX Runbook | ~15–30 min — on-premise or Linux hosts
+Manual:
+  manual | Manual Engineering Ticket | ~2–8 hrs — always valid as last resort`;
+
+async function fetchSubBucketInsight(sb) {
+  subBucketInsights.set(sb.id, { state: 'loading' });
+  const el = () => document.getElementById('sb-insight-' + CSS.escape(sb.id));
+  try {
+    const timeRange = document.getElementById('timeRange')?.value ?? '7d';
+    const ctx = sb.problems.map(p => ({
+      id: p.id, status: p.status, severity: p.sev,
+      durationMinutes: p.dur, affectedUsers: p.users,
+      cloud: p.cloud || null, category: p.category || null,
+      hasRootCause: p.hasRCA,
+    }));
+    const sbAvgDur   = Math.round(arrMean(ctx.filter(c=>c.durationMinutes>0).map(c=>c.durationMinutes)));
+    const sbTotalCost= Math.round(sb.problems.reduce((s,p)=>s+calcCost(p).total,0));
+    const sbRcaPct   = Math.round(ctx.filter(c=>c.hasRootCause).length/ctx.length*100);
+    const prompt = `You are analyzing a refined cluster of Dynatrace incidents. Respond ONLY with valid JSON, no markdown.
+
+Problem type: "${sb.patTitle}"
+Impacted entity: "${sb.entityLabel}"
+Root cause entity: "${sb.rcaLabel || 'not yet identified'}"
+${sb.problems.length} occurrence${sb.problems.length !== 1 ? 's' : ''} over the last ${timeRange}.
+Cluster metrics: est. cost $${sbTotalCost}, avg duration ${sbAvgDur || '?'}min, ${sbRcaPct}% have root cause identified.
+Occurrences: ${JSON.stringify(ctx)}
+
+IMPORTANT: The summary MUST reference at least one specific metric (cost, count, duration, or RCA %) from the data above.
+
+Choose the best remediation tool for each tier:
+${REMEDIATION_CATALOG}
+
+JSON format (pick exactly one tool per tier):
+{"summary":"2 sentence summary referencing specific metrics (cost/duration/count)","remediationPath":{"auto":{"tool":"<id>","label":"<name>","reason":"one sentence why","time":"<estimate>"},"semi":{"tool":"<id>","label":"<name>","reason":"one sentence why","time":"<estimate>"},"manual":{"tool":"manual","label":"Manual Engineering Ticket","reason":"one sentence on investigation needed","time":"~2–8 hrs"}}}`;
+    const raw = await callDavisSkill(prompt);
+    console.log('[OpInt Davis] sub-bucket raw for', sb.entityLabel, ':', raw);
+    const parsed = extractJSON(raw);
+    console.log('[OpInt Davis] sub-bucket parsed:', parsed);
+    const conf = subBucketConfidence(sb);
+    subBucketInsights.set(sb.id, { state: 'done', confidence: conf, ...parsed });
+  } catch(err) {
+    console.warn('[OpInt Davis] sub-bucket error for', sb.entityLabel, err.message);
+    subBucketInsights.set(sb.id, { state: 'error' });
+  }
+  const node = el();
+  if (node) node.innerHTML = renderSubBucketContent(sb.id);
+}
+
+function schedulePatternInsights(patterns) {
+  patterns.forEach(pat => {
+    const subs = groupIntoSubBuckets(pat);
+    subs.forEach(sb => { if (!subBucketInsights.has(sb.id)) fetchSubBucketInsight(sb); });
+  });
+}
+
+// ── INLINE AI CALL ──
+async function callInlineAI(p,persona){
+  const cost=calcCost(p);
+  const prompt=`Analyze this single Dynatrace problem for a ${persona}. Respond ONLY with JSON: {"summary":"2 sentence plain summary","topFix":"one sentence describing the single best immediate fix"}
+
+Problem: ${JSON.stringify({title:p.title,severity:p.sev,status:p.status,duration:p.dur,affectedUsers:p.users,hasRootCause:p.hasRCA,rootCause:p.rca,recurrenceScore:p.rec,estimatedCost:cost.total})}
+Persona rules: ${persona==='executive'?'Plain English, no jargon, business focus':persona==='developer'?'Technical, code-level, specific service names':'Full technical with infrastructure context'}`;
+  const raw = await callDavisSkill(prompt);
+  console.log('[OpInt Davis] callInlineAI raw:', raw);
+  return extractJSON(raw);
+}
+
+function getFallbackInline(p,persona){
+  const cost=calcCost(p);
+  const SUMMARIES={
+    executive:{
+      'AVAILABILITY':`A critical platform outage affected ${(p.users||0).toLocaleString()} customers for ${fmtM(p.dur||30)}, causing an estimated ${fmtC(cost.total)} in losses. ${p.rec>=60?'This is a recurring issue — the root cause has not been permanently resolved.':'Immediate investigation is required to prevent recurrence.'}`,
+      'ERROR':`Payment and transaction errors disrupted the experience of ${(p.users||0).toLocaleString()} customers. The estimated business impact is ${fmtC(cost.total)}${p.rec>=60?' — and this same incident has occurred multiple times recently.':'.'}`,
+      'PERFORMANCE':`Customers experienced slow or degraded performance affecting ${(p.users||0).toLocaleString()} sessions, with an estimated ${fmtC(cost.total)} revenue impact. ${p.rec>=60?'This pattern repeats frequently, indicating an unresolved systemic issue.':''}`,
+      'RESOURCE_CONTENTION':`A platform resource constraint was detected. ${p.users===0?'No direct customer impact was recorded.':'Approximately '+p.users.toLocaleString()+' customers were affected.'}`,
+    },
+    developer:{
+      'AVAILABILITY':`Service ${p.rca||p.svcs[0]} went unavailable for ${fmtM(p.dur||30)}. ${p.hasRCA?`Root cause identified: ${p.rca}.`:'Root cause not documented — investigation required.'} ${p.rec>=60?'High recurrence score indicates a persistent failure mode.':''}`,
+      'ERROR':`Error rate spiked on ${p.svcs.join(', ')}. ${p.hasRCA?`Root cause: ${p.rca} — likely connection pool or dependency failure.`:'No root cause entity identified. Check downstream dependencies and error logs.'} Recurrence score: ${p.rec}/100.`,
+      'PERFORMANCE':`${p.rca||p.svcs[0]} response time degraded for ${fmtM(p.dur||30)}. ${p.rec>=60?'Deterministic pattern — correlates with peak traffic. Capacity or resource limit issue.':'Isolated incident — check recent deployments and resource utilisation.'}`,
+      'RESOURCE_CONTENTION':`${p.rca||p.svcs[0]} hit resource limits (CPU/memory). Duration: ${fmtM(p.dur||30)}. ${p.noise?'Likely batch job interference — consider threshold tuning.':'Check for memory leaks, unbounded caches, or misconfigured resource limits.'}`,
+    },
+    sre:{
+      'AVAILABILITY':`Availability incident on ${p.rca||p.svcs[0]} — ${fmtM(p.dur||30)} outage, ${(p.users||0).toLocaleString()} users affected, ${fmtC(cost.total)} estimated cost. ${p.rec>=60?'High recurrence — SLO error budget burning rapidly.':'Single occurrence — verify no SLO breach.'}`,
+      'ERROR':`Error rate incident: ${p.svcs.join('/')} impacted for ${fmtM(p.dur||30)}. ${p.hasRCA?`Root cause: ${p.rca}.`:'RCA missing.'} ${p.noise?'Short duration suggests noise candidate — review alert threshold.':'Impact confirmed — initiate post-incident review.'}`,
+      'PERFORMANCE':`Latency SLO violation on ${p.rca||p.svcs[0]} for ${fmtM(p.dur||30)}. ${p.rec>=60?'Recurring pattern at peak hours — HPA or capacity planning needed.':'Check recent deployment correlation and dependency health.'}`,
+      'RESOURCE_CONTENTION':`Resource saturation on ${p.rca||p.svcs[0]}. ${p.noise?'Auto-resolved in <15min — likely noisy alert. Tune thresholds.':'Genuine saturation — check limits, eviction policies, and scaling config.'}`,
+    },
+  };
+  const FIXES={
+    executive:{AVAILABILITY:'Escalate to engineering leadership for immediate resolution and post-incident review.',ERROR:'Request engineering team to investigate payment system root cause and implement permanent fix.',PERFORMANCE:'Authorise capacity investment to prevent peak-hour degradation recurring.',RESOURCE_CONTENTION:'Assign engineering team to investigate and resolve the resource constraint.'},
+    developer:{AVAILABILITY:`Restart ${p.rca||'the service'}, check health probes, review recent deployments. Add circuit breaker if downstream dependency.`,ERROR:`Check ${p.rca||'upstream service'} connection pool settings. Increase max_connections, add retry with backoff.`,PERFORMANCE:`Profile ${p.rca||p.svcs[0]} under load. Check HPA config — add custom metric scaling. Review GC settings if JVM.`,RESOURCE_CONTENTION:`Check resource limits in deployment YAML. Increase CPU/memory limits or add HPA. ${p.noise?'Exclude batch job window from alerting.':''}`},
+    sre:{AVAILABILITY:`Trigger runbook: restart ${p.rca||'affected service'}, verify health checks, check PagerDuty escalation. Open post-incident review.`,ERROR:`Execute connection pool reset on ${p.rca||'service'}. Check CloudWatch/Dynatrace for anomaly correlation with deployments.`,PERFORMANCE:`Scale ${p.rca||p.svcs[0]} replicas immediately. Set HPA min: 3, max: 10 with request-rate metric.`,RESOURCE_CONTENTION:`${p.noise?'Tune alert threshold to 95%, exclude batch window.':'Increase resource limits, check OOM kill logs, review eviction policy.'}`},
+  };
+  return{summary:(SUMMARIES[persona]||SUMMARIES.sre)[p.sev]||`Problem ${p.id} recorded for ${fmtM(p.dur||30)}, affecting ${(p.users||0).toLocaleString()} users.`,topFix:(FIXES[persona]||FIXES.sre)[p.sev]||'Investigate root cause and document findings before closing.'};
+}
+
+// ── MULTI-PROBLEM AI (Davis CoPilot / External) ──
+async function callDavisCopilot(ps,persona,costs,totalCost){
+  return callAIWithPrompt(ps,persona,costs,totalCost,'davis-copilot');
+}
+
+async function callExternalAI(ps,persona,costs,totalCost){
+  return callAIWithPrompt(ps,persona,costs,totalCost,'external');
+}
+
+async function callAIWithPrompt(ps,persona,costs,totalCost,source){
+  const t0=Date.now();
+  const PINSTR={
+    executive:`Brief a C-level executive. Plain English only — no pods, JVM, heap, GC, DQL. Focus on business impact, customer experience, revenue risk. CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number (cost, %, count, or duration) from the data. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure.`,
+    developer:`Brief a software developer. Technical root cause analysis. Name services, error types, config values. Recommend specific code-level or config-level fixes.`,
+    sre:`Brief an SRE. Full operational analysis. Include infrastructure signals, alert noise assessment, SLO impact, runbook steps, blast radius.`,
+  };
+  const ctx=ps.map((p,i)=>({title:p.title,severity:p.sev,status:p.status,duration:p.dur,affectedUsers:p.users,hasRootCause:p.hasRCA,rootCause:p.rca,services:p.svcs,recurrenceScore:p.rec,estimatedCost:costs[i]?.total||0,cloud:p.cloud,region:p.region}));
+  const rcaCount   = ps.filter(p=>p.hasRCA).length;
+  const rcaPct     = ps.length ? Math.round(rcaCount/ps.length*100) : 0;
+  const noiseCount = ps.filter(p=>p.noise).length;
+  const openCount  = ps.filter(p=>p.status==='OPEN').length;
+  const prompt=`${PINSTR[persona]}
+TOTAL COST: $${totalCost.toLocaleString()}
+KEY METRICS: ${rcaPct}% auto-correlated (${rcaCount}/${ps.length} problems have RCA), ${noiseCount} noise-suppressed events, ${openCount} currently open.
+PROBLEMS: ${JSON.stringify(ctx)}
+IMPORTANT: Every insight in "summary" and "patterns" MUST reference at least one specific metric (cost %, count, duration, or percentage) from the data above. Do not make generic statements without metric backing.
+Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrative":"string","recommendations":[{"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"string","estimatedImpact":"string","owner":"string"}]}`;
+  let text='';
+  if(source==='davis-copilot'){
+    text = await callDavisSkill(prompt);
+  } else {
+    const provider=document.getElementById('extProvider')?.value||'anthropic';
+    const key=document.getElementById('extKey')?.value||'';
+    if(provider==='anthropic'){
+      if(!key)throw new Error('Enter your Anthropic API key in the field above');
+      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})});
+      if(!res.ok)throw new Error('Anthropic API error: '+res.status);
+      const data=await res.json();
+      text=data.content?.map(c=>c.text||'').join('');
+    } else if(provider==='mcp'){
+      if(!key)throw new Error('Enter your MCP server URL in the field above');
+      const res=await fetch(key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
+      if(!res.ok)throw new Error('MCP server error: '+res.status);
+      const data=await res.json();
+      text=data.content?.map(c=>c.text||'').join('')??data.message??'';
+    } else {
+      throw new Error(`Provider "${provider}" is not yet configured. Use Anthropic or MCP.`);
+    }
+  }
+  console.log('[OpInt Davis] callAIWithPrompt raw text:', text);
+  const parsed = extractJSON(text);
+  console.log('[OpInt Davis] callAIWithPrompt parsed:', parsed);
+  return{...parsed,generatedBy:source,latencyMs:Date.now()-t0};
+}
+
+function getFallbackMulti(ps,persona,costs){
+  const total=costs.reduce((a,c)=>a+c.total,0);
+  const users=ps.reduce((a,p)=>a+(p.users||0),0);
+  return{
+    summary:persona==='executive'?`${ps.length} customer-facing incidents affected ${users.toLocaleString()} customers with an estimated ${fmtC(total)} impact. Recurring patterns indicate unresolved systemic issues requiring strategic investment.`:persona==='developer'?`${ps.length} problems analyzed. Root cause clusters point to ${ps.filter(p=>p.hasRCA).map(p=>p.rca).filter(Boolean).join(', ')||'undocumented failures'}. ${ps.filter(p=>!p.hasRCA).length} problems lack root cause — blocking prevention.`:`${ps.length} problems. ${ps.filter(p=>p.rec>=60).length} high-recurrence, ${ps.filter(p=>!p.hasRCA).length} missing RCA, estimated ${fmtC(total)} cost. Alert noise candidates: ${ps.filter(p=>p.noise).length}.`,
+    patterns:['Recurring patterns indicate root causes have not been permanently resolved','MTTR above 60 minutes suggests gaps in incident response runbooks or alert routing','Shared dependencies across incidents point to single points of failure requiring architectural attention'],
+    costNarrative:`These ${ps.length} incidents represent approximately ${fmtC(total)} in combined revenue and engineering costs.`,
+    recommendations:[
+      {priority:'IMMEDIATE',title:'Address open incidents now',description:'Triage and escalate all OPEN status problems immediately. Follow existing runbooks.',estimatedImpact:'Stop active customer impact',owner:'on-call SRE'},
+      {priority:'SHORT_TERM',title:'Mandate root cause documentation',description:'Require RCA entry before closing P1/P2 problems. Reduces recurrence by ~35%.',estimatedImpact:'Reduce recurrence within 60 days',owner:'team:sre'},
+      {priority:'STRATEGIC',title:'Invest in autonomous remediation',description:'Configure AWS DevOps Agent for top recurring patterns. Each automated fix saves ~2–4 hours of engineer time per occurrence.',estimatedImpact:`Save ${fmtC(total*0.4)} per period once automated`,owner:'team:platform'},
+    ],
+    generatedBy:'mock',latencyMs:1400,
+  };
+}
+
+
+// ══════════════════════════════════════════
+// PATTERN INTELLIGENCE ENGINE
+// ══════════════════════════════════════════
+
+// ── View switching ──
+let currentView = 'explorer';
+
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.getElementById('view-patterns').style.display = view === 'patterns' ? '' : 'none';
+  document.getElementById('view-explorer').style.display  = view === 'explorer'  ? '' : 'none';
+  document.getElementById('view-progress').style.display  = view === 'progress'  ? '' : 'none';
+  if (view === 'patterns') renderPatternIntelligence();
+  if (view === 'progress') { renderProgress(); requestAnimationFrame(() => drawTrendChart(WEEKLY_SNAPSHOTS)); }
+}
+
+// ── Pattern Detection ──
+// Groups problems by normalised signature
+function detectPatterns(problems) {
+  const groups = new Map();
+  problems.forEach(p => {
+    const key = normaliseTitle(p.title);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  });
+
+  const patterns = [];
+  const oneOffs  = [];
+
+  groups.forEach((ps, key) => {
+    if (ps.length >= 2) {
+      patterns.push(buildPattern(ps));
+    } else {
+      oneOffs.push(ps[0]);
+    }
+  });
+
+  return {
+    patterns: patterns.sort((a, b) => b.recurrenceScore - a.recurrenceScore),
+    oneOffs,
+  };
+}
+
+function normaliseTitle(title) {
+  return title.toLowerCase()
+    .replace(/\b(pod|node|host|instance|replica)[-_\s]+\S+/g, '$1-*')
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '<IP>')
+    .replace(/[\s]+/g, ' ').trim();
+}
+
+function buildPattern(problems) {
+  const times    = problems.map(p => p.start).sort((a, b) => a - b);
+  const durations = problems.filter(p => p.dur).map(p => p.dur);
+  const avgDur   = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+  const totalCost = problems.reduce((s, p) => s + calcCost(p).total, 0);
+  const totalUsers = problems.reduce((s, p) => s + (p.users || 0), 0);
+  const autoResolves = problems.filter(p => p.status === 'RESOLVED' && p.dur && p.dur <= 15 && p.users === 0).length;
+  const hasRCA   = problems.some(p => p.hasRCA);
+  const rcaValues = [...new Set(problems.filter(p => p.hasRCA && p.rca).map(p => p.rca))];
+  const consistentRCA = rcaValues.length === 1;
+
+  // Time cluster detection — do events genuinely cluster at the same UTC hour?
+  // Only valid timestamps (not NaN from bad parses) are counted.
+  const hours = problems.map(p => new Date(p.start).getUTCHours()).filter(h => !isNaN(h));
+  const hourCounts = {};
+  hours.forEach(h => { hourCounts[h] = (hourCounts[h] || 0) + 1; });
+  const maxHourCount = hours.length ? Math.max(...Object.values(hourCounts)) : 0;
+  const dominantHourKey = Object.keys(hourCounts).find(h => hourCounts[h] === maxHourCount);
+  const dominantHour = dominantHourKey !== undefined ? parseInt(dominantHourKey, 10) : 0;
+  // Require ≥5 valid events AND ≥70% at the same hour to avoid false positives
+  const hasTimeCluster = hours.length >= 5 && maxHourCount / hours.length >= 0.7;
+
+  // Recurrence score (0-100)
+  const daySpan = Math.max(1, (times[times.length - 1] - times[0]) / 86400000);
+  const dailyRate = problems.length / daySpan;
+  const recScore = Math.min(100, Math.round(dailyRate >= 3 ? 100 : dailyRate >= 1 ? 80 : dailyRate >= 0.5 ? 60 : dailyRate * 120));
+
+  // Trend: compare first half vs second half frequency
+  const mid = Math.floor(problems.length / 2);
+  const firstSpan  = problems.length >= 4 ? (times[mid - 1]   - times[0]) / 86400000 || 1 : 1;
+  const secondSpan = problems.length >= 4 ? (times[times.length - 1] - times[mid]) / 86400000 || 1 : 1;
+  const firstRate  = mid / firstSpan;
+  const secondRate = (problems.length - mid) / secondSpan;
+  const trend = problems.length < 3 ? 'STABLE'
+    : secondRate > firstRate * 1.3 ? 'INCREASING'
+    : secondRate < firstRate * 0.7 ? 'DECREASING'
+    : 'STABLE';
+
+  // Spark data — one point per problem, value = cost
+  const sparkData = problems.map(p => ({ t: p.start, v: calcCost(p).total }));
+
+  // ── Pattern quality score ──
+  const rcaList        = problems.filter(p=>p.hasRCA&&p.rca).map(p=>p.rca);
+  const topRca         = arrMode(rcaList);
+  const rcaConsistency = rcaList.length>0
+    ? rcaList.filter(r=>r===topRca).length/problems.filter(p=>p.hasRCA).length
+    : 0;
+  const uniqueTitles   = new Set(problems.map(p=>p.title)).size;
+  const clusterPurity  = clamp(1-((uniqueTitles-1)/problems.length),0,1);
+  const gaps           = times.slice(1).map((t,i)=>t-times[i]);
+  const interArrivalCV = gaps.length>1 ? arrStddev(gaps)/(arrMean(gaps)||1) : 1.0;
+  const recurrenceStability = clamp(1-interArrivalCV,0,1);
+  const costs          = problems.map(p=>calcCost(p).total);
+  // Cost predictability: 1 − coefficient of variation (stddev/mean), capped to [0,1]
+  // CV near 0 = each occurrence costs about the same (predictable). CV > 1 = costs vary wildly.
+  const costCV         = arrMean(costs) > 0 ? arrStddev(costs) / arrMean(costs) : 0;
+  const costConsistency= clamp(1 - costCV, 0, 1);
+  const qualityScore   = Math.round(
+    clusterPurity      *35 +
+    rcaConsistency     *35 +
+    recurrenceStability*15 +
+    costConsistency    *15
+  );
+
+  // Concentration: how tightly cost + entities cluster (high = one entity dominates)
+  // Uses cost predictability (1 − CV) instead of Gini — easier to explain and equivalent directionally
+  const concentrationRaw   = clamp(clusterPurity * 0.5 + costConsistency * 0.5, 0, 1);
+  const concentrationScore = concentrationRaw >= 0.65 ? 'High' : concentrationRaw >= 0.40 ? 'Medium' : 'Low';
+
+  // Fixability: how actionable is this pattern (high = consistent RCA + stable recurrence + tight cluster)
+  const fixabilityRaw   = clamp(rcaConsistency * 0.5 + recurrenceStability * 0.3 + clusterPurity * 0.2, 0, 1);
+  const fixabilityScore = fixabilityRaw >= 0.60 ? 'High' : fixabilityRaw >= 0.35 ? 'Medium' : 'Low';
+
+  // Recommendation
+  const rec = recommendAction({
+    recurrenceScore: recScore,
+    autoResolveRate: autoResolves / problems.length,
+    avgDuration: avgDur,
+    avgUsersAffected: totalUsers / problems.length,
+    avgImpactScore: problems.reduce((s, p) => s + p.impact, 0) / problems.length,
+    hasTimeCluster,
+    dominantHour,
+    hasRCA,
+    consistentRCA,
+    rcaLabel: rcaValues[0] || null,
+    frequency: problems.length,
+    trend,
+    totalCost,
+  });
+
+  return {
+    id: 'pat-' + normaliseTitle(problems[0].title).replace(/\W+/g, '-').substring(0, 20),
+    title: problems[0].biz || problems[0].title,
+    problems,
+    occurrences: problems.length,
+    firstSeen: times[0],
+    lastSeen: times[times.length - 1],
+    avgDur,
+    totalCost,
+    totalUsers,
+    recurrenceScore: recScore,
+    trend,
+    hasTimeCluster,
+    dominantHour,
+    hasRCA,
+    consistentRCA,
+    rcaLabel: rcaValues[0] || null,
+    autoResolveRate: autoResolves / problems.length,
+    severity: problems[0].sev,
+    sparkData,
+    recommendation: rec,
+    qualityScore,
+    rcaConsistency,
+    clusterPurity,
+    interArrivalCV,
+    concentrationScore,
+    fixabilityScore,
+    expanded: false,
+  };
+}
+
+// ── Recommendation Engine ──
+const REC_META = {
+  ADD_TIME_WINDOW:   { icon: '⏱',  label: 'Add Time Window',   color: 'var(--amber)' },
+  FIX_ROOT_CAUSE:    { icon: '🔁', label: 'Fix Root Cause',     color: 'var(--blue)'  },
+  INVESTIGATE_FIRST: { icon: '🔍', label: 'Investigate First',  color: 'var(--violet)'},
+};
+
+function recommendAction(p) {
+  // 1. Time cluster — scheduled batch job or deployment window
+  if (p.hasTimeCluster) {
+    return {
+      type: 'ADD_TIME_WINDOW', confidence: 85,
+      text: `Occurrences cluster around ${String(p.dominantHour).padStart(2,'0')}:00 UTC — likely a scheduled batch job or deployment window.`,
+      config: `alert.suppress_window(start="${String(p.dominantHour).padStart(2,'0')}:00", duration="2h", days="all")`,
+    };
+  }
+
+  // 2. Recurring with consistent root cause — engineering problem, not alerting problem
+  if (p.hasRCA && p.consistentRCA && p.frequency >= 3) {
+    return {
+      type: 'FIX_ROOT_CAUSE', confidence: 91,
+      text: `Same root cause (${p.rcaLabel}) identified across ${p.frequency} occurrences — alerting is surfacing unresolved technical debt.`,
+      config: `problem.root_cause="${p.rcaLabel}" // assign to owning team for permanent fix`,
+    };
+  }
+
+  // 3. Default — investigate before taking action
+  return {
+    type: 'INVESTIGATE_FIRST', confidence: 88,
+    text: `Occurred ${p.frequency}× ${p.hasRCA ? 'with inconsistent root cause' : 'with no root cause documented'}. Attach Live Debugger to the next occurrence to capture state.`,
+    config: `live_debugger.arm(trigger="next_occurrence", capture=["variables","stack","request"])`,
+  };
+}
+
+// ── Render Pattern Intelligence ──
+let expandedPatterns = new Set();
+let expandedActions = new Set();
+
+function renderPatternIntelligence() {
+  const ps = getFiltered();
+  const { patterns, oneOffs } = detectPatterns(ps);
+
+  // Update tab counts
+  document.getElementById('patternTabCount').textContent  = patterns.length;
+  document.getElementById('explorerTabCount').textContent = ps.length;
+
+  // Summary bar
+  const totalCost = ps.reduce((s, p) => s + calcCost(p).total, 0);
+  const recurringCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
+  const fixable = patterns.filter(pat => ['FIX_ROOT_CAUSE','ADD_TIME_WINDOW'].includes(pat.recommendation.type)).length;
+  document.getElementById('intelSummary').innerHTML = `
+    <div class="intel-icon">🧠</div>
+    <div class="intel-main">
+      <div class="intel-headline">${patterns.length} patterns across ${ps.length} problems — not ${ps.length} separate issues</div>
+      <div class="intel-sub">${fixable} patterns have clear actionable paths · ${oneOffs.length} one-off problems below pattern threshold</div>
+    </div>
+    <div class="intel-stats">
+      <div class="intel-stat">
+        <div class="intel-stat-val" style="color:var(--coral)">${patterns.length}</div>
+        <div class="intel-stat-lbl">Patterns</div>
+      </div>
+      <div class="intel-stat">
+        <div class="intel-stat-val" style="color:var(--amber)">${fmtC(recurringCost)}</div>
+        <div class="intel-stat-lbl">Recurring Cost</div>
+      </div>
+      <div class="intel-stat">
+        <div class="intel-stat-val" style="color:var(--green)">${fixable}</div>
+        <div class="intel-stat-lbl">Actionable</div>
+      </div>
+    </div>`;
+
+  // Executive gets spotlight tiles + ranked list; engineers get sub-bucket cards
+  if (persona === 'executive') {
+    renderExecutivePatternView(patterns, ps);
+    renderOneOffs(oneOffs);
+    document.getElementById('explorerTabCount').textContent = ps.length;
+    if (PROBLEMS !== MOCK_PROBLEMS) schedulePatternInsights(patterns);
+    return;
+  }
+
+  // Pattern cards (engineer / SRE / developer)
+  const TREND_ICONS = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
+  const TREND_LABELS = { INCREASING: 'Worsening', STABLE: 'Stable', DECREASING: 'Improving' };
+  const SEV_CLASS = { AVAILABILITY: 'severity-high', ERROR: 'severity-high', PERFORMANCE: 'severity-med', RESOURCE_CONTENTION: 'severity-low', CUSTOM_ALERT: 'severity-low' };
+
+  document.getElementById('patternGrid').innerHTML = patterns.map(pat => {
+    const rec  = pat.recommendation;
+    const meta = REC_META[rec.type] || REC_META.TUNE_FREQUENCY;
+    const recColor = pat.recurrenceScore >= 80 ? 'var(--coral)' : pat.recurrenceScore >= 50 ? 'var(--amber)' : 'var(--blue)';
+    const actionBtns = buildPatternActions(pat);
+
+    // ── Section divider (pattern bucket header) ──
+    const sectionHdr = `<div class="pattern-section-hdr">
+      <span class="psh-icon">${meta.icon}</span>
+      <span class="psh-title">${pat.title}</span>
+      <span class="psh-pill">${pat.occurrences}×</span>
+      <span class="trend-chip ${pat.trend}">${TREND_ICONS[pat.trend]} ${TREND_LABELS[pat.trend]}</span>
+      ${pat.hasTimeCluster ? `<span class="psh-pill" style="color:var(--amber)">⏱ ${String(pat.dominantHour).padStart(2,'0')}:00</span>` : ''}
+      <span class="psh-cost">${fmtC(pat.totalCost)}</span>
+      <div class="psh-rec-track"><div class="psh-rec-fill" style="width:${pat.recurrenceScore}%;background:${recColor}"></div></div>
+      <span class="psh-rec-pct" style="color:${recColor}">${pat.recurrenceScore}%</span>
+    </div>`;
+
+    // ── One card per unique (entity × RCA) sub-bucket ──
+    const subBuckets = groupIntoSubBuckets(pat);
+    const cardsHtml = subBuckets.map(sb => {
+      const openCount = sb.problems.filter(p => p.status === 'OPEN').length;
+      const sbStatus  = openCount > 0 ? 'OPEN' : 'RESOLVED';
+      const sbCost    = sb.problems.reduce((s, p) => s + calcCost(p).total, 0);
+      const rcaChip   = sb.rcaLabel
+        ? `<span class="sb-rca-chip">RCA: ${sb.rcaLabel}</span>`
+        : `<span class="sb-rca-chip sb-rca-unknown">No RCA identified</span>`;
+      return `<div class="sb-card ${SEV_CLASS[pat.severity] || 'severity-low'}">
+        <div class="sb-card-strip ${rec.type}"></div>
+        <div class="sb-card-body">
+          <div class="sb-card-hdr">
+            <span class="sdot ${sbStatus}"></span>
+            <span class="sb-card-entity">${sb.entityLabel}</span>
+            ${rcaChip}
+            <span class="sb-card-count">${sb.problems.length}×</span>
+            <span class="sb-card-cost">${fmtC(sbCost)}</span>
+            <span class="lbtn" data-action="drillToExplorer" data-pid="${sb.problems[0]?.id}" title="Drill into problems">↗</span>
+          </div>
+          <div class="sb-insight" id="sb-insight-${sb.id}">${renderSubBucketContent(sb.id)}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // ── Actions footer beneath this pattern's cards ──
+    const actionsHtml = persona === 'executive' ? (() => {
+      const actOpen = expandedActions.has(pat.id);
+      const recHtml = rec.type !== 'ADD_TIME_WINDOW' ? `
+        <div class="pc-rec-box ${rec.type}">
+          <div class="pc-rec-header">
+            <span class="pc-rec-type">${meta.icon} ${meta.label}</span>
+            <span class="pc-rec-conf">${rec.confidence}% confidence</span>
+          </div>
+          <div class="pc-rec-text">${rec.text}</div>
+          <div class="pc-rec-config">${rec.config}</div>
+        </div>` : '';
+      return `<div class="pc-actions-collapse" data-stop-propagation="1">
+        <button class="pc-collapse-btn" data-action="togglePatternActions" data-pid="${pat.id}">
+          ${actOpen ? '▾ Hide actions' : '▸ Recommended actions'}
+        </button>
+        ${actOpen ? `<div class="pc-actions-panel">${recHtml}<div class="pc-actions">${actionBtns}</div></div>` : ''}
+      </div>`;
+    })() : `<div class="pc-rec-box ${rec.type}">
+      <div class="pc-rec-header">
+        <span class="pc-rec-type">${meta.icon} ${meta.label}</span>
+        <span class="pc-rec-conf">${rec.confidence}% confidence</span>
+      </div>
+      <div class="pc-rec-text">${rec.text}</div>
+      <div class="pc-rec-config">${rec.config}</div>
+    </div>
+    <div class="pc-actions" data-stop-propagation="1">${actionBtns}</div>`;
+
+    return `<div class="pattern-section">${sectionHdr}${cardsHtml}<div class="pattern-section-footer">${actionsHtml}</div></div>`;
+  }).join('');
+
+  // One-offs section
+  renderOneOffs(oneOffs);
+
+  // Update tab counts for explorer too
+  document.getElementById('explorerTabCount').textContent = ps.length;
+
+  // Kick off Davis insight fetches only after real Grail data has loaded (not demo data)
+  if (PROBLEMS !== MOCK_PROBLEMS) schedulePatternInsights(patterns);
+}
+
+function buildPatternActions(pat) {
+  const rec = pat.recommendation;
+  const pid = pat.problems[0]?.id;
+  const actions = [];
+
+  if (rec.type === 'ADD_TIME_WINDOW') {
+    if (persona !== 'executive') {
+      actions.push(`<button class="pc-action suppress" data-action="patternAction" data-pid="${pat.id}" data-type="window">⏱ Add Time Window</button>`);
+    }
+  } else if (rec.type === 'FIX_ROOT_CAUSE') {
+    actions.push(`<button class="pc-action fix" data-action="patternAction" data-pid="${pat.id}" data-type="fix">🔁 Assign Root Fix</button>`);
+  } else {
+    actions.push(`<button class="pc-action debugger" data-action="patternAction" data-pid="${pat.id}" data-type="debug">⚡ Arm Live Debugger</button>`);
+  }
+
+  actions.push(`<button class="pc-action ticket" data-action="patternAction" data-pid="${pat.id}" data-type="ticket">🎫 Create Ticket</button>`);
+  actions.push(`<button class="pc-action drill" data-action="drillIntoPattern" data-pid="${pat.id}">📋 View All</button>`);
+
+  return actions.join('');
+}
+
+// ── Session-level aggregates for executive board ──
+function calcSessionMetrics(ps, patterns) {
+  const occMap = new Map();
+  patterns.forEach(pat => pat.problems.forEach(p => occMap.set(p.id, pat.occurrences)));
+
+  // Value breakdown by component
+  let rcaSavingsTotal = 0, noiseSavingsTotal = 0, groupingSavingsTotal = 0;
+  ps.forEach(p => {
+    const v = calcValueDelivered(p, occMap.get(p.id) || 1);
+    rcaSavingsTotal      += v.rcaSavings;
+    noiseSavingsTotal    += v.noiseSavings;
+    groupingSavingsTotal += v.groupingSavings;
+  });
+  rcaSavingsTotal      = Math.round(rcaSavingsTotal);
+  noiseSavingsTotal    = Math.round(noiseSavingsTotal);
+  groupingSavingsTotal = Math.round(groupingSavingsTotal);
+  const valueDeliveredTotal = rcaSavingsTotal + noiseSavingsTotal + groupingSavingsTotal;
+
+  const autoCorrelationRate      = ps.length ? ps.filter(p=>p.hasRCA).length/ps.length : 0;
+  const noiseReductionRate       = ps.length ? ps.filter(p=>p.noise).length/ps.length  : 0;
+  const estimatedEventsSuppressed= ps.filter(p=>p.noise).length*8;
+
+  const withRCA    = ps.filter(p=>p.hasRCA  && p.status==='RESOLVED' && p.dur>0);
+  const withoutRCA = ps.filter(p=>!p.hasRCA && p.status==='RESOLVED' && p.dur>0);
+  const avgMttrWithRCA    = withRCA.length    ? Math.round(arrMean(withRCA.map(p=>p.dur)))    : null;
+  const avgMttrWithoutRCA = withoutRCA.length ? Math.round(arrMean(withoutRCA.map(p=>p.dur))) : null;
+  const mttrLift = avgMttrWithRCA && avgMttrWithoutRCA && avgMttrWithRCA>0
+    ? +(avgMttrWithoutRCA/avgMttrWithRCA).toFixed(1) : null;
+
+  const qualScores   = patterns.map(pat=>pat.qualityScore||0);
+  const avgQuality   = qualScores.length ? Math.round(arrMean(qualScores)) : null;
+  const lowConfCount = patterns.filter(pat=>(pat.qualityScore||0)<50).length;
+
+  // System Direction: based on pattern trend balance + open rate
+  const incCount  = patterns.filter(p=>p.trend==='INCREASING').length;
+  const decCount  = patterns.filter(p=>p.trend==='DECREASING').length;
+  const openRate  = ps.length ? ps.filter(p=>p.status==='OPEN').length/ps.length : 0;
+  const systemDirection = (incCount > decCount && openRate > 0.25) ? 'Degrading'
+    : (decCount > incCount && openRate < 0.30)                     ? 'Improving'
+    : 'Stable';
+
+  // Change over time: approximate from pattern trend data
+  const costTrendUp    = incCount > decCount;
+  const recurrenceTrendUp = patterns.length > 0 && arrMean(patterns.map(p=>p.recurrenceScore)) > 60;
+  const newPatterns    = patterns.filter(p => (Date.now() - p.firstSeen) < 2*86400000).length;
+  const resolvedPats   = patterns.filter(p => p.problems.every(pr=>pr.status==='RESOLVED')).length;
+
+  // Average cost confidence across problems
+  const avgCostConf = ps.length ? arrMean(ps.map(p => costConfidence(p))) : 0.5;
+
+  return {
+    valueDeliveredTotal, rcaSavingsTotal, noiseSavingsTotal, groupingSavingsTotal,
+    autoCorrelationRate, noiseReductionRate, estimatedEventsSuppressed,
+    avgMttrWithRCA, avgMttrWithoutRCA, mttrLift,
+    avgQuality, lowConfCount,
+    systemDirection, costTrendUp, recurrenceTrendUp, newPatterns, resolvedPats,
+    avgCostConf,
+  };
+}
+
+// ── Executive Board: 3-tier KPI + drivers + tech stack + efficiency chips ──
+function renderExecutivePatternView(patterns, ps) {
+  const sm = calcSessionMetrics(ps, patterns);
+
+  // Tier 1 financials
+  const totalCost = ps.reduce((s, p) => s + calcCost(p).total, 0);
+  const netPos    = sm.valueDeliveredTotal - totalCost;
+  const netCls    = netPos >= 0 ? 'var(--green)' : 'var(--coral)';
+  const netSign   = netPos >= 0 ? '+' : '-';
+  const totalUsers = ps.reduce((s, p) => s + (p.users || 0), 0);
+
+  // Tier 2: key drivers
+  const topCostPat = [...patterns].sort((a, b) => {
+    const ca = a.problems.reduce((s, p) => s + calcCost(p).total, 0);
+    const cb = b.problems.reduce((s, p) => s + calcCost(p).total, 0);
+    return cb - ca;
+  })[0];
+  const mostRecurring = [...patterns].sort((a, b) => b.occurrences - a.occurrences)[0];
+  // Top services: aggregate problem count + cost by service name (from svcs[] array)
+  const isIp = s => /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(s);
+  const svcMap = new Map();
+  ps.forEach(p => {
+    const names = (p.svcs || []).filter(s => s && !isIp(s) && s.length < 60);
+    const fallback = (!names.length) ? [p.rca || p.category || p.sev || 'Unknown'] : names;
+    fallback.forEach(k => {
+      if (!svcMap.has(k)) svcMap.set(k, { count: 0, cost: 0, openCount: 0 });
+      const e = svcMap.get(k);
+      e.count++;
+      e.cost += calcCost(p).total;
+      if (p.status === 'OPEN') e.openCount++;
+    });
+  });
+  const topServices = [...svcMap.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 3);
+  const topCostPatCost = topCostPat
+    ? topCostPat.problems.reduce((s, p) => s + calcCost(p).total, 0) : 0;
+
+  // Tech stack board
+  const techMap = new Map();
+  ps.forEach(p => {
+    const infra = detectInfrastructure(p);
+    const key   = infra.cloud || (infra.isK8s ? 'k8s' : 'onprem');
+    const label = infra.cloud === 'aws' ? 'AWS' : infra.cloud === 'azure' ? 'Azure'
+                : infra.cloud === 'gcp' ? 'GCP' : infra.isK8s ? 'Kubernetes' : 'On-premise';
+    const icon  = infra.icon || '🐧';
+    if (!techMap.has(key)) techMap.set(key, { key, label, icon, problems: [], cost: 0, openCount: 0 });
+    const t = techMap.get(key);
+    t.problems.push(p);
+    t.cost += calcCost(p).total;
+    if (p.status === 'OPEN') t.openCount++;
+  });
+  const techs = [...techMap.values()].map(t => {
+    const resolved = t.problems.filter(p => p.status === 'RESOLVED' && (p.dur || 0) > 0);
+    const avgMttr  = resolved.length
+      ? Math.round(resolved.reduce((s, p) => s + (p.dur || 0), 0) / resolved.length) : null;
+    return { ...t, avgMttr };
+  }).sort((a, b) => b.cost - a.cost);
+  const withMttr = techs.filter(t => t.avgMttr != null);
+  const maxMttr  = withMttr.length ? Math.max(...withMttr.map(t => t.avgMttr)) : 1;
+  const minMttr  = withMttr.length ? Math.min(...withMttr.map(t => t.avgMttr)) : 0;
+  const maxCost  = techs[0]?.cost || 1;
+  // Tier 3: efficiency chips
+  const chips = [];
+  if (sm.mttrLift != null) {
+    chips.push(`<div class="exec-chip"><span class="exec-chip-val">${sm.mttrLift}×</span><span class="exec-chip-lbl">MTTR lift with RCA</span></div>`);
+  }
+  chips.push(`<div class="exec-chip" title="Auto-correlated: % of problems where Davis AI identified a root cause entity — higher means less manual investigation"><span class="exec-chip-val">${Math.round(sm.autoCorrelationRate * 100)}%</span><span class="exec-chip-lbl">Auto-correlated</span></div>`);
+  if (sm.avgQuality != null) {
+    chips.push(`<div class="exec-chip" title="Pattern Quality Score (0–100): how reliably Davis can identify this as a real repeating problem vs random noise. Combines: how similar incident titles are (35%), how consistently the same root cause is found (35%), how regular the timing is (15%), and how predictable the cost is each time (15%)."><span class="exec-chip-val">${sm.avgQuality}</span><span class="exec-chip-lbl">Avg pattern quality</span></div>`);
+  }
+  if (sm.lowConfCount > 0) {
+    chips.push(`<div class="exec-chip exec-chip-warn" title="Patterns with quality score below 50 — inconsistent RCA, irregular recurrence, or mixed entity cluster. Treat costs for these patterns as indicative, not precise."><span class="exec-chip-val">${sm.lowConfCount}</span><span class="exec-chip-lbl">Low-confidence patterns</span></div>`);
+  }
+  chips.push(`<div class="exec-chip" title="Events suppressed: estimated alert noise eliminated by Davis AI pattern grouping. Each grouped problem saves ~8 separate alert notifications."><span class="exec-chip-val">${sm.estimatedEventsSuppressed}</span><span class="exec-chip-lbl">Events suppressed</span></div>`);
+
+  // ── System Direction ──
+  const dirMeta = {
+    Improving:  { cls: 'dir-improving', icon: '↑', label: 'Improving',  sub: 'More patterns resolving than emerging' },
+    Stable:     { cls: 'dir-stable',    icon: '→', label: 'Stable',     sub: 'Pattern load steady across the period' },
+    Degrading:  { cls: 'dir-degrading', icon: '↓', label: 'Degrading',  sub: 'More patterns emerging than resolving'  },
+  };
+  const dir = dirMeta[sm.systemDirection];
+
+  // ── Value breakdown percentages ──
+  const vTotal = sm.valueDeliveredTotal || 1;
+  const rcaPct    = Math.round(sm.rcaSavingsTotal    / vTotal * 100);
+  const noisePct  = Math.round(sm.noiseSavingsTotal  / vTotal * 100);
+  const groupPct  = Math.round(sm.groupingSavingsTotal / vTotal * 100);
+  const confBadge = `<span class="exec-conf-badge ${confClass(sm.avgCostConf)}">${sm.avgCostConf >= 0.75 ? 'High' : sm.avgCostConf >= 0.50 ? 'Med' : 'Low'} confidence</span>`;
+
+  // ── Tech cost concentration ──
+  const topTech     = techs[0];
+  const topTechPct  = totalCost > 0 && topTech ? Math.round(topTech.cost / totalCost * 100) : 0;
+  const techInsight = topTech && topTechPct > 0
+    ? `<div class="exec-tech-insight">${topTech.label} accounts for ${topTechPct}% of operational cost concentration.</div>` : '';
+
+  const techRowsWithPct = techs.map(t => {
+    const isSlowest = withMttr.length > 1 && t.avgMttr === maxMttr;
+    const isFastest = withMttr.length > 1 && t.avgMttr === minMttr;
+    const mttrBarW  = maxMttr > 0 && t.avgMttr != null ? Math.round(t.avgMttr / maxMttr * 100) : 0;
+    const costBarW  = Math.round(t.cost / maxCost * 100);
+    const costPct   = totalCost > 0 ? Math.round(t.cost / totalCost * 100) : 0;
+    const mttrCls   = isSlowest ? 'slowest' : isFastest ? 'fastest' : '';
+    const openPart  = t.openCount > 0
+      ? `<span class="exec-tech-open">${t.openCount} open</span>` : '';
+    const badgePart = isSlowest ? `<span class="exec-tech-badge slowest">⏱ Slowest</span>`
+                    : isFastest ? `<span class="exec-tech-badge fastest">⚡ Fastest</span>` : '';
+    return `<div class="exec-tech-row">
+      <span class="exec-tech-icon">${t.icon}</span>
+      <span class="exec-tech-label">${t.label}</span>
+      <div class="exec-tech-count-cell">
+        <span class="exec-tech-count">${t.problems.length}</span>
+        <span class="exec-tech-unit">problems</span>
+        ${openPart}
+      </div>
+      <div class="exec-tech-cost-cell">
+        <span class="exec-tech-cost">${fmtC(t.cost)}</span>
+        <span class="exec-tech-pct">${costPct}%</span>
+        <div class="exec-tech-bar-wrap"><div class="exec-tech-cost-bar" style="width:${costBarW}%"></div></div>
+      </div>
+      <div class="exec-tech-mttr-cell">
+        ${t.avgMttr != null ? `
+          <div class="exec-tech-bar-wrap"><div class="exec-tech-mttr-bar ${mttrCls}" style="width:${mttrBarW}%"></div></div>
+          <span class="exec-tech-mttr-val ${mttrCls}">${fmtM(t.avgMttr)}</span>
+          ${badgePart}
+        ` : `<span class="exec-tech-na">No MTTR data</span>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Key drivers with pattern metadata ──
+  const TREND_ICON  = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
+  const TREND_CLS   = { INCREASING: 'trend-up', STABLE: 'trend-stable', DECREASING: 'trend-dn' };
+  const FIX_CLS     = { High: 'fix-high', Medium: 'fix-med', Low: 'fix-low' };
+  const CONC_CLS    = { High: 'conc-high', Medium: 'conc-med', Low: 'conc-low' };
+
+  const TREND_TOOLTIP = {
+    INCREASING: 'Trend: rate in second half of period is >30% higher than first half — pattern is worsening',
+    STABLE:     'Trend: occurrence rate is consistent across the period (within ±30%)',
+    DECREASING: 'Trend: rate in second half is >30% lower than first half — pattern is improving',
+  };
+  const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component. High = every occurrence implicates the same entity and costs roughly the same amount — easy to locate and fix. Low = incidents are spread across multiple components or vary widely in cost.';
+  const FIX_TOOLTIP  = 'Fixability: how likely a single engineering action can permanently resolve this pattern. High = Davis identified a consistent root cause, the pattern repeats on a stable schedule, and incidents cluster tightly on one component. Low = root cause varies or is unknown, making a permanent fix harder.';
+
+  const driverRow = (badge, badgeCls, pat, valHtml, metaHtml) => `
+    <div class="exec-t2-row">
+      <span class="exec-t2-badge ${badgeCls}">${badge}</span>
+      <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
+      <div class="exec-t2-chips">
+        <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
+        <span class="exec-pat-chip ${CONC_CLS[pat.concentrationScore]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentrationScore}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.fixabilityScore]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixabilityScore}</span>
+      </div>
+      <span class="exec-t2-val">${valHtml}</span>
+      <span class="exec-t2-meta">${metaHtml}</span>
+    </div>`;
+
+  document.getElementById('patternGrid').innerHTML = `
+    <div class="exec-board">
+
+      <!-- System Direction -->
+      <div class="exec-direction ${dir.cls}">
+        <span class="exec-dir-icon">${dir.icon}</span>
+        <div class="exec-dir-body">
+          <span class="exec-dir-label">System Direction: ${dir.label}</span>
+          <span class="exec-dir-sub">${dir.sub}</span>
+        </div>
+      </div>
+
+      <!-- Change Over Time strip -->
+      <div class="exec-change-strip">
+        <div class="exec-change-item">
+          <span class="exec-change-icon ${sm.costTrendUp ? 'trend-up' : 'trend-dn'}">${sm.costTrendUp ? '↑' : '↓'}</span>
+          <span class="exec-change-lbl">Cost trend</span>
+        </div>
+        <div class="exec-change-item">
+          <span class="exec-change-icon ${sm.recurrenceTrendUp ? 'trend-up' : 'trend-dn'}">${sm.recurrenceTrendUp ? '↑' : '↓'}</span>
+          <span class="exec-change-lbl">Recurrence trend</span>
+        </div>
+        <div class="exec-change-item">
+          <span class="exec-change-num">${sm.newPatterns}</span>
+          <span class="exec-change-lbl">New patterns detected</span>
+        </div>
+        <div class="exec-change-item">
+          <span class="exec-change-num ${sm.resolvedPats > 0 ? 'trend-dn-good' : ''}">${sm.resolvedPats}</span>
+          <span class="exec-change-lbl">Patterns resolved</span>
+        </div>
+      </div>
+
+      <!-- Tier 1: Financial KPIs -->
+      <div class="exec-kpi-row">
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-lbl-row">
+            <span class="exec-kpi-lbl">Value Delivered</span>
+            ${confBadge}
+          </div>
+          <div class="exec-kpi-big" style="color:var(--green)">${fmtC(sm.valueDeliveredTotal)}</div>
+          <div class="exec-value-breakdown">
+            <div class="exec-vb-row">
+              <span class="exec-vb-icon">⏱</span>
+              <span class="exec-vb-lbl">MTTR Reduction</span>
+              <span class="exec-vb-amt">${fmtC(sm.rcaSavingsTotal)}</span>
+              <span class="exec-vb-pct">${rcaPct}%</span>
+            </div>
+            <div class="exec-vb-row">
+              <span class="exec-vb-icon">🤖</span>
+              <span class="exec-vb-lbl">AI Correlation</span>
+              <span class="exec-vb-amt">${fmtC(sm.groupingSavingsTotal)}</span>
+              <span class="exec-vb-pct">${groupPct}%</span>
+            </div>
+            <div class="exec-vb-row">
+              <span class="exec-vb-icon">🔕</span>
+              <span class="exec-vb-lbl">Noise Reduction</span>
+              <span class="exec-vb-amt">${fmtC(sm.noiseSavingsTotal)}</span>
+              <span class="exec-vb-pct">${noisePct}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-lbl">Operational Cost</div>
+          <div class="exec-kpi-big">${fmtC(totalCost)}</div>
+          <div class="exec-kpi-sub">${ps.length} problems · ${totalUsers.toLocaleString()} users affected</div>
+        </div>
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-lbl">Efficiency Delta</div>
+          <div class="exec-kpi-big" style="color:${netCls}">${netSign}${fmtC(Math.abs(netPos))}</div>
+          <div class="exec-kpi-sub exec-kpi-modeled">Estimated operational efficiency gain (model-based)</div>
+        </div>
+      </div>
+
+      <!-- Key Drivers -->
+      <div class="exec-t2-board">
+        <div class="exec-t2-hdr">Key Drivers</div>
+        ${topCostPat ? driverRow('Top cost', 'exec-t2-cost', topCostPat, fmtC(topCostPatCost), `${topCostPat.occurrences}× recurrence`) : ''}
+        ${mostRecurring && mostRecurring !== topCostPat
+          ? driverRow('Most recurring', 'exec-t2-recur', mostRecurring,
+              `${mostRecurring.occurrences}×`,
+              fmtC(mostRecurring.problems.reduce((s,p)=>s+calcCost(p).total,0)))
+          : ''}
+        ${topServices.map(([svc, data], i) => `<div class="exec-t2-row">
+          <span class="exec-t2-badge exec-t2-entity">${i === 0 ? 'Top service' : `#${i+1} service`}</span>
+          <span class="exec-t2-name" title="${svc}">${svc}</span>
+          <div class="exec-t2-chips">
+            ${data.openCount > 0 ? `<span class="exec-pat-chip trend-up">${data.openCount} open</span>` : ''}
+          </div>
+          <span class="exec-t2-val">${data.count} problems</span>
+          <span class="exec-t2-meta">${fmtC(data.cost)}</span>
+        </div>`).join('')}
+      </div>
+
+      <!-- Technology Breakdown -->
+      <div class="exec-tech-board">
+        ${techInsight}
+        <div class="exec-tech-hdr-row">
+          <span></span><span>Technology</span><span>Problems</span>
+          <span>Est. Impact</span><span>Avg Resolution Time</span>
+        </div>
+        ${techRowsWithPct}
+      </div>
+
+      <!-- Tier 3: Efficiency Chips -->
+      <div class="exec-t3-row">
+        ${chips.join('')}
+      </div>
+
+    </div>`;
+}
+
+function buildSparkline(sparkData) {
+  if (!sparkData || sparkData.length < 2) return '';
+  const W = 300, H = 30;
+  const vals = sparkData.map(d => d.v);
+  const maxV = Math.max(...vals) || 1;
+  const minV = 0;
+  const pts = sparkData.map((d, i) => {
+    const x = (i / (sparkData.length - 1)) * W;
+    const y = H - ((d.v - minV) / (maxV - minV)) * H;
+    return `${x},${y}`;
+  }).join(' ');
+  const areaBottom = `${W},${H} 0,${H}`;
+  return `<div class="pc-spark">
+    <svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="sg-${sparkData[0]?.t}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(77,184,255,.25)"/>
+          <stop offset="100%" stop-color="rgba(77,184,255,.01)"/>
+        </linearGradient>
+      </defs>
+      <polygon points="${pts} ${areaBottom}" fill="url(#sg-${sparkData[0]?.t})"/>
+      <polyline points="${pts}" fill="none" stroke="var(--blue)" stroke-width="1.5" stroke-linejoin="round"/>
+      ${sparkData.map((d, i) => {
+        const x = (i / (sparkData.length - 1)) * W;
+        const y = H - ((d.v - minV) / (maxV - minV)) * H;
+        return `<circle cx="${x}" cy="${y}" r="2.5" fill="var(--blue)" stroke="var(--bg-1)" stroke-width="1.5"/>`;
+      }).join('')}
+    </svg>
+  </div>`;
+}
+
+function renderOneOffs(oneOffs) {
+  const el = document.getElementById('oneoffsSection');
+  if (!oneOffs.length) { el.innerHTML = ''; return; }
+  const isOpen = el.classList.contains('open');
+  el.innerHTML = `
+    <div class="oneoffs-header" data-action="toggleOneOffs">
+      <span style="font-size:14px">📄</span>
+      <span class="oneoffs-title">One-off Problems — no recurring pattern detected</span>
+      <span class="oneoffs-sub">${oneOffs.length} individual incidents · ${fmtC(oneOffs.reduce((s, p) => s + calcCost(p).total, 0))} combined cost</span>
+      <span class="oneoffs-toggle ${isOpen ? 'open' : ''}">▶</span>
+    </div>
+    <div class="oneoffs-list" style="display:${isOpen ? '' : 'none'}" id="oneoffsList">
+      ${oneOffs.map(p => {
+        const c = calcCost(p);
+        return `<div class="oneoff-row">
+          <span class="sdot ${p.status}"></span>
+          <span class="sev ${p.sev} oneoff-sev" style="font-size:9px">${SEV_LBL[p.sev]}</span>
+          <span class="oneoff-title">${persona === 'executive' ? p.biz : p.title}</span>
+          <span class="oneoff-cost">${fmtC(c.total)}</span>
+          <span class="oneoff-time">${fmtR(p.start)}</span>
+          <span class="lbtn" data-action="drillToExplorer" data-pid="${p.id}">↗</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function toggleOneOffs() {
+  const el = document.getElementById('oneoffsSection');
+  const list = document.getElementById('oneoffsList');
+  const toggle = el.querySelector('.oneoffs-toggle');
+  const isOpen = list.style.display !== 'none';
+  list.style.display = isOpen ? 'none' : '';
+  toggle.classList.toggle('open', !isOpen);
+  el.classList.toggle('open', !isOpen);
+}
+
+function togglePatternExpand(id) {
+  if (expandedPatterns.has(id)) expandedPatterns.delete(id);
+  else expandedPatterns.add(id);
+  renderPatternIntelligence();
+}
+
+function togglePatternActions(id) {
+  if (expandedActions.has(id)) expandedActions.delete(id);
+  else expandedActions.add(id);
+  renderPatternIntelligence();
+}
+
+function drillIntoPattern(patId) {
+  // Switch to explorer and highlight the pattern's problems
+  switchView('explorer');
+  // The explorer renders all — user can see individual problems there
+}
+
+function patternAction(action, patId) {
+  const msgs = {
+    suppress: '🔕 Alert suppression rule created in Dynatrace.\nProblems matching this pattern will no longer page on-call.',
+    window:   '⏱ Time-based suppression window configured.\nAlert will be muted during the detected cluster window.',
+    threshold:'📉 Alert tuning ticket created.\nSend to your Dynatrace admin to adjust threshold settings.',
+    fix:      '🔁 Root cause fix ticket created and assigned to the owning team.\nProblem linked to engineering backlog.',
+    debug:    '⚡ Live Debugger armed.\nNext occurrence of this pattern will automatically capture a production snapshot.',
+    tune:     '📊 Alert frequency tuning ticket created.\nReview evaluation window and consecutive breach settings.',
+    ticket:   '🎫 Engineering ticket created in Jira.\nPattern details, cost impact, and recommendation attached.',
+  };
+  alert(msgs[action] || 'Action triggered: ' + action);
+}
+
+
+// ══════════════════════════════════════════
+// TEAM PROGRESS — RECORD KEEPING
+// ServiceNow ticket refs + pattern history
+// ══════════════════════════════════════════
+
+// ── Mock weekly snapshots (production: stored as Dynatrace Business Events) ──
+// fetch bizevents | filter event.type == "opint.weekly_snapshot" | sort timestamp asc
+const WEEKLY_SNAPSHOTS = [
+  { week:'Apr 7',  totalProblems:22, avgMTTR:82, recurringCount:12, missingRCA:43, estimatedCost:89400, noisyAlerts:8  },
+  { week:'Apr 14', totalProblems:20, avgMTTR:76, recurringCount:11, missingRCA:39, estimatedCost:81200, noisyAlerts:7  },
+  { week:'Apr 21', totalProblems:19, avgMTTR:71, recurringCount:10, missingRCA:34, estimatedCost:74800, noisyAlerts:6  },
+  { week:'Apr 28', totalProblems:18, avgMTTR:65, recurringCount:8,  missingRCA:29, estimatedCost:63100, noisyAlerts:5  },
+  { week:'May 5',  totalProblems:17, avgMTTR:61, recurringCount:7,  missingRCA:24, estimatedCost:58700, noisyAlerts:4  },
+  { week:'May 12', totalProblems:16, avgMTTR:55, recurringCount:6,  missingRCA:21, estimatedCost:49200, noisyAlerts:3  },
+  { week:'May 19', totalProblems:15, avgMTTR:51, recurringCount:5,  missingRCA:18, estimatedCost:41800, noisyAlerts:2  },
+  { week:'May 27', totalProblems:20, avgMTTR:48, recurringCount:5,  missingRCA:18, estimatedCost:38600, noisyAlerts:2  },
+];
+
+// ── Mock pattern history with ServiceNow ticket references ──
+// Production: pulled from Dynatrace Problems API linkedTickets field
+// DQL: fetch dt.entity.problem | fields problemId, linkedTickets | filter isNotNull(linkedTickets)
+const PATTERN_HISTORY = [
+  {
+    id: 'ph-checkout',
+    title: 'Checkout Experience Degraded',
+    technicalTitle: 'Response time degradation on /api/checkout',
+    firstFlagged: Date.now() - 50 * 86400000,   // 50 days ago
+    severity: 'PERFORMANCE',
+    recommendation: 'FIX_ROOT_CAUSE',
+    // ServiceNow ticket — from Dynatrace linkedTickets[]
+    // In production: problem.linkedTickets[0].ticketId
+    ticket: {
+      id: 'INC0044102',
+      url: 'https://your-instance.service-now.com/incident/INC0044102',
+      status: 'in_progress',   // open | in_progress | resolved | closed
+      assignee: 'James T.',
+      team: 'Platform Engineering',
+      openedAt: Date.now() - 6 * 86400000,
+      resolvedAt: null,
+    },
+    // Weekly occurrence counts — production: derived from DQL pattern grouping per week
+    occurrencesByWeek: [2, 3, 3, 2, 3, 2, 2, 3],
+    costByWeek: [7200, 8400, 7800, 6900, 8100, 7200, 6800, 8100],
+    isRegressed: false,
+    rca: 'checkout-service',
+  },
+  {
+    id: 'ph-payment',
+    title: 'Payment Processing Failures',
+    technicalTitle: 'High failure rate on payment-gateway service',
+    firstFlagged: Date.now() - 50 * 86400000,
+    severity: 'ERROR',
+    recommendation: 'FIX_ROOT_CAUSE',
+    ticket: {
+      id: 'INC0043821',
+      url: 'https://your-instance.service-now.com/incident/INC0043821',
+      status: 'in_progress',
+      assignee: 'Arun M.',
+      team: 'Payments Engineering',
+      openedAt: Date.now() - 21 * 86400000,
+      resolvedAt: null,
+    },
+    occurrencesByWeek: [3, 3, 3, 2, 3, 3, 2, 3],
+    costByWeek: [38000, 41000, 36000, 29000, 38000, 35000, 32000, 38000],
+    isRegressed: false,
+    rca: 'payments-db',
+  },
+  {
+    id: 'ph-inventory',
+    title: 'Inventory CPU Spikes',
+    technicalTitle: 'CPU spike on inventory-service pod',
+    firstFlagged: Date.now() - 42 * 86400000,
+    severity: 'RESOURCE_CONTENTION',
+    recommendation: 'INVESTIGATE_FIRST',
+    ticket: {
+      id: 'INC0043955',
+      url: 'https://your-instance.service-now.com/incident/INC0043955',
+      status: 'resolved',
+      assignee: 'Sarah K.',
+      team: 'Platform Engineering',
+      openedAt: Date.now() - 35 * 86400000,
+      resolvedAt: Date.now() - 14 * 86400000,
+    },
+    occurrencesByWeek: [4, 4, 3, 2, 1, 0, 0, 0],
+    costByWeek: [564, 564, 423, 282, 141, 0, 0, 0],
+    isRegressed: false,
+    rca: 'inventory-service',
+  },
+  {
+    id: 'ph-session',
+    title: 'User Session Interruption',
+    technicalTitle: 'Container OOMKilled: session-service',
+    firstFlagged: Date.now() - 35 * 86400000,
+    severity: 'AVAILABILITY',
+    recommendation: 'INVESTIGATE_FIRST',
+    ticket: null,    // ← No ServiceNow ticket found — UNACTIONED
+    occurrencesByWeek: [0, 2, 1, 2, 2, 1, 2, 2],
+    costByWeek: [0, 4800, 2400, 4800, 4800, 2400, 4800, 4800],
+    isRegressed: false,
+    rca: null,
+  },
+  {
+    id: 'ph-catalog',
+    title: 'Product Search Performance Impact',
+    technicalTitle: 'Slow database queries: product-catalog-db',
+    firstFlagged: Date.now() - 56 * 86400000,
+    severity: 'PERFORMANCE',
+    recommendation: 'FIX_ROOT_CAUSE',
+    ticket: {
+      id: 'INC0043310',
+      url: 'https://your-instance.service-now.com/incident/INC0043310',
+      status: 'resolved',
+      assignee: 'Priya S.',
+      team: 'Catalog Engineering',
+      openedAt: Date.now() - 49 * 86400000,
+      resolvedAt: Date.now() - 21 * 86400000,
+    },
+    occurrencesByWeek: [2, 2, 1, 0, 0, 0, 0, 0],
+    costByWeek: [8200, 8200, 4100, 0, 0, 0, 0, 0],
+    // Regression: ticket closed but pattern returned
+    isRegressed: false,
+    rca: 'product-catalog-db',
+  },
+  {
+    id: 'ph-auth',
+    title: 'Login & Authentication Outage',
+    technicalTitle: 'Service unavailability: auth-service',
+    firstFlagged: Date.now() - 28 * 86400000,
+    severity: 'AVAILABILITY',
+    recommendation: 'FIX_ROOT_CAUSE',
+    ticket: {
+      id: 'INC0044089',
+      url: 'https://your-instance.service-now.com/incident/INC0044089',
+      status: 'closed',
+      assignee: 'James T.',
+      team: 'Auth Engineering',
+      openedAt: Date.now() - 28 * 86400000,
+      resolvedAt: Date.now() - 7 * 86400000,
+    },
+    occurrencesByWeek: [1, 0, 0, 1, 0, 0, 0, 1],
+    costByWeek: [28000, 0, 0, 28000, 0, 0, 0, 28000],
+    // Ticket closed but firing again — REGRESSION
+    isRegressed: true,
+    rca: 'auth-service',
+  },
+];
+
+// ── State ──
+let progressExpandedIds = new Set();
+let activeMetrics = new Set(['avgMTTR', 'recurringCount', 'estimatedCost', 'missingRCA']);
+
+// ── Derive pattern status from ticket state + occurrence data ──
+function getPatternStatus(ph) {
+  const recentOccs = ph.occurrencesByWeek.slice(-2).reduce((a, b) => a + b, 0);
+  if (ph.isRegressed) return 'regressed';
+  if (!ph.ticket) return 'unactioned';
+  if (ph.ticket.status === 'resolved' || ph.ticket.status === 'closed') {
+    return recentOccs === 0 ? 'resolved' : 'regressed';
+  }
+  // Ticket open/in-progress
+  const daysOpen = Math.floor((Date.now() - ph.ticket.openedAt) / 86400000);
+  if (daysOpen >= 14 && recentOccs > 0) return 'stalled';
+  return 'ticketed';
+}
+
+// ── Cost of inaction ──
+function calcCostOfInaction(ph) {
+  // If ticket exists: cost since ticket opened; else cost since first flagged
+  const sinceMs = ph.ticket ? ph.ticket.openedAt : ph.firstFlagged;
+  const weeksElapsed = Math.ceil((Date.now() - sinceMs) / (7 * 86400000));
+  const relevantWeeks = ph.costByWeek.slice(-Math.min(weeksElapsed, ph.costByWeek.length));
+  return relevantWeeks.reduce((a, b) => a + b, 0);
+}
+
+// ── Cost saved (for resolved patterns) ──
+function calcCostSaved(ph) {
+  if (!ph.ticket?.resolvedAt) return 0;
+  const avgWeeklyCost = ph.costByWeek.filter(c => c > 0).reduce((a, b) => a + b, 0) /
+    (ph.costByWeek.filter(c => c > 0).length || 1);
+  const weeksSinceResolved = Math.floor((Date.now() - ph.ticket.resolvedAt) / (7 * 86400000));
+  return Math.round(avgWeeklyCost * weeksSinceResolved);
+}
+
+// ── Main render ──
+function renderProgress() {
+  const snap = WEEKLY_SNAPSHOTS;
+  const first = snap[0], last = snap[snap.length - 1];
+
+  // Compute deltas (first → last week)
+  const delta = (key, invert = false) => {
+    const d = ((last[key] - first[key]) / first[key]) * 100;
+    const improving = invert ? d < 0 : d < 0;
+    return { pct: Math.abs(Math.round(d)), improving, direction: d < 0 ? '↓' : d > 0 ? '↑' : '→' };
+  };
+
+  const unactionedCount = PATTERN_HISTORY.filter(ph => !ph.ticket).length;
+  const stalledCount    = PATTERN_HISTORY.filter(ph => getPatternStatus(ph) === 'stalled').length;
+  const regressedCount  = PATTERN_HISTORY.filter(ph => ph.isRegressed || getPatternStatus(ph) === 'regressed').length;
+  document.getElementById('progressTabCount').textContent =
+    (unactionedCount + stalledCount + regressedCount) > 0
+      ? `${unactionedCount + stalledCount + regressedCount} ⚠`
+      : PATTERN_HISTORY.length;
+
+  document.getElementById('progressContent').innerHTML = `
+    ${renderHealthTrend(snap, first, last, delta)}
+    ${renderMetricPills(last, delta)}
+    ${renderPatternPersistence()}
+  `;
+
+  // Draw SVG chart after DOM ready
+  requestAnimationFrame(() => drawTrendChart(snap));
+}
+
+// ── Health trend chart ──
+function renderHealthTrend(snap, first, last, delta) {
+  return `
+    <div class="prog-section">
+      <div class="prog-section-title">Operational Health Trend — 8 weeks</div>
+      <div class="trend-card">
+        <div class="trend-card-header">
+          <div>
+            <div class="trend-card-title">Week-on-week operational metrics</div>
+            <div class="trend-card-sub">Click legend items to toggle metrics</div>
+          </div>
+          <div class="trend-legend">
+            ${[
+              { key:'avgMTTR',        label:'Avg MTTR',      color:'#4db8ff' },
+              { key:'recurringCount', label:'Recurring',     color:'#ff6b6b' },
+              { key:'estimatedCost',  label:'Est. Cost',     color:'#f5c518' },
+              { key:'missingRCA',     label:'Missing RCA %', color:'#9b8fe4' },
+              { key:'noisyAlerts',    label:'Noisy Alerts',  color:'#3dd68c' },
+            ].map(m => `
+              <div class="tl-item ${activeMetrics.has(m.key) ? '' : 'inactive'}"
+                   data-action="toggleMetric" data-key="${m.key}" style="${activeMetrics.has(m.key) ? '' : 'opacity:.35'}">
+                <div class="tl-dot" style="background:${m.color}"></div>
+                ${m.label}
+              </div>`).join('')}
+          </div>
+        </div>
+        <div class="trend-chart-wrap">
+          <svg class="trend-svg" id="healthTrendSvg" viewBox="0 0 800 160" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+    </div>`;
+}
+
+function drawTrendChart(snap) {
+  const svg = document.getElementById('healthTrendSvg');
+  if (!svg) return;
+  const W = 800, H = 140, PAD = { t: 10, b: 28, l: 0, r: 0 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  const n = snap.length;
+
+  const METRICS = [
+    { key:'avgMTTR',        color:'#4db8ff', label:'MTTR'    },
+    { key:'recurringCount', color:'#ff6b6b', label:'Recurring'},
+    { key:'estimatedCost',  color:'#f5c518', label:'Cost'    },
+    { key:'missingRCA',     color:'#9b8fe4', label:'RCA %'   },
+    { key:'noisyAlerts',    color:'#3dd68c', label:'Noisy'   },
+  ].filter(m => activeMetrics.has(m.key));
+
+  let html = `<defs>`;
+  METRICS.forEach(m => {
+    const vals = snap.map(s => s[m.key]);
+    const mn = 0, mx = Math.max(...vals) * 1.15 || 1;
+    const rgb = m.color.replace('#','');
+    const r = parseInt(rgb.slice(0,2),16), g = parseInt(rgb.slice(2,4),16), b = parseInt(rgb.slice(4,6),16);
+    html += `<linearGradient id="grad-${m.key}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(${r},${g},${b},.2)"/>
+      <stop offset="100%" stop-color="rgba(${r},${g},${b},.01)"/>
+    </linearGradient>`;
+  });
+  html += `</defs>`;
+
+  // Grid lines
+  for (let i = 0; i <= 3; i++) {
+    const y = PAD.t + (i / 3) * cH;
+    html += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="rgba(255,255,255,.04)" stroke-width="1"/>`;
+  }
+
+  // X labels
+  snap.forEach((s, i) => {
+    const x = PAD.l + (i / (n - 1)) * cW;
+    if (i % 2 === 0 || i === n - 1) {
+      html += `<text x="${x}" y="${H - 4}" text-anchor="middle" fill="rgba(90,115,145,.9)" font-size="9" font-family="'Space Grotesk',sans-serif">${s.week}</text>`;
+    }
+  });
+
+  // Lines per active metric (normalised 0–1 each)
+  METRICS.forEach(m => {
+    const vals = snap.map(s => s[m.key]);
+    const mn = 0, mx = Math.max(...vals) * 1.15 || 1;
+    const x = i => PAD.l + (i / (n - 1)) * cW;
+    const y = v => PAD.t + cH - ((v - mn) / (mx - mn)) * cH;
+    const pts = vals.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+    const areaPts = `${pts} ${x(n-1)},${PAD.t + cH} ${x(0)},${PAD.t + cH}`;
+    html += `<polygon points="${areaPts}" fill="url(#grad-${m.key})"/>`;
+    html += `<polyline points="${pts}" fill="none" stroke="${m.color}" stroke-width="2" stroke-linejoin="round" opacity=".9"/>`;
+    // Last point dot
+    const lx = x(n-1), ly = y(vals[n-1]);
+    html += `<circle cx="${lx}" cy="${ly}" r="4" fill="${m.color}" stroke="var(--bg-1)" stroke-width="2"/>`;
+    html += `<text x="${lx + 6}" y="${ly + 4}" fill="${m.color}" font-size="9" font-family="'Space Grotesk',sans-serif">${m.label}</text>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+function toggleMetric(key) {
+  if (activeMetrics.has(key)) activeMetrics.delete(key);
+  else activeMetrics.add(key);
+  renderProgress();
+}
+
+// ── Metric pills ──
+function renderMetricPills(last, delta) {
+  const PILLS = [
+    { key:'avgMTTR',        label:'Avg MTTR',      val: fmtM(last.avgMTTR),               color:'var(--blue)',   accent:'rgba(77,184,255,.15)',  delta: delta('avgMTTR', true),  invertGood: true  },
+    { key:'recurringCount', label:'Recurring Issues',val: last.recurringCount,             color:'var(--coral)',  accent:'rgba(255,107,107,.12)', delta: delta('recurringCount', true), invertGood: true },
+    { key:'estimatedCost',  label:'Weekly Cost',    val: fmtC(last.estimatedCost),         color:'var(--amber)',  accent:'rgba(245,197,24,.1)',   delta: delta('estimatedCost', true),  invertGood: true },
+    { key:'missingRCA',     label:'Missing RCA',    val: last.missingRCA + '%',            color:'var(--violet)', accent:'rgba(155,143,228,.12)',delta: delta('missingRCA', true),      invertGood: true },
+    { key:'noisyAlerts',    label:'Noisy Alerts',   val: last.noisyAlerts,                 color:'var(--green)',  accent:'rgba(61,214,140,.1)',   delta: delta('noisyAlerts', true),    invertGood: true },
+  ];
+  const dCls = d => d.improving ? 'good' : d.pct === 0 ? 'flat' : 'bad';
+  const dTxt = d => `${d.direction} ${d.pct}% vs 8w ago`;
+  return `
+    <div class="metric-pills">
+      ${PILLS.map(p => `
+        <div class="metric-pill" style="border-color:${p.color}22">
+          <div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:${p.color}"></div>
+          <div class="mp-val" style="color:${p.color}">${p.val}</div>
+          <div class="mp-lbl">${p.label}</div>
+          <div class="mp-delta ${dCls(p.delta)}">${dTxt(p.delta)}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── Pattern Persistence ──
+function renderPatternPersistence() {
+  const STATUS_META = {
+    ticketed:   { label: 'Ticketed',   dotCls: 'ticketed',   cardCls: ''           },
+    stalled:    { label: 'Stalled ⚠', dotCls: 'stalled',    cardCls: 'stalled'    },
+    resolved:   { label: 'Resolved',   dotCls: 'resolved',   cardCls: ''           },
+    regressed:  { label: 'Regressed 🔴',dotCls:'regressed',  cardCls: 'regressed'  },
+    unactioned: { label: 'No Ticket ⚠',dotCls:'unactioned',  cardCls: 'unactioned' },
+  };
+
+  const TICKET_STATUS_CLS = { open:'open', in_progress:'progress', resolved:'resolved', closed:'resolved' };
+  const TICKET_STATUS_LBL = { open:'Open', in_progress:'In Progress', resolved:'Resolved', closed:'Closed' };
+
+  const REC_META_LOCAL = {
+    ADD_TIME_WINDOW:   '⏱ Add Time Window',
+    FIX_ROOT_CAUSE:    '🔁 Fix Root Cause',
+    INVESTIGATE_FIRST: '🔍 Investigate First',
+  };
+
+  const cards = PATTERN_HISTORY.map(ph => {
+    const status = getPatternStatus(ph);
+    const sm = STATUS_META[status] || STATUS_META.ticketed;
+    const coi = calcCostOfInaction(ph);
+    const saved = calcCostSaved(ph);
+    const isExpanded = progressExpandedIds.has(ph.id);
+    const daysOpen = ph.ticket ? Math.floor((Date.now() - ph.ticket.openedAt) / 86400000) : null;
+    const daysSinceFirst = Math.floor((Date.now() - ph.firstFlagged) / 86400000);
+    const ageCls = daysOpen === null ? '' : daysOpen < 7 ? 'fresh' : daysOpen < 14 ? 'aging' : 'old';
+    const totalOccs = ph.occurrencesByWeek.reduce((a, b) => a + b, 0);
+
+    // Ticket badge
+    const ticketHtml = ph.ticket
+      ? `<span class="ticket-badge ${TICKET_STATUS_CLS[ph.ticket.status] || 'open'}"
+           data-action="openTicket" data-url="${ph.ticket.url}" title="Open in ServiceNow">
+           🎫 ${ph.ticket.id} · ${TICKET_STATUS_LBL[ph.ticket.status] || ph.ticket.status}
+         </span>`
+      : `<span class="ticket-badge none">🎫 No ticket found</span>`;
+
+    const ageHtml = daysOpen !== null
+      ? `<span class="age-badge ${ageCls}">⏱ ${daysOpen}d open</span>`
+      : '';
+
+    // Expanded detail
+    const detailHtml = isExpanded ? `
+      <div class="pc2-detail">
+        <div class="pc2-detail-grid">
+          <div class="pc2-detail-block">
+            <div class="pc2-detail-lbl">Occurrence Trend — 8 weeks</div>
+            ${buildOccurrenceTimeline(ph.occurrencesByWeek, WEEKLY_SNAPSHOTS.map(s => s.week))}
+          </div>
+          <div class="pc2-detail-block">
+            <div class="pc2-detail-lbl">Cost Breakdown</div>
+            <div class="coi-breakdown">
+              <div class="coi-row"><span>Total occurrences</span><strong>${totalOccs}×</strong></div>
+              <div class="coi-row"><span>First flagged</span><strong>${daysSinceFirst}d ago</strong></div>
+              ${ph.ticket ? `
+              <div class="coi-row"><span>Assigned to</span><strong>${ph.ticket.assignee || '—'}</strong></div>
+              <div class="coi-row"><span>Team</span><strong>${ph.ticket.team || '—'}</strong></div>
+              ` : '<div class="coi-row"><span style="color:var(--amber)">⚠ No owner assigned</span></div>'}
+              ${status === 'resolved' || status === 'regressed' ? `
+              <div class="coi-row" style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)"><span>Est. cost saved</span><strong style="color:var(--green)">${fmtC(saved)}/wk</strong></div>
+              ` : `
+              <div class="coi-row" style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)"><span>${ph.ticket ? 'Cost since ticket opened' : 'Cost since first flagged'}</span><strong style="color:var(--coral)">${fmtC(coi)}</strong></div>
+              `}
+            </div>
+          </div>
+        </div>
+        ${ph.isRegressed || status === 'regressed' ? `
+        <div class="regression-alert">
+          🔴 <strong>Regression detected</strong> — ServiceNow ticket ${ph.ticket?.id || ''} was closed but this pattern has returned. Root fix did not hold.
+        </div>` : ''}
+        <div style="margin-top:10px;font-size:11px;color:var(--text-3)">
+          <strong style="color:var(--text-2)">OpInt recommendation:</strong> ${REC_META_LOCAL[ph.recommendation] || ph.recommendation}
+          ${ph.rca ? ` · Root cause: <span style="font-family:var(--mono);color:var(--text-2)">${ph.rca}</span>` : ' · Root cause not identified'}
+        </div>
+      </div>` : '';
+
+    return `
+      <div class="persist-card ${sm.cardCls}">
+        <div class="pc2-header" data-action="toggleProgressExpand" data-pid="${ph.id}">
+          <div class="pc2-status-dot ${sm.dotCls}"></div>
+          <div class="pc2-info">
+            <div class="pc2-title">${ph.title}</div>
+            <div class="pc2-meta">
+              ${ticketHtml}
+              ${ageHtml}
+              <span style="font-size:10px;color:var(--text-3)">${daysSinceFirst}d since first flagged</span>
+              ${status === 'unactioned' ? `<span style="font-size:10px;color:var(--amber);font-weight:600">⚠ No action recorded</span>` : ''}
+              ${status === 'stalled' ? `<span style="font-size:10px;color:var(--orange);font-weight:600">⚠ Ticket open ${daysOpen}d — still recurring</span>` : ''}
+            </div>
+          </div>
+          <div class="pc2-right">
+            ${status === 'resolved' ? `
+            <div class="pc2-cost-inaction" style="text-align:right">
+              <div class="pc2-cost-val" style="color:var(--green)">${fmtC(saved)}</div>
+              <div class="pc2-cost-lbl">saved / week</div>
+            </div>` : `
+            <div class="pc2-cost-inaction">
+              <div class="pc2-cost-val">${fmtC(coi)}</div>
+              <div class="pc2-cost-lbl">${ph.ticket ? 'since ticket opened' : 'since first flagged'}</div>
+            </div>`}
+            <span class="pc2-expand-btn ${isExpanded ? 'open' : ''}">▶</span>
+          </div>
+        </div>
+        ${detailHtml}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="prog-section">
+      <div class="prog-section-title">Pattern History & ServiceNow References</div>
+      <div class="persist-list">${cards}</div>
+    </div>`;
+}
+
+function buildOccurrenceTimeline(occsByWeek, weekLabels) {
+  const maxOcc = Math.max(...occsByWeek, 1);
+  const bars = occsByWeek.map((count, i) => {
+    const hPct = Math.max(8, Math.round((count / maxOcc) * 100));
+    const col = count === 0 ? 'var(--bg-3)'
+      : count <= 1 ? 'var(--green)'
+      : count <= 2 ? 'var(--amber)'
+      : 'var(--coral)';
+    return `<div class="occ-bar" style="height:${hPct}%;background:${col}"
+      title="${weekLabels[i]||''}: ${count} occurrence${count!==1?'s':''}"></div>`;
+  }).join('');
+  return `<div class="occ-timeline">${bars}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px">
+      <span style="font-size:9px;color:var(--text-3)">${weekLabels[0]||''}</span>
+      <span style="font-size:9px;color:var(--text-3)">${weekLabels[weekLabels.length-1]||''}</span>
+    </div>`;
+}
+
+function toggleProgressExpand(id) {
+  if (progressExpandedIds.has(id)) progressExpandedIds.delete(id);
+  else progressExpandedIds.add(id);
+  renderProgress();
+  requestAnimationFrame(() => drawTrendChart(WEEKLY_SNAPSHOTS));
+}
+
+function openTicket(url) {
+  alert('Opening ServiceNow ticket:\n' + url + '\n\nIn production: navigates directly to your ServiceNow instance.');
+}
+
+
+// ── UTILS ──
+function switchPersona(p){
+  persona=p;selectedIds.clear();expandedIds.clear();aiState='idle';lastAIResult=null;
+  document.querySelectorAll('.pbtn').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
+  document.documentElement.style.setProperty('--persona',PMETA[p].color);
+  render();renderAIPanel(null);renderRemPanel();
+}
+function toggleCfg(){document.getElementById('cfgPanel').classList.toggle('hidden')}
+function applyCfg(){
+  CC.rev=parseFloat(document.getElementById('cfgRev').value)||0.08;
+  CC.eng=parseFloat(document.getElementById('cfgEng').value)||150;
+  CC.resp=parseInt(document.getElementById('cfgResp').value)||3;
+  document.getElementById('cfgPanel').classList.add('hidden');
+  render();
+}
+function doRefresh(){const b=document.querySelector('.btn-ghost');b.textContent='↻ Refreshing…';b.disabled=true;loadProblems().finally(()=>{render();b.textContent='↻ Refresh';b.disabled=false;});}
+function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
+document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
+
+// ============================================================
+// EVENT DELEGATION — replaces all inline onclick handlers
+// ============================================================
+document.addEventListener('click', function(e) {
+  // Stop propagation for containers marked with data-stop-propagation
+  if (e.target.closest('[data-stop-propagation]')) {
+    const container = e.target.closest('[data-stop-propagation]');
+    if (container !== e.target && !e.target.dataset.action) { e.stopPropagation(); return; }
+  }
+
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  const pid = el.dataset.pid;
+  const key = el.dataset.key;
+
+  switch (action) {
+    // Header / persona
+    case 'doRefresh': doRefresh(); break;
+    case 'toggleCfg': toggleCfg(); break;
+    case 'applyCfg': applyCfg(); break;
+    case 'analyzeMulti': analyzeMulti(); break;
+    case 'closeAwsModal': closeAwsModal(); break;
+
+    // Problem table
+    case 'toggleExpand': e.stopPropagation(); toggleExpand(pid, e); break;
+    case 'openP': e.stopPropagation(); openP(pid); break;
+    case 'onRowClick': onRowClick(pid); break;
+    case 'deepAnalyze': e.stopPropagation(); deepAnalyze(pid); break;
+    case 'extTriage': e.stopPropagation(); extTriage(pid); break;
+    case 'showRemPanel': e.stopPropagation(); showRemPanel(pid); break;
+
+    // Remediation action (opt.id encoded in data-opt)
+    case 'remAction': {
+      const optId = el.dataset.opt;
+      if (optId === 'aws-agent') showRemPanel(pid);
+      else if (optId === 'live-debugger') activateLiveDebugger(pid);
+      else if (optId === 'dt-workflows') openDTWorkflows(pid);
+      else if (optId === 'manual') openP(pid);
+      else alert('Triggering: ' + optId);
+      break;
+    }
+
+    // AWS modal confirm
+    case 'triggerAgent': triggerAgent(pid, el.dataset.agent); break;
+
+    // Persona buttons (data-p already on elements)
+    case undefined: break;
+
+    // Pattern intelligence
+    case 'togglePatternExpand': togglePatternExpand(pid); break;
+    case 'togglePatternActions': e.stopPropagation(); togglePatternActions(pid); break;
+    case 'patternAction': patternAction(el.dataset.type, pid); break;
+    case 'drillIntoPattern': drillIntoPattern(pid); break;
+    case 'drillToExplorer': e.stopPropagation(); switchView('explorer'); onRowClick(pid); break;
+    case 'toggleOneOffs': toggleOneOffs(); break;
+
+    // Trend chart legend
+    case 'toggleMetric': toggleMetric(key); break;
+
+    // Team progress
+    case 'toggleProgressExpand': toggleProgressExpand(pid); break;
+    case 'openTicket': e.stopPropagation(); openTicket(el.dataset.url); break;
+  }
+});
+
+// Persona buttons use data-p (existing attribute)
+document.getElementById('psw').addEventListener('click', function(e) {
+  const btn = e.target.closest('.pbtn');
+  if (btn) switchPersona(btn.dataset.p);
+});
+
+// View tabs use data-view (existing attribute)
+document.querySelector('.view-tabs').addEventListener('click', function(e) {
+  const tab = e.target.closest('.view-tab');
+  if (tab) switchView(tab.dataset.view);
+});
+
+// AI source buttons use data-src (existing attribute)
+document.querySelector('.ai-src-bar').addEventListener('click', function(e) {
+  const btn = e.target.closest('.ai-src-btn');
+  if (btn) switchAISrc(btn.dataset.src);
+});
+
+// Select change listeners
+document.getElementById('appFilter').addEventListener('change', render);
+document.getElementById('timeRange').addEventListener('change', () => { PROBLEMS = MOCK_PROBLEMS; render(); loadProblems(); });
+document.getElementById('extProvider').addEventListener('change', onProviderChange);
+
+// Modal overlay: close only when clicking the overlay itself
+document.getElementById('awsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAwsModal();
+});
+
+// Checkbox change delegation (toggleSel uses checked state)
+document.addEventListener('change', function(e) {
+  const cb = e.target.closest('.rc[data-action="toggleSel"]');
+  if (cb) { e.stopPropagation(); toggleSel(cb.dataset.pid, cb.checked, e); }
+});
+
+// BOOT — render immediately with demo data, then replace with live Grail data
+render();
+switchView('patterns');
+loadProblems();
+export {};
