@@ -1,7 +1,6 @@
 // ============================================================
 // DYNATRACE OPERATIONAL INTELLIGENCE - MOCK DATA SERVICE
 // Simulates DQL results for local development and demos
-// Swap import in hooks/index.ts to switch to live data
 // ============================================================
 
 import {

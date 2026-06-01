@@ -13,6 +13,8 @@ export type ProblemStatus = 'OPEN' | 'RESOLVED' | 'CLOSED';
 export type PersonaType   = 'executive' | 'developer' | 'sre';
 export type CloudProvider = 'aws' | 'azure' | 'gcp' | null;
 export type ProblemType   = 'RESOURCE' | 'CONFIG' | 'CODE_DEFECT' | 'DEPENDENCY' | 'UNKNOWN';
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+export type SystemDirection = 'IMPROVING' | 'STABLE' | 'DEGRADING';
 
 // ── Core problem entity ────────────────────────────────────
 export interface DynatraceProblem {
@@ -99,6 +101,9 @@ export interface ProblemPattern {
   severity:         Severity;
   problems:         DynatraceProblem[];
   trend:            'INCREASING' | 'STABLE' | 'DECREASING';
+  concentration:    ConfidenceLevel;
+  fixability:       ConfidenceLevel;
+  confidence:       ConfidenceLevel;
   recurrenceScore:  number;
   hasTimeCluster:   boolean;
   dominantHour?:    number;

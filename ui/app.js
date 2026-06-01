@@ -72,16 +72,26 @@ const clamp     = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 
 // ── Value Delivered ──
 // Estimates engineer effort saved per problem via AI correlation, noise suppression, incident grouping.
-function calcValueDelivered(p, patternOccurrences=1) {
+function calculateValueBreakdown(p, patternOccurrences=1) {
   const engPerMin = CC.eng/60*CC.resp;
-  const rcaSavings      = p.hasRCA ? 45*engPerMin : 0;
-  const noiseSavings    = p.noise  ? 8*8*engPerMin : 0;
-  const groupingSavings = patternOccurrences>1 ? ((patternOccurrences-1)*5*engPerMin)/patternOccurrences : 0;
+  const mttrSavings           = p.hasRCA ? 45*engPerMin : 0;
+  const noiseReductionSavings = p.noise  ? 8*8*engPerMin : 0;
+  const aiCorrelationSavings  = patternOccurrences>1 ? ((patternOccurrences-1)*5*engPerMin)/patternOccurrences : 0;
   return {
-    rcaSavings:      Math.round(rcaSavings),
-    noiseSavings:    Math.round(noiseSavings),
-    groupingSavings: Math.round(groupingSavings),
-    total:           Math.round(rcaSavings+noiseSavings+groupingSavings),
+    mttrSavings:           Math.round(mttrSavings),
+    aiCorrelationSavings:  Math.round(aiCorrelationSavings),
+    noiseReductionSavings: Math.round(noiseReductionSavings),
+    total:                 Math.round(mttrSavings+aiCorrelationSavings+noiseReductionSavings),
+  };
+}
+
+function calcValueDelivered(p, patternOccurrences=1) {
+  const v = calculateValueBreakdown(p, patternOccurrences);
+  return {
+    rcaSavings:      v.mttrSavings,
+    groupingSavings: v.aiCorrelationSavings,
+    noiseSavings:    v.noiseReductionSavings,
+    total:           v.total,
   };
 }
 
@@ -99,6 +109,54 @@ function rcaConfidence(p, pattern) {
   if(!pattern)  return 0.55;
   const c = pattern.rcaConsistency??0;
   return c>=0.8 ? 0.90 : c>=0.5 ? 0.65 : 0.35;
+}
+function confidenceLevel(score) {
+  return score >= 0.75 ? 'HIGH' : score >= 0.5 ? 'MEDIUM' : 'LOW';
+}
+function confidenceClass(level) {
+  return level === 'HIGH' ? 'conf-high' : level === 'MEDIUM' ? 'conf-med' : 'conf-low';
+}
+function renderConfidenceBadge(level, label='confidence') {
+  return `<span class="exec-conf-badge ${confidenceClass(level)}">${level} ${label}</span>`;
+}
+function calculatePatternConfidence(pattern) {
+  return confidenceLevel(patternConfidence(pattern));
+}
+function calculateCostConfidence(pattern) {
+  const problems = pattern.problems || [];
+  if (!problems.length) return 'LOW';
+  return confidenceLevel(arrMean(problems.map(p => costConfidence(p))));
+}
+function calculateRCAConfidence(pattern) {
+  const problems = pattern.problems || [];
+  if (!problems.length) return 'LOW';
+  return confidenceLevel(arrMean(problems.map(p => rcaConfidence(p, pattern))));
+}
+function scoreLabel(score) {
+  return score >= 0.65 ? 'HIGH' : score >= 0.40 ? 'MEDIUM' : 'LOW';
+}
+function calculateConcentration(pattern) {
+  if (pattern.concentration) return pattern.concentration;
+  if (pattern.concentrationRaw != null) return scoreLabel(pattern.concentrationRaw);
+  const purity = pattern.clusterPurity ?? 0;
+  const costs = (pattern.problems || []).map(p => calcCost(p).total);
+  const costConsistency = arrMean(costs) > 0 ? clamp(1 - arrStddev(costs) / arrMean(costs), 0, 1) : 0;
+  return scoreLabel(clamp(purity * 0.5 + costConsistency * 0.5, 0, 1));
+}
+function calculateFixability(pattern) {
+  if (pattern.fixability) return pattern.fixability;
+  if (pattern.fixabilityRaw != null) return scoreLabel(pattern.fixabilityRaw);
+  const rca = pattern.rcaConsistency ?? 0;
+  const stability = pattern.recurrenceStability ?? 0;
+  const purity = pattern.clusterPurity ?? 0;
+  return scoreLabel(clamp(rca * 0.5 + stability * 0.3 + purity * 0.2, 0, 1));
+}
+function calculateSystemDirection(costTrend, recurrenceTrend, mttrTrend) {
+  const score =
+    (costTrend === 'UP' ? 1 : costTrend === 'DOWN' ? -1 : 0) +
+    (recurrenceTrend === 'UP' ? 1 : recurrenceTrend === 'DOWN' ? -1 : 0) +
+    (mttrTrend === 'UP' ? 1 : mttrTrend === 'DOWN' ? -1 : 0);
+  return score >= 1 ? 'DEGRADING' : score <= -1 ? 'IMPROVING' : 'STABLE';
 }
 function subBucketConfidence(sb) {
   const rcaFrac  = sb.problems.filter(p=>p.hasRCA).length/sb.problems.length;
@@ -251,6 +309,7 @@ let lastAIResult=null;
 let remProblem=null;
 let awsModalProblem=null;
 let davisConversationId=null; // unused, kept for backwards compat
+let execValueBreakdownOpen=false;
 
 // ============================================================
 // RENDER
@@ -1153,8 +1212,12 @@ function renderAIPanel(ps){
   }
   // result
   const r=lastAIResult;
+  const aiPatterns = ps ? detectPatterns(ps).patterns : [];
+  const aiConfidence = aiPatterns.length
+    ? confidenceLevel(arrMean(aiPatterns.map(p => patternConfidence(p))))
+    : 'MEDIUM';
   el.innerHTML=`<div class="ai-result fade-in">
-    <div class="ai-sec"><div class="ai-sec-lbl">📝 Summary — ${PMETA[persona].label}</div><div class="ai-summ">${r.summary}</div></div>
+    <div class="ai-sec"><div class="ai-sec-lbl">📝 Summary — ${PMETA[persona].label} ${renderConfidenceBadge(aiConfidence, 'summary')}</div><div class="ai-summ">${r.summary}</div></div>
     <div class="ai-sec"><div class="ai-sec-lbl">🔍 Patterns</div>${r.patterns.map(p=>`<div class="ai-pat-item"><span class="ai-pat-bullet">◆</span><span>${p}</span></div>`).join('')}</div>
     ${r.costNarrative&&persona!=='developer'?`<div class="ai-sec"><div class="ai-sec-lbl">💰 Cost Narrative</div><div class="ai-cost-box">${r.costNarrative}</div></div>`:''}
     <div class="ai-sec"><div class="ai-sec-lbl">✅ Recommendations</div>${r.recommendations.map(rec=>`
@@ -1377,6 +1440,36 @@ async function callExternalAI(ps,persona,costs,totalCost){
   return callAIWithPrompt(ps,persona,costs,totalCost,'external');
 }
 
+function calculateAIMetrics(ps, costs, totalCost) {
+  const { patterns } = detectPatterns(ps);
+  const recurringCost = ps.reduce((s, p, i) => s + ((p.rec || 0) >= 60 ? (costs[i]?.total || 0) : 0), 0);
+  const durations = ps.filter(p => p.status === 'RESOLVED' && p.dur > 0).map(p => p.dur);
+  const avgMttr = durations.length ? Math.round(arrMean(durations)) : 0;
+  const previousMttr = patterns.length
+    ? Math.round(arrMean(patterns.map(p => p.trend === 'INCREASING' ? avgMttr * 0.82 : p.trend === 'DECREASING' ? avgMttr * 1.18 : avgMttr)))
+    : avgMttr;
+  const mttrDeltaPct = previousMttr ? Math.round((avgMttr - previousMttr) / previousMttr * 100) : 0;
+  const techMap = new Map();
+  ps.forEach((p, i) => {
+    const infra = detectInfrastructure(p);
+    const label = infra.cloud === 'aws' ? 'AWS' : infra.cloud === 'azure' ? 'Azure'
+      : infra.cloud === 'gcp' ? 'GCP' : infra.isK8s ? 'Kubernetes' : 'On-premise';
+    techMap.set(label, (techMap.get(label) || 0) + (costs[i]?.total || 0));
+  });
+  const topTech = [...techMap.entries()].sort((a,b)=>b[1]-a[1])[0] || ['N/A', 0];
+  const resolvedPatterns = patterns.filter(p => p.problems.every(pr => pr.status === 'RESOLVED')).length;
+  return {
+    patternCount: patterns.length,
+    recurringCostPct: totalCost ? Math.round(recurringCost / totalCost * 100) : 0,
+    avgMttr,
+    mttrDeltaPct,
+    newPatterns: patterns.filter(p => (Date.now() - p.firstSeen) < 2*86400000).length,
+    resolvedPatterns,
+    topTech: topTech[0],
+    topTechCostPct: totalCost ? Math.round(topTech[1] / totalCost * 100) : 0,
+  };
+}
+
 async function callAIWithPrompt(ps,persona,costs,totalCost,source){
   const t0=Date.now();
   const PINSTR={
@@ -1389,9 +1482,10 @@ async function callAIWithPrompt(ps,persona,costs,totalCost,source){
   const rcaPct     = ps.length ? Math.round(rcaCount/ps.length*100) : 0;
   const noiseCount = ps.filter(p=>p.noise).length;
   const openCount  = ps.filter(p=>p.status==='OPEN').length;
+  const metrics = calculateAIMetrics(ps, costs, totalCost);
   const prompt=`${PINSTR[persona]}
 TOTAL COST: $${totalCost.toLocaleString()}
-KEY METRICS: ${rcaPct}% auto-correlated (${rcaCount}/${ps.length} problems have RCA), ${noiseCount} noise-suppressed events, ${openCount} currently open.
+KEY METRICS: ${rcaPct}% auto-correlated (${rcaCount}/${ps.length} problems have RCA), ${noiseCount} noise-suppressed events, ${openCount} currently open, ${metrics.patternCount} recurring patterns, ${metrics.recurringCostPct}% of cost from recurring issues, avg MTTR ${metrics.avgMttr} minutes, MTTR delta ${metrics.mttrDeltaPct}%, ${metrics.newPatterns} new patterns, ${metrics.resolvedPatterns} resolved patterns, ${metrics.topTech} accounts for ${metrics.topTechCostPct}% of operational cost.
 PROBLEMS: ${JSON.stringify(ctx)}
 IMPORTANT: Every insight in "summary" and "patterns" MUST reference at least one specific metric (cost %, count, duration, or percentage) from the data above. Do not make generic statements without metric backing.
 Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrative":"string","recommendations":[{"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"string","estimatedImpact":"string","owner":"string"}]}`;
@@ -1426,10 +1520,13 @@ Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrat
 function getFallbackMulti(ps,persona,costs){
   const total=costs.reduce((a,c)=>a+c.total,0);
   const users=ps.reduce((a,p)=>a+(p.users||0),0);
+  const metrics = calculateAIMetrics(ps, costs, total);
+  const rcaCount = ps.filter(p=>p.hasRCA).length;
+  const rcaPct = ps.length ? Math.round(rcaCount/ps.length*100) : 0;
   return{
-    summary:persona==='executive'?`${ps.length} customer-facing incidents affected ${users.toLocaleString()} customers with an estimated ${fmtC(total)} impact. Recurring patterns indicate unresolved systemic issues requiring strategic investment.`:persona==='developer'?`${ps.length} problems analyzed. Root cause clusters point to ${ps.filter(p=>p.hasRCA).map(p=>p.rca).filter(Boolean).join(', ')||'undocumented failures'}. ${ps.filter(p=>!p.hasRCA).length} problems lack root cause — blocking prevention.`:`${ps.length} problems. ${ps.filter(p=>p.rec>=60).length} high-recurrence, ${ps.filter(p=>!p.hasRCA).length} missing RCA, estimated ${fmtC(total)} cost. Alert noise candidates: ${ps.filter(p=>p.noise).length}.`,
-    patterns:['Recurring patterns indicate root causes have not been permanently resolved','MTTR above 60 minutes suggests gaps in incident response runbooks or alert routing','Shared dependencies across incidents point to single points of failure requiring architectural attention'],
-    costNarrative:`These ${ps.length} incidents represent approximately ${fmtC(total)} in combined revenue and engineering costs.`,
+    summary:persona==='executive'?`${ps.length} customer-facing incidents affected ${users.toLocaleString()} customers with an estimated ${fmtC(total)} impact. ${metrics.patternCount} recurring patterns represent ${metrics.recurringCostPct}% of operational cost, so the investment case is tied to measurable repeat impact.`:persona==='developer'?`${ps.length} problems analyzed with ${rcaPct}% RCA coverage. Root cause clusters point to ${ps.filter(p=>p.hasRCA).map(p=>p.rca).filter(Boolean).join(', ')||'undocumented failures'}, while ${ps.filter(p=>!p.hasRCA).length} problems lack root cause and block prevention.`:`${ps.length} problems. ${ps.filter(p=>p.rec>=60).length} high-recurrence, ${ps.filter(p=>!p.hasRCA).length} missing RCA, estimated ${fmtC(total)} cost. Alert noise candidates: ${ps.filter(p=>p.noise).length}.`,
+    patterns:[`${metrics.patternCount} recurring patterns account for ${metrics.recurringCostPct}% of operational cost`,`Average MTTR is ${metrics.avgMttr} minutes with a ${metrics.mttrDeltaPct}% modeled movement versus the prior period`,`${metrics.topTech} accounts for ${metrics.topTechCostPct}% of operational cost`],
+    costNarrative:`These ${ps.length} incidents represent approximately ${fmtC(total)} in combined revenue and engineering costs, with ${metrics.recurringCostPct}% tied to recurring issues.`,
     recommendations:[
       {priority:'IMMEDIATE',title:'Address open incidents now',description:'Triage and escalate all OPEN status problems immediately. Follow existing runbooks.',estimatedImpact:'Stop active customer impact',owner:'on-call SRE'},
       {priority:'SHORT_TERM',title:'Mandate root cause documentation',description:'Require RCA entry before closing P1/P2 problems. Reduces recurrence by ~35%.',estimatedImpact:'Reduce recurrence within 60 days',owner:'team:sre'},
@@ -1455,6 +1552,11 @@ function switchView(view) {
   document.getElementById('view-progress').style.display  = view === 'progress'  ? '' : 'none';
   if (view === 'patterns') renderPatternIntelligence();
   if (view === 'progress') { renderProgress(); requestAnimationFrame(() => drawTrendChart(WEEKLY_SNAPSHOTS)); }
+}
+
+function toggleExecValueBreakdown() {
+  execValueBreakdownOpen = !execValueBreakdownOpen;
+  renderPatternIntelligence();
 }
 
 // ── Pattern Detection ──
@@ -1558,11 +1660,13 @@ function buildPattern(problems) {
   // Concentration: how tightly cost + entities cluster (high = one entity dominates)
   // Uses cost predictability (1 − CV) instead of Gini — easier to explain and equivalent directionally
   const concentrationRaw   = clamp(clusterPurity * 0.5 + costConsistency * 0.5, 0, 1);
-  const concentrationScore = concentrationRaw >= 0.65 ? 'High' : concentrationRaw >= 0.40 ? 'Medium' : 'Low';
+  const concentration = scoreLabel(concentrationRaw);
+  const concentrationScore = concentration[0] + concentration.slice(1).toLowerCase();
 
   // Fixability: how actionable is this pattern (high = consistent RCA + stable recurrence + tight cluster)
   const fixabilityRaw   = clamp(rcaConsistency * 0.5 + recurrenceStability * 0.3 + clusterPurity * 0.2, 0, 1);
-  const fixabilityScore = fixabilityRaw >= 0.60 ? 'High' : fixabilityRaw >= 0.35 ? 'Medium' : 'Low';
+  const fixability = scoreLabel(fixabilityRaw);
+  const fixabilityScore = fixability[0] + fixability.slice(1).toLowerCase();
 
   // Recommendation
   const rec = recommendAction({
@@ -1606,8 +1710,14 @@ function buildPattern(problems) {
     rcaConsistency,
     clusterPurity,
     interArrivalCV,
+    recurrenceStability,
+    concentrationRaw,
     concentrationScore,
+    concentration,
+    fixabilityRaw,
     fixabilityScore,
+    fixability,
+    confidence: confidenceLevel(clamp(qualityScore/100 + clamp((problems.length-2)/8,0,0.15), 0, 1)),
     expanded: false,
   };
 }
@@ -1709,6 +1819,9 @@ function renderPatternIntelligence() {
       <span class="psh-title">${pat.title}</span>
       <span class="psh-pill">${pat.occurrences}×</span>
       <span class="trend-chip ${pat.trend}">${TREND_ICONS[pat.trend]} ${TREND_LABELS[pat.trend]}</span>
+      <span class="exec-pat-chip ${pat.concentration === 'HIGH' ? 'conc-high' : pat.concentration === 'MEDIUM' ? 'conc-med' : 'conc-low'}">Conc: ${pat.concentration}</span>
+      <span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Fix: ${pat.fixability}</span>
+      ${renderConfidenceBadge(pat.confidence, 'pattern')}
       ${pat.hasTimeCluster ? `<span class="psh-pill" style="color:var(--amber)">⏱ ${String(pat.dominantHour).padStart(2,'0')}:00</span>` : ''}
       <span class="psh-cost">${fmtC(pat.totalCost)}</span>
       <div class="psh-rec-track"><div class="psh-rec-fill" style="width:${pat.recurrenceScore}%;background:${recColor}"></div></div>
@@ -1807,18 +1920,23 @@ function calcSessionMetrics(ps, patterns) {
   const occMap = new Map();
   patterns.forEach(pat => pat.problems.forEach(p => occMap.set(p.id, pat.occurrences)));
 
-  // Value breakdown by component
-  let rcaSavingsTotal = 0, noiseSavingsTotal = 0, groupingSavingsTotal = 0;
+  const valueBreakdown = {
+    mttrSavings: 0,
+    aiCorrelationSavings: 0,
+    noiseReductionSavings: 0,
+    total: 0,
+  };
   ps.forEach(p => {
-    const v = calcValueDelivered(p, occMap.get(p.id) || 1);
-    rcaSavingsTotal      += v.rcaSavings;
-    noiseSavingsTotal    += v.noiseSavings;
-    groupingSavingsTotal += v.groupingSavings;
+    const v = calculateValueBreakdown(p, occMap.get(p.id) || 1);
+    valueBreakdown.mttrSavings           += v.mttrSavings;
+    valueBreakdown.aiCorrelationSavings  += v.aiCorrelationSavings;
+    valueBreakdown.noiseReductionSavings += v.noiseReductionSavings;
   });
-  rcaSavingsTotal      = Math.round(rcaSavingsTotal);
-  noiseSavingsTotal    = Math.round(noiseSavingsTotal);
-  groupingSavingsTotal = Math.round(groupingSavingsTotal);
-  const valueDeliveredTotal = rcaSavingsTotal + noiseSavingsTotal + groupingSavingsTotal;
+  valueBreakdown.mttrSavings           = Math.round(valueBreakdown.mttrSavings);
+  valueBreakdown.aiCorrelationSavings  = Math.round(valueBreakdown.aiCorrelationSavings);
+  valueBreakdown.noiseReductionSavings = Math.round(valueBreakdown.noiseReductionSavings);
+  valueBreakdown.total = valueBreakdown.mttrSavings + valueBreakdown.aiCorrelationSavings + valueBreakdown.noiseReductionSavings;
+  const valueDeliveredTotal = valueBreakdown.total;
 
   const autoCorrelationRate      = ps.length ? ps.filter(p=>p.hasRCA).length/ps.length : 0;
   const noiseReductionRate       = ps.length ? ps.filter(p=>p.noise).length/ps.length  : 0;
@@ -1835,17 +1953,21 @@ function calcSessionMetrics(ps, patterns) {
   const avgQuality   = qualScores.length ? Math.round(arrMean(qualScores)) : null;
   const lowConfCount = patterns.filter(pat=>(pat.qualityScore||0)<50).length;
 
-  // System Direction: based on pattern trend balance + open rate
+  // System Direction: combines cost, recurrence, and MTTR trend.
   const incCount  = patterns.filter(p=>p.trend==='INCREASING').length;
   const decCount  = patterns.filter(p=>p.trend==='DECREASING').length;
-  const openRate  = ps.length ? ps.filter(p=>p.status==='OPEN').length/ps.length : 0;
-  const systemDirection = (incCount > decCount && openRate > 0.25) ? 'Degrading'
-    : (decCount > incCount && openRate < 0.30)                     ? 'Improving'
-    : 'Stable';
+  const incCost = patterns.filter(p=>p.trend==='INCREASING').reduce((s,p)=>s+p.totalCost,0);
+  const decCost = patterns.filter(p=>p.trend==='DECREASING').reduce((s,p)=>s+p.totalCost,0);
+  const costTrend = incCost > decCost * 1.1 ? 'UP' : decCost > incCost * 1.1 ? 'DOWN' : 'FLAT';
+  const recurrenceTrend = incCount > decCount ? 'UP' : decCount > incCount ? 'DOWN' : 'FLAT';
+  const mttrTrend = avgMttrWithRCA && avgMttrWithoutRCA
+    ? avgMttrWithRCA > avgMttrWithoutRCA * 1.1 ? 'UP' : avgMttrWithoutRCA > avgMttrWithRCA * 1.1 ? 'DOWN' : 'FLAT'
+    : patterns.some(p=>p.trend==='INCREASING' && p.avgDur>60) ? 'UP' : patterns.some(p=>p.trend==='DECREASING') ? 'DOWN' : 'FLAT';
+  const systemDirection = calculateSystemDirection(costTrend, recurrenceTrend, mttrTrend);
 
   // Change over time: approximate from pattern trend data
-  const costTrendUp    = incCount > decCount;
-  const recurrenceTrendUp = patterns.length > 0 && arrMean(patterns.map(p=>p.recurrenceScore)) > 60;
+  const costTrendUp = costTrend === 'UP';
+  const mttrTrendUp = mttrTrend === 'UP';
   const newPatterns    = patterns.filter(p => (Date.now() - p.firstSeen) < 2*86400000).length;
   const resolvedPats   = patterns.filter(p => p.problems.every(pr=>pr.status==='RESOLVED')).length;
 
@@ -1853,11 +1975,11 @@ function calcSessionMetrics(ps, patterns) {
   const avgCostConf = ps.length ? arrMean(ps.map(p => costConfidence(p))) : 0.5;
 
   return {
-    valueDeliveredTotal, rcaSavingsTotal, noiseSavingsTotal, groupingSavingsTotal,
+    valueDeliveredTotal, valueBreakdown,
     autoCorrelationRate, noiseReductionRate, estimatedEventsSuppressed,
     avgMttrWithRCA, avgMttrWithoutRCA, mttrLift,
     avgQuality, lowConfCount,
-    systemDirection, costTrendUp, recurrenceTrendUp, newPatterns, resolvedPats,
+    systemDirection, costTrend, recurrenceTrend, mttrTrend, costTrendUp, mttrTrendUp, newPatterns, resolvedPats,
     avgCostConf,
   };
 }
@@ -1918,7 +2040,8 @@ function renderExecutivePatternView(patterns, ps) {
     const resolved = t.problems.filter(p => p.status === 'RESOLVED' && (p.dur || 0) > 0);
     const avgMttr  = resolved.length
       ? Math.round(resolved.reduce((s, p) => s + (p.dur || 0), 0) / resolved.length) : null;
-    return { ...t, avgMttr };
+    const costConcentrationPct = totalCost > 0 ? Math.round(t.cost / totalCost * 100) : 0;
+    return { ...t, avgMttr, costConcentrationPct };
   }).sort((a, b) => b.cost - a.cost);
   const withMttr = techs.filter(t => t.avgMttr != null);
   const maxMttr  = withMttr.length ? Math.max(...withMttr.map(t => t.avgMttr)) : 1;
@@ -1940,31 +2063,31 @@ function renderExecutivePatternView(patterns, ps) {
 
   // ── System Direction ──
   const dirMeta = {
-    Improving:  { cls: 'dir-improving', icon: '↑', label: 'Improving',  sub: 'More patterns resolving than emerging' },
-    Stable:     { cls: 'dir-stable',    icon: '→', label: 'Stable',     sub: 'Pattern load steady across the period' },
-    Degrading:  { cls: 'dir-degrading', icon: '↓', label: 'Degrading',  sub: 'More patterns emerging than resolving'  },
+    IMPROVING: { cls: 'dir-improving', icon: '↑', label: 'Improving',  sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
+    STABLE:    { cls: 'dir-stable',    icon: '→', label: 'Stable',     sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
+    DEGRADING: { cls: 'dir-degrading', icon: '↓', label: 'Degrading',  sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
   };
   const dir = dirMeta[sm.systemDirection];
 
   // ── Value breakdown percentages ──
   const vTotal = sm.valueDeliveredTotal || 1;
-  const rcaPct    = Math.round(sm.rcaSavingsTotal    / vTotal * 100);
-  const noisePct  = Math.round(sm.noiseSavingsTotal  / vTotal * 100);
-  const groupPct  = Math.round(sm.groupingSavingsTotal / vTotal * 100);
-  const confBadge = `<span class="exec-conf-badge ${confClass(sm.avgCostConf)}">${sm.avgCostConf >= 0.75 ? 'High' : sm.avgCostConf >= 0.50 ? 'Med' : 'Low'} confidence</span>`;
+  const mttrPct  = Math.round(sm.valueBreakdown.mttrSavings / vTotal * 100);
+  const noisePct = Math.round(sm.valueBreakdown.noiseReductionSavings / vTotal * 100);
+  const aiPct    = Math.round(sm.valueBreakdown.aiCorrelationSavings / vTotal * 100);
+  const confBadge = renderConfidenceBadge(confidenceLevel(sm.avgCostConf));
 
   // ── Tech cost concentration ──
   const topTech     = techs[0];
   const topTechPct  = totalCost > 0 && topTech ? Math.round(topTech.cost / totalCost * 100) : 0;
   const techInsight = topTech && topTechPct > 0
-    ? `<div class="exec-tech-insight">${topTech.label} accounts for ${topTechPct}% of operational cost concentration.</div>` : '';
+    ? `<div class="exec-tech-insight">${topTech.label} accounts for ${topTechPct}% of operational cost.</div>` : '';
 
   const techRowsWithPct = techs.map(t => {
     const isSlowest = withMttr.length > 1 && t.avgMttr === maxMttr;
     const isFastest = withMttr.length > 1 && t.avgMttr === minMttr;
     const mttrBarW  = maxMttr > 0 && t.avgMttr != null ? Math.round(t.avgMttr / maxMttr * 100) : 0;
     const costBarW  = Math.round(t.cost / maxCost * 100);
-    const costPct   = totalCost > 0 ? Math.round(t.cost / totalCost * 100) : 0;
+    const costPct   = t.costConcentrationPct;
     const mttrCls   = isSlowest ? 'slowest' : isFastest ? 'fastest' : '';
     const openPart  = t.openCount > 0
       ? `<span class="exec-tech-open">${t.openCount} open</span>` : '';
@@ -1996,8 +2119,8 @@ function renderExecutivePatternView(patterns, ps) {
   // ── Key drivers with pattern metadata ──
   const TREND_ICON  = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
   const TREND_CLS   = { INCREASING: 'trend-up', STABLE: 'trend-stable', DECREASING: 'trend-dn' };
-  const FIX_CLS     = { High: 'fix-high', Medium: 'fix-med', Low: 'fix-low' };
-  const CONC_CLS    = { High: 'conc-high', Medium: 'conc-med', Low: 'conc-low' };
+  const FIX_CLS     = { HIGH: 'fix-high', MEDIUM: 'fix-med', LOW: 'fix-low', High: 'fix-high', Medium: 'fix-med', Low: 'fix-low' };
+  const CONC_CLS    = { HIGH: 'conc-high', MEDIUM: 'conc-med', LOW: 'conc-low', High: 'conc-high', Medium: 'conc-med', Low: 'conc-low' };
 
   const TREND_TOOLTIP = {
     INCREASING: 'Trend: rate in second half of period is >30% higher than first half — pattern is worsening',
@@ -2013,8 +2136,9 @@ function renderExecutivePatternView(patterns, ps) {
       <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
       <div class="exec-t2-chips">
         <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
-        <span class="exec-pat-chip ${CONC_CLS[pat.concentrationScore]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentrationScore}</span>
-        <span class="exec-pat-chip ${FIX_CLS[pat.fixabilityScore]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixabilityScore}</span>
+        <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
+        ${renderConfidenceBadge(pat.confidence, 'pattern')}
       </div>
       <span class="exec-t2-val">${valHtml}</span>
       <span class="exec-t2-meta">${metaHtml}</span>
@@ -2039,8 +2163,8 @@ function renderExecutivePatternView(patterns, ps) {
           <span class="exec-change-lbl">Cost trend</span>
         </div>
         <div class="exec-change-item">
-          <span class="exec-change-icon ${sm.recurrenceTrendUp ? 'trend-up' : 'trend-dn'}">${sm.recurrenceTrendUp ? '↑' : '↓'}</span>
-          <span class="exec-change-lbl">Recurrence trend</span>
+          <span class="exec-change-icon ${sm.mttrTrendUp ? 'trend-up' : 'trend-dn'}">${sm.mttrTrendUp ? '↑' : '↓'}</span>
+          <span class="exec-change-lbl">MTTR trend</span>
         </div>
         <div class="exec-change-item">
           <span class="exec-change-num">${sm.newPatterns}</span>
@@ -2060,23 +2184,27 @@ function renderExecutivePatternView(patterns, ps) {
             ${confBadge}
           </div>
           <div class="exec-kpi-big" style="color:var(--green)">${fmtC(sm.valueDeliveredTotal)}</div>
-          <div class="exec-value-breakdown">
+          <button class="exec-value-toggle ${execValueBreakdownOpen ? 'open' : ''}" data-action="toggleExecValueBreakdown">
+            <span>${execValueBreakdownOpen ? 'Hide' : 'Show'} savings breakdown</span>
+            <span class="exec-value-toggle-ic">›</span>
+          </button>
+          <div class="exec-value-breakdown ${execValueBreakdownOpen ? '' : 'hidden'}">
             <div class="exec-vb-row">
               <span class="exec-vb-icon">⏱</span>
-              <span class="exec-vb-lbl">MTTR Reduction</span>
-              <span class="exec-vb-amt">${fmtC(sm.rcaSavingsTotal)}</span>
-              <span class="exec-vb-pct">${rcaPct}%</span>
+              <span class="exec-vb-lbl">MTTR Reduction Savings</span>
+              <span class="exec-vb-amt">${fmtC(sm.valueBreakdown.mttrSavings)}</span>
+              <span class="exec-vb-pct">${mttrPct}%</span>
             </div>
             <div class="exec-vb-row">
               <span class="exec-vb-icon">🤖</span>
-              <span class="exec-vb-lbl">AI Correlation</span>
-              <span class="exec-vb-amt">${fmtC(sm.groupingSavingsTotal)}</span>
-              <span class="exec-vb-pct">${groupPct}%</span>
+              <span class="exec-vb-lbl">AI Correlation Savings</span>
+              <span class="exec-vb-amt">${fmtC(sm.valueBreakdown.aiCorrelationSavings)}</span>
+              <span class="exec-vb-pct">${aiPct}%</span>
             </div>
             <div class="exec-vb-row">
               <span class="exec-vb-icon">🔕</span>
-              <span class="exec-vb-lbl">Noise Reduction</span>
-              <span class="exec-vb-amt">${fmtC(sm.noiseSavingsTotal)}</span>
+              <span class="exec-vb-lbl">Noise Reduction Savings</span>
+              <span class="exec-vb-amt">${fmtC(sm.valueBreakdown.noiseReductionSavings)}</span>
               <span class="exec-vb-pct">${noisePct}%</span>
             </div>
           </div>
@@ -2089,7 +2217,7 @@ function renderExecutivePatternView(patterns, ps) {
         <div class="exec-kpi-card">
           <div class="exec-kpi-lbl">Efficiency Delta</div>
           <div class="exec-kpi-big" style="color:${netCls}">${netSign}${fmtC(Math.abs(netPos))}</div>
-          <div class="exec-kpi-sub exec-kpi-modeled">Estimated operational efficiency gain (model-based)</div>
+          <div class="exec-kpi-sub exec-kpi-modeled">Estimated operational efficiency gain (modeled)</div>
         </div>
       </div>
 
@@ -2786,6 +2914,7 @@ document.addEventListener('click', function(e) {
     case 'drillIntoPattern': drillIntoPattern(pid); break;
     case 'drillToExplorer': e.stopPropagation(); switchView('explorer'); onRowClick(pid); break;
     case 'toggleOneOffs': toggleOneOffs(); break;
+    case 'toggleExecValueBreakdown': e.stopPropagation(); toggleExecValueBreakdown(); break;
 
     // Trend chart legend
     case 'toggleMetric': toggleMetric(key); break;

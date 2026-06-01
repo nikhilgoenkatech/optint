@@ -6,6 +6,10 @@ import { DynatraceProblem, ProblemPattern, TrendPoint, Severity, PatternRecommen
 import { normaliseTitle } from '../queries/dqlQueries';
 import { estimateCost }   from '../cost/CostModel';
 
+function level(score: number): 'HIGH' | 'MEDIUM' | 'LOW' {
+  return score >= 0.65 ? 'HIGH' : score >= 0.4 ? 'MEDIUM' : 'LOW';
+}
+
 // ── MTTR analytics ────────────────────────────────────────
 
 export function calculateMTTR(problems: DynatraceProblem[]): {
@@ -113,6 +117,12 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
     timestamp: p.startTime,
     value:     estimateCost(p).total,
   }));
+  const uniqueTitles = new Set(problems.map(p => normaliseTitle(p.title))).size;
+  const clusterPurity = Math.max(0, Math.min(1, 1 - ((uniqueTitles - 1) / problems.length)));
+  const rcaConsistency = rcaValues.length === 1 ? 1 : rcaValues.length > 1 ? 0.5 : 0;
+  const concentration = level(clusterPurity * 0.5 + (rcaConsistency || 0.2) * 0.5);
+  const fixability = level(rcaConsistency * 0.6 + (recScore / 100) * 0.25 + clusterPurity * 0.15);
+  const confidence = level(clusterPurity * 0.35 + rcaConsistency * 0.35 + Math.min(problems.length / 5, 1) * 0.3);
 
   const recommendation = recommendAction({
     recurrenceScore:     recScore,
@@ -145,6 +155,9 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
     severity:        problems[0].severity,
     problems,
     trend:           trend as ProblemPattern['trend'],
+    concentration,
+    fixability,
+    confidence,
     recurrenceScore: recScore,
     hasTimeCluster,
     dominantHour,

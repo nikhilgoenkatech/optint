@@ -1,8 +1,6 @@
-# OpInt — Operational Intelligence
+# OpInt - Operational Intelligence
 
 Pattern intelligence, remediation analytics, and team progress tracking for Dynatrace.
-
----
 
 ## Quick Start
 
@@ -26,57 +24,49 @@ npm run start
 npm run deploy
 ```
 
-### Toggle mock ↔ live data
-In `src/hooks/index.ts`, change line 12:
-```typescript
-// Mock data (default — works offline):
-import { MockDataService as DataService } from '../services/mockDataService';
+## Runtime Entry Points
 
-// Live data (requires AppEngine runtime):
-import { DynatraceService as DataService } from '../services/dynatraceService';
-```
+The deployed AppEngine app is built from `ui/index.html` and bootstrapped by `ui/main.tsx`, which imports `ui/app.js`. The current UI is a vanilla TypeScript/JavaScript app; there is no React runtime layer.
 
----
+Live problem data is loaded directly in `ui/app.js` via `queryExecutionClient.queryExecute`. The in-memory mock data in that same file is used as the immediate demo/fallback dataset while live DQL results load.
 
 ## File Structure
 
-```
-src/
-├── models/index.ts                   All TypeScript interfaces
-├── queries/dqlQueries.ts             DQL query templates + scoring utilities
-├── services/
-│   ├── dynatraceService.ts           Real Dynatrace SDK calls (production)
-│   └── mockDataService.ts            Mock data (local development)
-├── hooks/index.ts                    React hooks — useProblems, useFilters, etc.
-├── analytics/index.ts                Pattern detection, MTTR, recommendations
-├── cost/CostModel.ts                 Revenue + engineering + recurring waste
-├── persona/
-│   ├── PersonaResolver.ts            IAM group → persona mapping
-│   ├── PersonaFilterEngine.ts        Per-persona data filtering + column config
-│   └── PersonaPromptBuilder.ts       Davis CoPilot prompt templates per persona
-├── ai/
-│   └── AISummarizationService.ts     Davis CoPilot adapter + mock fallback
-└── index.html                        Standalone demo (no build needed)
-```
+```text
+ui/
+|-- index.html                       AppEngine HTML shell and styles
+|-- main.tsx                         AppEngine bootstrap import
+|-- main.css                         App-level CSS import
+`-- app.js                           Main UI, DQL loader, personas, AI, remediation
 
----
+src/
+|-- models/index.ts                  Shared TypeScript interfaces
+|-- queries/dqlQueries.ts            DQL query templates and scoring utilities
+|-- services/
+|   |-- dynatraceService.ts          Typed live-service adapter scaffold
+|   `-- mockDataService.ts           Typed mock-service adapter
+|-- analytics/index.ts               Pattern detection, MTTR, recommendations
+|-- cost/CostModel.ts                Revenue, engineering, and recurring waste
+|-- persona/
+|   |-- PersonaResolver.ts           IAM group to persona mapping
+|   |-- PersonaFilterEngine.ts       Per-persona data filtering and columns
+|   `-- PersonaPromptBuilder.ts      Davis CoPilot prompt templates per persona
+`-- ai/
+    `-- AISummarizationService.ts    Davis CoPilot adapter and mock fallback
+```
 
 ## Personas
 
 | Persona | IAM Group | Sees |
 |---|---|---|
-| Executive 👔 | dt-group-executives | Business impact, cost, strategic view |
-| Developer 💻 | dt-group-developers | Service errors, root cause, traces |
-| SRE 🔧 | dt-group-sre | Everything — all signals, noise, SLO |
+| Executive | dt-group-executives | Business impact, cost, strategic view |
+| Developer | dt-group-developers | Service errors, root cause, traces |
+| SRE | dt-group-sre | Everything: all signals, noise, SLO |
 
-Update `src/persona/PersonaResolver.ts` → `GROUP_PERSONA_MAP` to match your tenant's group names.
-
----
+Update `src/persona/PersonaResolver.ts` -> `GROUP_PERSONA_MAP` to match your tenant's group names.
 
 ## Key Integrations
 
-- **Davis CoPilot** — Settings → Davis CoPilot → Enable on tenant
-- **ServiceNow** — Settings → Integrations → ServiceNow (ticket refs auto-appear on problems)
-- **Weekly snapshots** — write via Dynatrace Workflow every Monday, stored as Business Events
-
-See `OpInt-Dynatrace-Setup-Guide.docx` for complete step-by-step instructions.
+- **Davis CoPilot**: enable on the tenant, then wire the adapter or use the existing UI call path.
+- **ServiceNow**: enable the Dynatrace integration so ticket refs appear on problems.
+- **Weekly snapshots**: write via Dynatrace Workflow every Monday and store as Business Events.
