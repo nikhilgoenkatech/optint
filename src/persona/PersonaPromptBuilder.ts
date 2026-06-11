@@ -3,9 +3,8 @@
 // Builds persona-tuned prompts for Davis CoPilot
 // ============================================================
 
-import { DynatraceProblem } from '../models';
+import { CostEstimate, DynatraceProblem } from '../models';
 import { PersonaType } from './PersonaResolver';
-import { CostEstimate } from '../cost/CostModel';
 
 export interface AISummaryRequest {
   problems: DynatraceProblem[];
@@ -45,6 +44,26 @@ You are briefing a Site Reliability Engineer or Platform engineer. Rules:
 - Flag whether any alerts appear to be noise (auto-resolved, low impact)
 - Consider blast radius and cascading failure risk`;
 
+const DYNATRACE_OBSERVABILITY_FEATURES = `
+Broad Dynatrace features and action capabilities to recommend when relevant:
+- Davis AI
+- Live Debugger
+- AWS DevOps Agent
+- Azure DevOps Agent
+- GCP DevOps Agent
+- Release Management
+- Workflows
+- AutomationEngine
+- Site Reliability Guardian
+- Service-Level Objectives
+- Ownership and Routing
+- Digital Experience Monitoring
+- Business Analytics
+- Application Observability
+- Infrastructure and Cloud Observability
+
+Use these broad feature names only. Do not recommend granular telemetry sources such as Distributed Traces, Logs, Metrics, events, spans, stack traces, or dashboards as the feature.`;
+
 // Schema returned by all personas (some fields optional per persona)
 const RESPONSE_SCHEMA = `
 Return ONLY this JSON (no other text):
@@ -59,6 +78,7 @@ Return ONLY this JSON (no other text):
       "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
       "title": "string",
       "description": "string",
+      "dynatraceFeature": "string — one broad Dynatrace feature or action capability from the approved list",
       "estimatedImpact": "string",
       "owner": "string"
     }
@@ -98,6 +118,8 @@ TOTAL ESTIMATED COST ACROSS SELECTED PROBLEMS: $${totalCost.toLocaleString()}
 
 PROBLEMS TO ANALYZE:
 ${JSON.stringify(problemContext, null, 2)}
+
+${DYNATRACE_OBSERVABILITY_FEATURES}
 
 ${RESPONSE_SCHEMA}`;
 }

@@ -27,13 +27,14 @@ const MOCK_PROBLEMS = [
 ];
 
 let PROBLEMS = MOCK_PROBLEMS;
+let MTTR_SUMMARY = null;
 
 // ============================================================
 // PERSONA CONFIG
 // ============================================================
 const PMETA = {
-  executive:{label:'Executive',icon:'👔',color:'#4db8ff',desc:'Business impact · customer-facing incidents only',
-    filter:p=>!(p.users===0&&['RESOURCE_CONTENTION','CUSTOM_ALERT'].includes(p.sev))&&!['CPU spike','GC pause','Disk I/O','OOMKilled','Network latency: cross'].some(n=>p.title.includes(n)),
+  executive:{label:'Executive',icon:'👔',color:'#4db8ff',desc:'All non-duplicate incidents · pattern-led view',
+    filter:()=>true,
     rank:(a,b)=>((b.users||0)*(b.dur||30))-((a.users||0)*(a.dur||30)),
     cols:['exp','check','biz','cost','users','dur','rec','status']},
   developer:{label:'Developer',icon:'💻',color:'#3dd68c',desc:'Service errors · root causes · traces',
@@ -68,6 +69,7 @@ const arrMean   = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
 const arrStddev = a => { if(a.length<2)return 0; const m=arrMean(a); return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length); };
 const arrMode   = a => { const c={}; a.forEach(v=>{c[v]=(c[v]||0)+1;}); return Object.entries(c).sort((x,y)=>y[1]-x[1])[0]?.[0]; };
 const arrGini   = a => { if(!a.length)return 0; const s=[...a].sort((x,y)=>x-y),n=s.length,sum=s.reduce((t,v)=>t+v,0); if(!sum)return 0; return s.reduce((g,v,i)=>g+v*(2*(i+1)-n-1),0)/(n*sum); };
+const arrPercentile = (a, p) => { if(!a.length)return 0; const s=[...a].sort((x,y)=>x-y); return s[Math.min(s.length-1, Math.floor((s.length-1)*p))] ?? 0; };
 const clamp     = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 
 // ── Value Delivered ──
@@ -171,7 +173,7 @@ function confLabel(score) {
 }
 
 function fmtC(n){if(n>=1e6)return`$${(n/1e6).toFixed(1)}M`;if(n>=1e3)return`$${(n/1e3).toFixed(1)}K`;return`$${Math.round(n)}`}
-function fmtM(m){if(!m||m===0)return'—';if(m<60)return Math.round(m)+'m';const h=Math.floor(m/60),r=Math.round(m%60);return r>0?`${h}h ${r}m`:`${h}h`}
+function fmtM(m){if(!m||m===0)return'—';if(m>=1440)return`${(m/1440).toFixed(m>=14400?0:2)}d`;if(m<60)return Math.round(m)+'m';const h=Math.floor(m/60),r=Math.round(m%60);return r>0?`${h}h ${r}m`:`${h}h`}
 function fmtR(ms){const d=Date.now()-ms,m=Math.floor(d/60000);if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;return`${Math.floor(h/24)}d ago`}
 const SEV_LBL={AVAILABILITY:'Avail',ERROR:'Error',PERFORMANCE:'Perf',RESOURCE_CONTENTION:'Rsrc',CUSTOM_ALERT:'Custom'};
 
@@ -192,6 +194,52 @@ function toMs(v) {
   return null;
 }
 
+function durationToMs(v) {
+  if (!v) return null;
+  if (typeof v === 'number') {
+    if (v > 1e10) return Math.round(v / 1e6);
+    if (v > 10000) return Math.round(v);
+    return Math.round(v * 1000);
+  }
+  if (typeof v === 'object' && 'seconds' in v) {
+    return (v.seconds || 0) * 1000 + Math.floor((v.nanos || 0) / 1e6);
+  }
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!s) return null;
+    if (/^\d+(\.\d+)?$/.test(s)) return durationToMs(Number(s));
+    const iso = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/i.exec(s);
+    if (iso) {
+      const [, d='0', h='0', m='0', sec='0'] = iso;
+      return Math.round((Number(d)*86400 + Number(h)*3600 + Number(m)*60 + Number(sec)) * 1000);
+    }
+    const hms = /^(?:(\d+):)?(\d{1,2}):(\d{2})(?:\.\d+)?$/.exec(s);
+    if (hms) {
+      const [, h='0', m='0', sec='0'] = hms;
+      return (Number(h)*3600 + Number(m)*60 + Number(sec)) * 1000;
+    }
+    const days = Number(/(\d+(?:\.\d+)?)\s*d/i.exec(s)?.[1] || 0);
+    const hrs  = Number(/(\d+(?:\.\d+)?)\s*h/i.exec(s)?.[1] || 0);
+    const mins = Number(/(\d+(?:\.\d+)?)\s*m(?!s)/i.exec(s)?.[1] || 0);
+    const secs = Number(/(\d+(?:\.\d+)?)\s*s/i.exec(s)?.[1] || 0);
+    const totalSeconds = days*86400 + hrs*3600 + mins*60 + secs;
+    return totalSeconds > 0 ? Math.round(totalSeconds * 1000) : null;
+  }
+  return null;
+}
+
+function durationMinutesFromRecord(r, start, rawStatus) {
+  if (!['CLOSED', 'RESOLVED'].includes(rawStatus)) return null;
+  const resolvedMs = durationToMs(r['resolved_problem_duration']);
+  if (resolvedMs > 0) return Math.max(1 / 60, resolvedMs / 60000);
+  return null;
+}
+
+function durationMinutesFromValue(v) {
+  const ms = durationToMs(v);
+  return ms > 0 ? ms / 60000 : 0;
+}
+
 function getTimeLabel() {
   const v = document.getElementById('timeRange')?.value ?? '7d';
   return v === '7d' ? 'last 7 days' : v === '14d' ? 'last 14 days' : 'last 30 days';
@@ -199,12 +247,14 @@ function getTimeLabel() {
 
 async function loadProblems() {
   const timeRange = document.getElementById('timeRange')?.value ?? '7d';
+  MTTR_SUMMARY = null;
   try {
     const result = await queryExecutionClient.queryExecute({
       body: {
         query: `fetch dt.davis.problems, from: now()-${timeRange}
-| fields display_id, event.name, event.status, event.category, event.start, event.end,
-         dt.davis.impact_level, dt.davis.is_frequent_event, dt.davis.affected_users_count,
+| filter dt.davis.is_duplicate == false
+| fields event.id, display_id, event.name, event.status, event.category, event.start, event.end,
+         dt.davis.impact_level, dt.davis.is_frequent_event, dt.davis.is_duplicate, dt.davis.affected_users_count,
          entity_tags, management_zones, root_cause_entity_name,
          cloud.provider, cloud.region, affected_entity_ids, resolved_problem_duration
 | sort event.start desc
@@ -221,32 +271,19 @@ async function loadProblems() {
     // map to app's sev values: ERROR, AVAILABILITY, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT
     const SEV_MAP = { ERROR: 'ERROR', AVAILABILITY: 'AVAILABILITY', SLOWDOWN: 'PERFORMANCE', CUSTOM_ALERT: 'CUSTOM_ALERT' };
     // event.status: OPEN, ACTIVE → 'OPEN'; CLOSED → 'RESOLVED'
-    const STATUS_MAP = { OPEN: 'OPEN', ACTIVE: 'OPEN', CLOSED: 'RESOLVED' };
-    // dt.davis.impact_level is an array; pick highest impact value
-    const IMPACT_RANK = { Environment: 95, Application: 75, Services: 55, Infrastructure: 35, Synthetic: 20 };
+    const STATUS_MAP = { OPEN: 'OPEN', ACTIVE: 'OPEN', CLOSED: 'RESOLVED', RESOLVED: 'RESOLVED' };
+    // dt.davis.impact_level is documented as a string, but some tenants may return an array.
+    const IMPACT_RANK = { ENVIRONMENT: 95, APPLICATION: 75, SERVICE: 55, SERVICES: 55, INFRASTRUCTURE: 35, SYNTHETIC: 20 };
 
     PROBLEMS = records.map((r, i) => {
       const rawStatus = String(r['event.status'] ?? 'CLOSED').toUpperCase();
       const status = STATUS_MAP[rawStatus] ?? 'RESOLVED';
 
       const start = toMs(r['event.start']) ?? Date.now();
-      let dur = null;
-      if (status === 'RESOLVED') {
-        // resolved_problem_duration: Grail field in milliseconds
-        const rpd = r['resolved_problem_duration'];
-        const rpdMs = typeof rpd === 'number' ? rpd
-          : (rpd && typeof rpd === 'object' && 'seconds' in rpd)
-            ? rpd.seconds * 1000 + Math.floor((rpd.nanos ?? 0) / 1e6)
-          : null;
-        if (rpdMs > 0) {
-          dur = Math.round(rpdMs / 60000);
-        } else {
-          const end = toMs(r['event.end']);
-          if (end && end > start) dur = Math.round((end - start) / 60000);
-        }
-      }
+      const dur = durationMinutesFromRecord(r, start, rawStatus);
 
-      const impactArr = Array.isArray(r['dt.davis.impact_level']) ? r['dt.davis.impact_level'] : [];
+      const rawImpact = r['dt.davis.impact_level'];
+      const impactArr = Array.isArray(rawImpact) ? rawImpact.map(v => String(v).toUpperCase()) : (rawImpact ? [String(rawImpact).toUpperCase()] : []);
       const impact = impactArr.reduce((best, lv) => Math.max(best, IMPACT_RANK[lv] ?? 30), 30);
 
       const mz = Array.isArray(r['management_zones']) ? r['management_zones'].map(String).filter(Boolean) : [];
@@ -258,7 +295,8 @@ async function loadProblems() {
       const region = Array.isArray(r['cloud.region']) ? (r['cloud.region'][0] ?? '') : (r['cloud.region'] ?? '');
 
       return {
-        id: String(r['display_id'] ?? `P-${String(i + 1).padStart(3, '0')}`),
+        id: String(r['event.id'] ?? r['display_id'] ?? `P-${String(i + 1).padStart(3, '0')}`),
+        displayId: String(r['display_id'] ?? r['event.id'] ?? `P-${String(i + 1).padStart(3, '0')}`),
         title: String(r['event.name'] ?? 'Unknown problem'),
         biz: String(r['event.name'] ?? 'Unknown problem'),
         status,
@@ -271,6 +309,7 @@ async function loadProblems() {
         hasRCA: rca !== null,
         rca,
         svcs,
+        affectedEntityIds: entityIds.map(String),
         rec: 0,
         impact,
         noise: r['dt.davis.is_frequent_event'] === true,
@@ -279,20 +318,48 @@ async function loadProblems() {
       };
     });
 
+    await loadMttrSummary(timeRange);
     patternInsights.clear();
     subBucketInsights.clear();
     render();
     if (typeof renderPatternIntelligence === 'function' && currentView === 'patterns') renderPatternIntelligence();
-    // Auto-populate AI Analysis panel with the highest-impact open problem
-    const openProb = PROBLEMS.find(p => p.status === 'OPEN') || PROBLEMS[0];
-    if (openProb && aiState === 'idle') {
-      console.log('[OpInt Davis] Auto-triggering analysis for:', openProb.title);
-      deepAnalyze(openProb.id);
-    }
   } catch (err) {
     console.warn('[OpInt] DQL fetch failed:', err.message ?? err);
     console.warn('[OpInt] cause:', err.cause);
     console.warn('[OpInt] full error:', err);
+  }
+}
+
+async function loadMttrSummary(timeRange) {
+  try {
+    const result = await queryExecutionClient.queryExecute({
+      body: {
+        query: `fetch dt.davis.problems, from: now()-${timeRange}
+| filter dt.davis.is_duplicate == false
+| filter event.status == "CLOSED" or event.status == "RESOLVED"
+| fields resolved_problem_duration
+| filter isNotNull(resolved_problem_duration)
+| summarize
+    resolved_count = count(),
+    avg_mttr = avg(resolved_problem_duration),
+    median_mttr = percentile(resolved_problem_duration, 50),
+    p85_mttr = percentile(resolved_problem_duration, 85),
+    p95_mttr = percentile(resolved_problem_duration, 95)`,
+        requestTimeoutMilliseconds: 15000,
+        fetchTimeoutSeconds: 60,
+      }
+    });
+    const row = result?.result?.records?.[0];
+    if (!row) return;
+    MTTR_SUMMARY = {
+      count: Number(row.resolved_count || 0),
+      avg: durationMinutesFromValue(row.avg_mttr),
+      median: durationMinutesFromValue(row.median_mttr),
+      p85: durationMinutesFromValue(row.p85_mttr),
+      p95: durationMinutesFromValue(row.p95_mttr),
+    };
+  } catch (err) {
+    console.warn('[OpInt] MTTR aggregate fetch failed:', err.message ?? err);
   }
 }
 
@@ -310,6 +377,23 @@ let remProblem=null;
 let awsModalProblem=null;
 let davisConversationId=null; // unused, kept for backwards compat
 let execValueBreakdownOpen=false;
+let execKpiDetail=null;
+let patternExplorerState = { selectedId:null, sort:'priority', dir:'desc', search:'', filters:{}, offset:0 };
+let execAnalyticalView='map';
+let execPatternSelectionMade=false;
+let execMetricDrilldown=null;
+let patternSearchTimer=null;
+let remediationPatternId=null;
+let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
+const remediationCache=new Map();
+/** @type {ToolDetectionRow[]} */
+let TOOL_DETECTION_ROWS=[];
+
+function isConciseExecView() {
+  return persona === 'executive'
+    && currentView === 'patterns'
+    && new URLSearchParams(window.location.search).get('view') === 'concise';
+}
 
 // ============================================================
 // RENDER
@@ -323,17 +407,23 @@ function render(){
   const ps=getFiltered();
   // persona bar
   const m=PMETA[persona];
+  document.body.classList.toggle('concise-exec', isConciseExecView());
+  document.body.classList.toggle('exec-persona', persona === 'executive');
   document.documentElement.style.setProperty('--persona',m.color);
   document.getElementById('pbarIcon').textContent=m.icon;
   document.getElementById('pbarText').innerHTML=`<strong>${m.label} View</strong> — ${m.desc}`;
-  if(persona==='executive'){const eg=groupForExecutive(ps);document.getElementById('pbarChip').textContent=`${eg.length} pattern${eg.length!==1?'s':''} · ${ps.length} occurrences`;}
+  if(persona==='executive'){
+    const ep=detectPatterns(ps).patterns;
+    document.getElementById('pbarChip').textContent=`${ep.length} pattern${ep.length!==1?'s':''} · ${ps.length} problems`;
+  }
   else document.getElementById('pbarChip').textContent=`${ps.length} of ${PROBLEMS.length} visible`;
   // cost banner
-  const showCost=persona!=='developer';
+  const showCost=persona!=='developer' && !(persona === 'executive' && currentView === 'patterns');
   document.getElementById('costBanner').classList.toggle('hidden',!showCost);
   if(showCost) renderCostBanner(ps);
   // kpis
   renderKPIs(ps);
+  renderTopPatternsSnapshot(ps);
   // table
   renderTable(ps);
   // update tab counts
@@ -346,10 +436,22 @@ function render(){
 
 // ── KPIs ──
 function renderKPIs(ps){
+  if (persona === 'executive' && currentView === 'patterns') {
+    document.getElementById('kpiRow').innerHTML = '';
+    const kpiDetails = document.getElementById('kpiDetails');
+    if (kpiDetails) kpiDetails.innerHTML = '';
+    return;
+  }
   const res=ps.filter(p=>p.status==='RESOLVED'&&p.dur);
   const durs=res.map(p=>p.dur);
   const avg=durs.length?durs.reduce((a,b)=>a+b,0)/durs.length:0;
   const p95=durs.length?[...durs].sort((a,b)=>a-b)[Math.floor(durs.length*.95)]??0:0;
+  const median=arrPercentile(durs, .5);
+  const p85=arrPercentile(durs, .85);
+  const appFilter = document.getElementById('appFilter').value;
+  const execMttr = persona === 'executive' && !appFilter && MTTR_SUMMARY
+    ? MTTR_SUMMARY
+    : { avg, median, p85, p95, count: res.length };
   const costs=ps.map(calcCost),total=costs.reduce((a,c)=>a+c.total,0);
   const waste=calcRecurringWaste(ps);
   const open=ps.filter(p=>p.status==='OPEN').length;
@@ -357,15 +459,21 @@ function renderKPIs(ps){
   const miss=ps.filter(p=>!p.hasRCA).length;
   const rec=ps.filter(p=>p.rec>=60).length;
   const svcs=new Set(ps.flatMap(p=>p.svcs)).size;
-  const groups=groupForExecutive(ps);
-  const openGroups=groups.filter(g=>g.status==='OPEN').length;
-  const hiImpactGroups=groups.filter(g=>g.impact>=75).length;
+  const patterns=detectPatterns(ps).patterns;
+  const patternOccurrences=patterns.reduce((s, pat)=>s+pat.occurrences,0);
+  const oneOffCount=ps.length-patternOccurrences;
+  const openPatterns=patterns.filter(pat=>pat.problems.some(p=>p.status==='OPEN'));
+  const highImpactPatterns=patterns.filter(pat=>isHighImpactPattern(pat, patterns));
+  const totalPatternCost=patterns.reduce((s, pat)=>s+patternCost(pat),0);
+  const session=calcSessionMetrics(ps, patterns);
+  const potentialSavings=patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+  const highImpactOccurrences=highImpactPatterns.reduce((s, pat)=>s+pat.occurrences,0);
   const KPIS={
     executive:[
-      {lbl:'Distinct Incident Patterns',val:groups.length,sub:`${openGroups} active now`,c:'kc-amber'},
-      {lbl:'High-Impact Patterns',val:hiImpactGroups,sub:'Application or Environment level',c:'kc-coral'},
-      {lbl:'Total Occurrences',val:ps.length,sub:getTimeLabel(),c:'kc-blue'},
-      {lbl:'Avg Resolution Time',val:fmtM(avg),sub:`p95: ${fmtM(p95)}`,c:'kc-teal'},
+      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${openPatterns.length} active now`,c:'kc-amber',mode:'patterns',actionText:execKpiDetail==='patterns'?'Hide patterns':'View patterns'},
+      {lbl:'High-Impact Patterns',val:highImpactPatterns.length,sub:`${highImpactOccurrences} pattern occurrences`,c:'kc-coral',mode:'impact',actionText:execKpiDetail==='impact'?'Hide impact':'View high impact'},
+      {lbl:'Total Problems',val:ps.length,sub:`${patternOccurrences} grouped · ${oneOffCount} one-off`,c:'kc-blue',mode:'occurrences',actionText:execKpiDetail==='occurrences'?'Hide problems':'View problems'},
+      {lbl:'Avg Resolution Time',val:fmtM(execMttr.avg),sub:`p95: ${fmtM(execMttr.p95)} · ${execMttr.count} resolved`,c:'kc-teal',mode:'mttr',actionText:execKpiDetail==='mttr'?'Hide MTTR':'View MTTR drivers'},
     ],
     developer:[
       {lbl:'Active Problems',val:ps.length,sub:`${open} open`,c:'kc-blue'},
@@ -380,27 +488,172 @@ function renderKPIs(ps){
       {lbl:'P95 MTTR',val:fmtM(p95),sub:`avg: ${fmtM(avg)}`,c:'kc-violet'},
     ],
   };
+  if (persona === 'executive') {
+    KPIS.executive = [
+      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${patternOccurrences} grouped · ${openPatterns.length} active`,c:'kc-amber'},
+      {lbl:'Cost Exposure',val:fmtC(totalPatternCost),sub:`${highImpactPatterns.length} high-impact pattern${highImpactPatterns.length!==1?'s':''}`,c:'kc-coral'},
+      {lbl:'Potential Savings',val:fmtC(potentialSavings),sub:'Modeled recurring reduction',c:'kc-green'},
+      {lbl:'Avg Resolution Time',val:fmtM(execMttr.avg),sub:`p95: ${fmtM(execMttr.p95)} · ${execMttr.count} resolved`,c:'kc-teal'},
+    ];
+  }
+  if (persona === 'executive') {
+    const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
+    KPIS.executive = [
+      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${openPatterns.length} active pattern${openPatterns.length!==1?'s':''}`,c:'kc-amber'},
+      {lbl:'Grouped Problems',val:patternOccurrences,sub:`${ps.length} total · ${oneOffCount} one-off`,c:'kc-blue'},
+      {lbl:'Cost Exposure',val:fmtC(totalPatternCost),sub:`${highImpactPatterns.length} high-impact pattern${highImpactPatterns.length!==1?'s':''}`,c:'kc-coral'},
+      {lbl:'Potential Savings',val:fmtC(potentialSavings),sub:'Modeled recurring reduction',c:'kc-green'},
+      {lbl:'Operational Risk Backlog',val:riskBacklog,sub:'Patterns with open incidents',c:'kc-violet'},
+      {lbl:'Avg Resolution Time',val:fmtM(execMttr.avg),sub:`p95: ${fmtM(execMttr.p95)} · ${execMttr.count} resolved`,c:'kc-teal'},
+    ];
+  }
+  if (persona === 'executive') {
+    const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
+    const execMedian = execMttr.median || execMttr.avg;
+    const execP85 = execMttr.p85 || execMttr.p95;
+    KPIS.executive = [
+      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${patternOccurrences} grouped · ${openPatterns.length} active`,c:'kc-amber'},
+      {lbl:'Grouped Problems',val:patternOccurrences,sub:`${ps.length} total incidents analyzed`,c:'kc-blue'},
+      {lbl:'Cost Exposure',val:fmtC(totalPatternCost),sub:`${highImpactPatterns.length} high-impact pattern${highImpactPatterns.length!==1?'s':''}`,c:'kc-coral'},
+      {lbl:'Potential Savings',val:fmtC(potentialSavings),sub:'Estimated recoverable value',c:'kc-green'},
+      {lbl:'Operational Risk Backlog',val:riskBacklog,sub:'Patterns with active or open incidents',c:'kc-violet'},
+      {lbl:'Resolution Time',val:`${fmtM(execMedian)} median`,sub:`p85 ${fmtM(execP85)} · ${execMttr.count} resolved`,c:'kc-teal',badge:{t:`Long tail - 15% exceed ${fmtM(execP85)}`,cls:'badge-up'}},
+    ];
+  }
   document.getElementById('kpiRow').innerHTML=KPIS[persona].map(k=>`
     <div class="kcard ${k.c} fade-in">
       <div class="k-lbl">${k.lbl}</div>
       <div class="k-val">${k.val}</div>
       <div class="k-sub">${k.sub}${k.badge?`<span class="badge ${k.badge.cls}">${k.badge.t}</span>`:''}</div>
+      ${k.mode?`<button class="k-action ${execKpiDetail===k.mode?'open':''}" data-action="toggleExecKpiDetail" data-mode="${k.mode}">${k.actionText}</button>`:''}
     </div>`).join('');
+  const kpiDetails = document.getElementById('kpiDetails');
+  if (kpiDetails) {
+    kpiDetails.innerHTML = persona === 'executive' && execKpiDetail ? renderExecutiveKpiDetail(execKpiDetail, ps) : '';
+  }
+}
+
+function renderTopPatternsSnapshot(ps) {
+  const el = document.getElementById('topPatternsSnapshot');
+  if (!el) return;
+  if (persona === 'executive' && currentView === 'patterns') {
+    el.innerHTML = '';
+    return;
+  }
+  if (persona !== 'executive' || currentView !== 'patterns') {
+    el.innerHTML = '';
+    return;
+  }
+
+  {
+    const patterns = detectPatterns(ps).patterns;
+    const ranked = [...patterns]
+      .map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }))
+      .sort((a, b) => b.score - a.score);
+    const session = calcSessionMetrics(ps, patterns);
+    const totalPatternCost = patterns.reduce((s, pat) => s + patternCost(pat), 0);
+    const potentialSavings = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+    const riskBacklog = ranked.filter(x => patternOpenCount(x.pat) > 0).length;
+    const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
+    const selectedPattern = patterns.find(p => p.id === patternExplorerState.selectedId) || ranked[0]?.pat;
+    const focusPattern = ranked[0]?.pat;
+    const focusRecoverable = focusPattern ? Math.round(patternCost(focusPattern) * 0.35) : 0;
+    el.innerHTML = `
+      <div class="snap-head narrative">
+        <div>
+          <div class="snap-title">${ps.length} problems reduced to ${patterns.length} recurring operational pattern${patterns.length!==1?'s':''}</div>
+          <div class="snap-sub">${patternOccurrences} grouped incidents · ${fmtC(totalPatternCost)} cost exposure · ${fmtC(potentialSavings)} potential savings · ${riskBacklog} operational risk backlog</div>
+        </div>
+        <div class="snap-actions">
+          <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
+          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selectedPattern?.id || ''}" ${selectedPattern ? '' : 'disabled'}>Get Remediation Path</button>
+        </div>
+      </div>
+      ${focusPattern ? `
+      <div class="focus-card">
+        <div>
+          <div class="focus-eyebrow">Recommended Focus This Week</div>
+          <div class="focus-title">${focusPattern.title}</div>
+          <div class="focus-sub">${focusPattern.occurrences} occurrences · ${fmtC(patternCost(focusPattern))} exposure · ${patternOpenCount(focusPattern)} open incidents</div>
+        </div>
+        <div class="focus-value">
+          <span>Estimated recoverable value</span>
+          <strong>${fmtC(focusRecoverable)}</strong>
+        </div>
+        <div class="snap-actions">
+          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${focusPattern.id}">Get Remediation Path</button>
+          <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
+        </div>
+      </div>` : ''}`;
+    return;
+  }
+
+  const patterns = detectPatterns(ps).patterns;
+  const ranked = [...patterns]
+    .map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }))
+    .sort((a, b) => b.score - a.score);
+  const top = ranked.slice(0, 3);
+  const session = calcSessionMetrics(ps, patterns);
+  const totalPatternCost = patterns.reduce((s, pat) => s + patternCost(pat), 0);
+  const potentialSavings = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+  const riskBacklog = ranked.filter(x => patternOpenCount(x.pat) > 0).length;
+  const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
+  const topPattern = top[0]?.pat;
+  const selectedPattern = patterns.find(p => p.id === patternExplorerState.selectedId) || topPattern;
+
+  const rows = top.map(({ pat, score }, i) => `
+    <div class="snap-row ${pat.id === selectedPattern?.id ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
+      <div class="snap-rank">#${i + 1}</div>
+      <div>
+        <div class="snap-name">${pat.title}</div>
+        <div class="snap-meta">${highImpactReason(pat, patterns) || `Priority score ${score}`}</div>
+      </div>
+      <div class="snap-num">${pat.occurrences}x</div>
+      <div class="snap-num">${fmtC(patternCost(pat))}</div>
+      <div class="snap-num">${patternOpenCount(pat)}</div>
+      <div class="snap-num">${patternConfidenceScore(pat)}</div>
+      <div class="snap-trend ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend[0] + pat.trend.slice(1).toLowerCase()}</div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="snap-head">
+      <div>
+        <div class="snap-title">Recurring Pattern Summary</div>
+        <div class="snap-sub">${patternOccurrences} grouped problems from ${ps.length} total · ${riskBacklog} operational risk backlog</div>
+      </div>
+      <div class="snap-actions">
+        <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
+        <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selectedPattern?.id || ''}" ${selectedPattern ? '' : 'disabled'}>Get Remediation Path</button>
+      </div>
+    </div>
+    <div class="snap-body">
+      <div class="snap-list">
+        <div class="snap-row snap-row-head">
+          <div>Rank</div><div>Pattern</div><div>Occ</div><div>Cost</div><div>Open</div><div>Conf</div><div>Trend</div>
+        </div>
+        ${rows || '<div class="exec-empty">No recurring patterns detected in the current filter.</div>'}
+      </div>
+    </div>`;
 }
 
 // ── COST BANNER ──
 function renderCostBanner(ps){
   if(persona==='executive'){
-    const groups=groupForExecutive(ps);
-    const openGroups=groups.filter(g=>g.status==='OPEN');
-    const hiImpact=groups.filter(g=>g.impact>=75);
+    const patterns=detectPatterns(ps).patterns;
+    const patternOccurrences=patterns.reduce((s, pat)=>s+pat.occurrences,0);
+    const oneOffCount=ps.length-patternOccurrences;
+    const openPatterns=patterns.filter(pat=>pat.problems.some(p=>p.status==='OPEN'));
+    const hiImpact=patterns.filter(pat=>isHighImpactPattern(pat, patterns));
     const allResolved=ps.filter(p=>p.status==='RESOLVED'&&p.dur);
-    const avgDur=allResolved.length?Math.round(allResolved.reduce((s,p)=>s+(p.dur||0),0)/allResolved.length):0;
-    document.getElementById('cbHead').textContent=`${groups.length} distinct incident pattern${groups.length!==1?'s':''} across ${ps.length} occurrences in the ${getTimeLabel()}`;
-    document.getElementById('cbSub').textContent=`${openGroups.length} patterns currently active · ${hiImpact.length} high-impact patterns`;
+    const appFilter = document.getElementById('appFilter').value;
+    const avgDur=persona==='executive'&&!appFilter&&MTTR_SUMMARY
+      ? MTTR_SUMMARY.avg
+      : allResolved.length?allResolved.reduce((s,p)=>s+(p.dur||0),0)/allResolved.length:0;
+    document.getElementById('cbHead').textContent=`${patterns.length} distinct incident pattern${patterns.length!==1?'s':''} across ${patternOccurrences} grouped problems in the ${getTimeLabel()}`;
+    document.getElementById('cbSub').textContent=`${ps.length} total problems · ${oneOffCount} one-off · ${openPatterns.length} active patterns · ${hiImpact.length} high-impact patterns`;
     document.getElementById('cbStats').innerHTML=`
-      <div class="cb-stat"><div class="cb-stat-val">${groups.length}</div><div class="cb-stat-lbl">Incident Patterns</div></div>
-      <div class="cb-stat"><div class="cb-stat-val" style="color:var(--amber)">${openGroups.length}</div><div class="cb-stat-lbl">Active Now</div></div>
+      <div class="cb-stat"><div class="cb-stat-val">${patterns.length}</div><div class="cb-stat-lbl">Incident Patterns</div></div>
+      <div class="cb-stat"><div class="cb-stat-val" style="color:var(--amber)">${openPatterns.length}</div><div class="cb-stat-lbl">Active Now</div></div>
       <div class="cb-stat"><div class="cb-stat-val recurring">${hiImpact.length}</div><div class="cb-stat-lbl">High Impact</div></div>
       <div class="cb-stat"><div class="cb-stat-val">${fmtM(avgDur)}</div><div class="cb-stat-lbl">Avg Resolution</div></div>`;
     return;
@@ -423,21 +676,14 @@ const HDR={exp:'',check:'',biz:'Business Incident',title:'Problem',sev:'Severity
 
 // ── EXECUTIVE GROUPING ──
 function groupForExecutive(ps) {
-  const map = new Map();
-  ps.forEach(p => {
-    const key = p.title;
-    if (!map.has(key)) {
-      map.set(key, { key, title: p.title, items: [] });
-    }
-    map.get(key).items.push(p);
-  });
-  return Array.from(map.values()).map(g => {
-    const items = g.items;
+  const { patterns } = detectPatterns(ps);
+  return patterns.map(pat => {
+    const items = pat.problems;
     const openItems = items.filter(p => p.status === 'OPEN');
     const resolved = items.filter(p => p.status === 'RESOLVED' && p.dur);
     const avgDur = resolved.length ? Math.round(resolved.reduce((s,p)=>s+(p.dur||0),0)/resolved.length) : null;
-    const lastSeen = Math.max(...items.map(p => p.start));
-    const firstSeen = Math.min(...items.map(p => p.start));
+    const lastSeen = pat.lastSeen;
+    const firstSeen = pat.firstSeen;
     const impact = Math.max(...items.map(p => p.impact||0));
     const ic = impact>=75?'hi':impact>=45?'md':'lo';
     const sev = items.reduce((best,p)=>{
@@ -471,9 +717,9 @@ function groupForExecutive(ps) {
             : (ratio <= 0.5 && significant) ? 'improving'
             : 'stable';
     }
-    return { key:g.key, title:g.title, status, count:items.length, openCount:openItems.length,
+    return { key:pat.id, title:pat.title, status, count:pat.occurrences, openCount:openItems.length,
              sev, impact, ic, avgDur, lastSeen, firstSeen, ageDays, repId,
-             trend, recentCount, priorCount };
+             trend, recentCount, priorCount, pattern: pat };
   }).sort((a,b)=>{
     // Open first, then by impact desc
     if(a.status!==b.status) return a.status==='OPEN'?-1:1;
@@ -582,6 +828,7 @@ function renderExpContent(p){
     <div class="exp-topfix">
       <span class="exp-fix-label">✅ Top Fix</span>
       <span class="exp-fix-text">${cache.topFix}</span>
+      ${cache.dynatraceFeature?`<span class="ai-rec-feature">Dynatrace: ${cache.dynatraceFeature}</span>`:''}
     </div>
     <div class="exp-actions">
       ${cloudTag}
@@ -831,11 +1078,17 @@ function showRemPanel(pid) {
   remProblem = PROBLEMS.find(p => p.id === pid);
   if (!remProblem) return;
   renderRemPanel();
+  const drawer = document.getElementById('remPanel')?.closest('details');
+  if (drawer) drawer.open = true;
   document.getElementById('remPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function renderRemPanel() {
   const el = document.getElementById('remBody');
+  if (remediationState?.status && remediationState.status !== 'legacy') {
+    renderPatternRemediationPanel();
+    return;
+  }
   if (!remProblem) {
     el.innerHTML = '<div class="rem-empty"><div class="rem-empty-icon">🛸</div><div style="font-size:12px;color:var(--text-3)">Select a problem to see remediation options</div></div>';
     return;
@@ -934,6 +1187,279 @@ function renderRemPanel() {
       <div class="mat-track">${matSegsHtml}</div>
       <div class="mat-labels">${matLabels.map((l, i) => `<div class="mat-label ${i === matStage ? 'active' : ''}">${l}</div>`).join('')}</div>
     </div>`;
+}
+
+function findPatternById(patternId) {
+  return detectPatterns(getFiltered()).patterns.find(p => p.id === patternId) || null;
+}
+
+function renderEvidenceSummary(evidence) {
+  if (!evidence) return '';
+  const rows = [
+    ['Pattern', evidence.patternName],
+    ['Problems', `${evidence.groupedProblemCount} grouped, ${evidence.openProblemCount} open`],
+    ['Cost', `${fmtC(evidence.operationalCost)} exposure, ${fmtC(evidence.potentialSavings)} modeled savings`],
+    ['Entities', (evidence.affectedServices || []).slice(0, 4).join(', ') || 'not available'],
+    ['RCA', evidence.rootCauseSummary || 'not consistently identified'],
+    ['MTTR', evidence.mttr ? fmtM(evidence.mttr) : 'not available'],
+    ['Confidence', `${evidence.confidenceScore}/100, fixability ${evidence.fixabilityScore}/100`],
+  ];
+  return `<div class="rem-context">${rows.map(([k, v]) => `
+    <div class="rem-ctx-row"><span class="rem-ctx-label">${k}</span><span class="rem-ctx-val">${v}</span></div>`).join('')}</div>`;
+}
+
+function renderAssistRemediationResponse(response, evidence=null) {
+  if (!response) return '';
+  if (typeof response === 'string') {
+    try { return renderAssistRemediationResponse(extractJSON(response), evidence); }
+    catch { return `<div class="rem-assist-text">${attrText(response)}</div>`; }
+  }
+  const renderValue = value => {
+    if (value == null || value === '') return '';
+    if (Array.isArray(value)) {
+      return `<ul>${value.map(v => `<li>${renderInlineValue(v)}</li>`).join('')}</ul>`;
+    }
+    if (typeof value === 'object') {
+      return `<div class="rem-kv-list">${Object.entries(value)
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => `<div class="rem-kv-row"><span>${humanizeKey(k)}</span><strong>${renderInlineValue(v)}</strong></div>`)
+        .join('')}</div>`;
+    }
+    return `<div>${attrText(value)}</div>`;
+  };
+  const renderInlineValue = value => {
+    if (value == null) return '';
+    if (Array.isArray(value)) return value.map(renderInlineValue).filter(Boolean).join(', ');
+    if (typeof value === 'object') {
+      return Object.entries(value)
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => `${humanizeKey(k)}: ${renderInlineValue(v)}`)
+        .join('; ');
+    }
+    return attrText(value);
+  };
+  const humanizeKey = key => String(key)
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, ch => ch.toUpperCase());
+  const recs = Array.isArray(response.recommendations) ? response.recommendations : [];
+  const phaseRecs = recs.length ? recs : [
+    response.immediateRemediation ? { priority:'IMMEDIATE', title:'Immediate remediation', description:response.immediateRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
+    response.shortTermRemediation ? { priority:'SHORT_TERM', title:'Short-term remediation', description:response.shortTermRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
+    response.strategicRemediation ? { priority:'STRATEGIC', title:'Strategic remediation', description:response.strategicRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
+  ].filter(Boolean);
+  const priMeta = {
+    IMMEDIATE: { tier:'immediate', label:'Immediate', time:'Now', cls:'act-auto', recommended:true },
+    SHORT_TERM: { tier:'short', label:'Short term', time:'Days', cls:'act-semi', recommended:false },
+    STRATEGIC: { tier:'strategic', label:'Strategic', time:'Weeks', cls:'act-manual', recommended:false },
+  };
+  const confText = String(response.confidenceLevel || response.confidence_level || 'MEDIUM').toUpperCase();
+  const confPct = confText === 'HIGH' ? 85 : confText === 'MEDIUM' ? 60 : 35;
+  const confColor = confPct >= 75 ? 'var(--green)' : confPct >= 50 ? 'var(--amber)' : 'var(--coral)';
+  const recCards = phaseRecs.map((rec, idx) => {
+    const pri = String(rec.priority || (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC')).toUpperCase();
+    const meta = priMeta[pri] || priMeta.STRATEGIC;
+    const feature = rec.dynatraceFeature || rec.dynatrace_feature
+      || (response.suggestedDynatraceCapabilities || response.suggested_dynatrace_capabilities || [])[idx];
+    return `<div class="rem-opt tier-${meta.tier} ${meta.recommended ? 'recommended' : ''}">
+      ${feature ? `<div class="rem-feature-top"><span>Dynatrace capability</span><strong>${renderInlineValue(feature)}</strong></div>` : ''}
+      <div class="rem-opt-header">
+        <span class="rem-opt-label">${attrText(rec.title || meta.label)}</span>
+        <span class="tier-badge ${meta.tier}">${meta.label}</span>
+        <span class="rem-opt-time">${meta.time}</span>
+      </div>
+      <div class="rem-conf">
+        <span class="rem-conf-lbl">Confidence</span>
+        <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${confPct}%;background:${confColor}"></div></div>
+        <span class="rem-conf-pct" style="color:${confColor}">${confText}</span>
+      </div>
+      <div class="ai-rec-footer">
+        ${rec.estimatedImpact ? `<span class="ai-rec-impact">${renderInlineValue(rec.estimatedImpact)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  const disclosure = (title, value) => {
+    if (!value || (Array.isArray(value) && !value.length)) return '';
+    const count = Array.isArray(value) ? `${value.length} items` : 'View details';
+    return `<details class="rem-disclosure"><summary><span><strong>${title}</strong><small>${count}</small></span><b>+</b></summary><div class="rem-disclosure-body">${renderValue(value)}</div></details>`;
+  };
+  const expectedReduction = response.expectedOperationalCostReduction || response.expected_operational_cost_reduction || (evidence?.potentialSavings ? fmtC(evidence.potentialSavings) : 'Not yet estimated');
+  const effort = response.estimatedImplementationEffort || response.estimated_implementation_effort || 'Confirm with the accountable team';
+  const recommendedNext = response.immediateRemediation || response.immediate_remediation || phaseRecs[0]?.title || response.recommendedRemediationPath || response.recommended_remediation_path || 'Validate the recommended path';
+  const whyNow = response.recommendedRemediationPath || response.recommended_remediation_path || 'This path prioritizes the next action while evidence and ownership are available.';
+  const whyRows = evidence ? [
+    ['Recurrence', `${evidence.occurrenceCount || evidence.groupedProblemCount || 0} occurrences`],
+    ['Cost impact', fmtC(evidence.operationalCost || 0)],
+    ['Open incidents', evidence.openProblemCount || 0],
+    ['RCA confidence', `${evidence.rcaConfidence ?? evidence.confidenceScore ?? 0}%`],
+    ['Trend', evidence.trend || 'Not available'],
+  ] : [];
+  return `
+    <div class="rem-exec-summary">
+      <div class="rem-assist-title">Executive Remediation Summary</div>
+      <h3>${attrText(evidence?.patternName || 'Selected pattern')}</h3>
+      <div class="rem-exec-grid">
+        <div><span>Expected cost reduction</span><strong>${renderInlineValue(expectedReduction)}</strong></div>
+        <div><span>Confidence</span><strong>${confText}</strong></div>
+        <div><span>Effort / horizon</span><strong>${renderInlineValue(effort)}</strong></div>
+      </div>
+      <div class="rem-next-step"><span>Recommended next step</span><strong>${renderInlineValue(recommendedNext)}</strong></div>
+      <p>${renderInlineValue(whyNow)}</p>
+    </div>
+    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Remediation Path</div><div class="rem-options">${recCards}</div></div>` : ''}
+    ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
+    ${disclosure('Supporting evidence', response.supportingEvidence || response.supporting_evidence_used)}
+    ${disclosure('Missing evidence / next validation steps', response.missingEvidenceOrNextValidationSteps || response.missing_evidence_or_next_validation_steps)}
+  `;
+}
+
+function buildExecutivePatternPrompt(request) {
+  return `Brief a C-level executive. Plain English only - no pods, JVM, heap, GC, DQL, or low-level engineering terms. Focus on business impact, customer experience, revenue risk, and immediate, short-term, and strategic remediation.
+
+CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number from the data, such as cost, percentage, count, or duration. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure. Remediation should be strategic, immediate, and short term.
+
+Use only this RemediationRequest evidence. If evidence is missing, say what validation is needed.
+
+Respond ONLY with valid JSON matching this shape:
+{
+  "summary": "2-3 executive sentences; every sentence includes at least one specific number from the request",
+  "patterns": ["Each item includes at least one specific number from the request"],
+  "costNarrative": "Executive cost and revenue-risk narrative referencing the estimated cost figure",
+  "recommendations": [
+    {"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"strategic recommendation referencing the estimated cost figure","dynatraceFeature":"string","estimatedImpact":"string","owner":"string"}
+  ],
+  "recommendedRemediationPath": "string",
+  "immediateRemediation": "string",
+  "shortTermRemediation": "string",
+  "strategicRemediation": "string",
+  "whySuggested": "string",
+  "supportingEvidence": ["string"],
+  "suggestedDynatraceCapabilities": ["string"],
+  "estimatedImplementationEffort": "string",
+  "expectedOperationalCostReduction": "string",
+  "missingEvidenceOrNextValidationSteps": ["string"],
+  "confidenceLevel": "LOW|MEDIUM|HIGH"
+}
+
+RemediationRequest:
+${JSON.stringify(request, null, 2)}`;
+}
+
+function normalizePatternAssistResponse(response, request) {
+  const fallbackCost = fmtC(request?.operationalCost || 0);
+  if (!response || typeof response === 'string') {
+    return {
+      summary: response || `${request.patternName} has ${request.occurrenceCount} occurrences and ${fallbackCost} estimated cost exposure.`,
+      patterns: [`${request.patternName} appears ${request.occurrenceCount} times with ${fallbackCost} estimated cost exposure.`],
+      costNarrative: `${request.groupedProblemCount} grouped problems create ${fallbackCost} in recurring cost exposure.`,
+      recommendations: [
+        { priority:'IMMEDIATE', title:'Stabilize the highest-cost recurring issue', description:`Contain the pattern now because it represents ${fallbackCost} in estimated cost exposure.`, dynatraceFeature:'Dynatrace Assist', estimatedImpact:`Reduce exposure against ${fallbackCost}`, owner:request.ownerTeam || 'Operations leadership' },
+      ],
+      generatedBy:'davis-copilot',
+      latencyMs:0,
+    };
+  }
+  return {
+    summary: response.summary || `${request.patternName} has ${request.occurrenceCount} occurrences and ${fallbackCost} estimated cost exposure.`,
+    patterns: Array.isArray(response.patterns) && response.patterns.length ? response.patterns : [`${request.patternName} appears ${request.occurrenceCount} times with ${fallbackCost} estimated cost exposure.`],
+    costNarrative: response.costNarrative || response.expectedOperationalCostReduction || `${request.groupedProblemCount} grouped problems create ${fallbackCost} in recurring cost exposure.`,
+    recommendations: Array.isArray(response.recommendations) && response.recommendations.length ? response.recommendations : [
+      { priority:'IMMEDIATE', title:'Stabilize the recurring issue', description:`Prioritize this pattern because it represents ${fallbackCost} in estimated cost exposure.`, dynatraceFeature:'Dynatrace Assist', estimatedImpact:`Reduce exposure against ${fallbackCost}`, owner:request.ownerTeam || 'Operations leadership' },
+      { priority:'SHORT_TERM', title:'Assign an accountable owner', description:`Assign ownership for ${request.occurrenceCount} recurring occurrences and track reduction against ${fallbackCost}.`, dynatraceFeature:'Ownership and Routing', estimatedImpact:`Lower recurrence from ${request.occurrenceCount} occurrences`, owner:request.ownerTeam || 'Service owner' },
+      { priority:'STRATEGIC', title:'Fund recurrence prevention', description:`Create a prevention plan for the ${fallbackCost} recurring cost exposure before it becomes repeat revenue risk.`, dynatraceFeature:'Business Analytics', estimatedImpact:`Reduce modeled exposure of ${fallbackCost}`, owner:'Executive sponsor' },
+    ],
+    generatedBy:'davis-copilot',
+    latencyMs:0,
+  };
+}
+
+function renderPatternRemediationPanel() {
+  const el = document.getElementById('remBody');
+  if (!el) return;
+  const state = remediationState || { status:'empty' };
+  if (state.status === 'loading') {
+    el.innerHTML = `
+      <div class="rem-empty">
+        <div class="ai-ring"></div>
+        <div style="font-size:12px;color:var(--text-3)">Generating remediation path from Dynatrace Assist...</div>
+      </div>
+      ${renderEvidenceSummary(state.evidence)}`;
+    return;
+  }
+  if (state.status === 'error') {
+    el.innerHTML = `
+      <div class="rem-empty">
+        <div style="font-size:12px;color:var(--coral)">Unable to generate remediation path. Pattern evidence is still available.</div>
+      </div>
+      ${renderEvidenceSummary(state.evidence)}`;
+    return;
+  }
+  if (state.status === 'done') {
+    el.innerHTML = renderAssistRemediationResponse(state.response, state.evidence);
+    return;
+  }
+  el.innerHTML = '<div class="rem-empty"><div style="font-size:12px;color:var(--text-3)">Select a pattern to request remediation guidance.</div></div>';
+}
+
+async function getPatternRemediation(patternId, opts={}) {
+  const { openDrawers=true, scroll=true } = opts;
+  const pat = findPatternById(patternId);
+  if (!pat) {
+    remediationState = { status:'empty', patternId:null, evidence:null, response:null, error:null };
+    renderPatternRemediationPanel();
+    return;
+  }
+  remediationPatternId = pat.id;
+  const patterns = detectPatterns(getFiltered()).patterns;
+  const { request, evidenceHash } = buildRemediationRequest(pat, patterns);
+  const cacheKey = `${pat.id}:${evidenceHash}`;
+  const drawer = document.getElementById('remPanel')?.closest('details');
+  if (openDrawers && drawer) drawer.open = true;
+  if (openDrawers) openAnalysisDrawer();
+  if (scroll) document.getElementById('remPanel')?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+  if (remediationCache.has(cacheKey)) {
+    const cached = remediationCache.get(cacheKey);
+    remediationState = { status:'done', patternId:pat.id, evidence:request, response:cached, error:null };
+    lastAIResult = normalizePatternAssistResponse(cached, request);
+    aiState = 'result';
+    renderPatternRemediationPanel();
+    renderAIPanel(pat.problems || []);
+    if (persona === 'executive') rerenderPatternsView();
+    return;
+  }
+
+  remediationState = { status:'loading', patternId:pat.id, evidence:request, response:null, error:null };
+  aiState = 'loading';
+  renderPatternRemediationPanel();
+  renderAIPanel(pat.problems || []);
+  try {
+    const prompt = buildExecutivePatternPrompt(request);
+    window.__OPINT_LAST_REMEDIATION_PROMPT__ = prompt;
+    window.__OPINT_LAST_REMEDIATION_REQUEST__ = request;
+    console.log('[OpInt Davis] full remediation prompt:', prompt);
+    console.log('[OpInt Davis] remediation request:', request);
+    const raw = await callDavisSkill(prompt);
+    window.__OPINT_LAST_REMEDIATION_RESPONSE__ = raw;
+    console.log('[OpInt Davis] raw remediation response:', raw);
+    let parsed;
+    try { parsed = extractJSON(raw); }
+    catch { parsed = raw; }
+    remediationCache.set(cacheKey, parsed);
+    if (remediationPatternId !== pat.id) return;
+    remediationState = { status:'done', patternId:pat.id, evidence:request, response:parsed, error:null };
+    lastAIResult = normalizePatternAssistResponse(parsed, request);
+    aiState = 'result';
+  } catch (err) {
+    console.warn('[OpInt Davis] pattern remediation failed:', err.message || err);
+    if (remediationPatternId !== pat.id) return;
+    remediationState = { status:'error', patternId:pat.id, evidence:request, response:null, error:err };
+    lastAIResult = normalizePatternAssistResponse(null, request);
+    aiState = 'result';
+  }
+  renderPatternRemediationPanel();
+  renderAIPanel(pat.problems || []);
+  if (persona === 'executive') rerenderPatternsView();
 }
 
 // ---- Action Handlers ----
@@ -1154,10 +1680,18 @@ function onProviderChange(){
   document.getElementById('extEndpointRow').style.display=p==='bedrock'?'none':'';
 }
 
+function openAnalysisDrawer() {
+  if (persona === 'executive') return;
+  const card = document.getElementById('aiCard');
+  const drawer = card?.closest('details');
+  if (drawer) drawer.open = true;
+}
+
 function extTriage(pid){
   const p=PROBLEMS.find(x=>x.id===pid);
   if(!p)return;
   switchAISrc('external');
+  openAnalysisDrawer();
   document.getElementById('aiCard').scrollIntoView({behavior:'smooth',block:'nearest'});
   setTimeout(()=>{
     selectedIds.clear();selectedIds.add(pid);
@@ -1168,12 +1702,14 @@ function extTriage(pid){
 function deepAnalyze(pid){
   selectedIds.clear();selectedIds.add(pid);
   switchAISrc('davis');
+  openAnalysisDrawer();
   analyzeMulti();
 }
 
 // ── MULTI-PROBLEM AI ANALYSIS ──
 async function analyzeMulti(){
   if(selectedIds.size===0)return;
+  openAnalysisDrawer();
   const ps=getFiltered().filter(p=>selectedIds.has(p.id));
   aiState='loading';
   renderAIPanel(ps);
@@ -1192,7 +1728,7 @@ async function analyzeMulti(){
 function renderAIPanel(ps){
   const el=document.getElementById('aiContent');
   if(aiState==='idle'){
-    el.innerHTML=`<div class="ai-idle"><div class="ai-idle-icon">${PMETA[persona].icon}</div><div style="font-size:12px;color:var(--text-3)">Expand a row for inline summary · select problems for cross-problem analysis</div><div class="ai-idle-hint">✦ Persona-tuned insights · plain language · ranked actions</div></div>`;
+    el.innerHTML=`<div class="ai-idle"><div style="font-size:12px;color:var(--text-3)">Expand a row for inline context or select problems for cross-problem analysis.</div><div class="ai-idle-hint">Pattern context · ranked actions</div></div>`;
     return;
   }
   if(aiState==='loading'){
@@ -1224,10 +1760,29 @@ function renderAIPanel(ps){
       <div class="ai-rec">
         <div class="ai-rec-top"><span class="pri ${rec.priority}">${rec.priority.replace('_',' ')}</span><span class="ai-rec-title">${rec.title}</span></div>
         <div class="ai-rec-desc">${rec.description}</div>
+        ${recommendationFeature(rec)?`<div class="ai-rec-feature">Dynatrace: ${recommendationFeature(rec)}</div>`:''}
         <div class="ai-rec-footer"><span class="ai-rec-impact">✓ ${rec.estimatedImpact}</span><span class="ai-rec-owner">${rec.owner}</span></div>
       </div>`).join('')}</div>
     <div class="ai-meta"><div class="ai-meta-txt">${r.generatedBy==='davis-copilot'?'✦ Davis CoPilot':r.generatedBy==='external'?`🔌 ${getProviderLabel()}`:'✦ Demo mode'} · ${PMETA[persona].label} · ${ps?ps.length:selectedIds.size} problem${(ps?ps.length:selectedIds.size)!==1?'s':''}</div><div class="ai-meta-ms">${r.latencyMs}ms</div></div>
   </div>`;
+}
+
+function recommendationFeature(rec){
+  if (rec?.dynatraceFeature) return rec.dynatraceFeature;
+  const text = `${rec?.title || ''} ${rec?.description || ''}`.toLowerCase();
+  if (text.includes('debug') || text.includes('code') || text.includes('exception') || text.includes('defect')) return 'Live Debugger';
+  if (text.includes('aws')) return 'AWS DevOps Agent';
+  if (text.includes('azure')) return 'Azure DevOps Agent';
+  if (text.includes('gcp') || text.includes('google cloud')) return 'GCP DevOps Agent';
+  if (text.includes('release') || text.includes('deploy') || text.includes('change')) return 'Release Management';
+  if (text.includes('slo') || text.includes('reliability target')) return 'Service-Level Objectives';
+  if (text.includes('customer') || text.includes('experience') || text.includes('journey')) return 'Digital Experience Monitoring';
+  if (text.includes('revenue') || text.includes('business') || text.includes('cost')) return 'Business Analytics';
+  if (text.includes('workflow') || text.includes('ticket') || text.includes('approval')) return 'Workflows';
+  if (text.includes('runbook') || text.includes('automation') || text.includes('autonomous')) return 'AutomationEngine';
+  if (text.includes('owner') || text.includes('routing') || text.includes('rca') || text.includes('root cause')) return 'Ownership and Routing';
+  if (text.includes('cloud') || text.includes('kubernetes') || text.includes('capacity') || text.includes('infrastructure')) return 'Infrastructure and Cloud Observability';
+  return 'Davis AI';
 }
 
 function getProviderLabel(){
@@ -1323,7 +1878,9 @@ function renderSubBucketContent(sbId) {
 
   const confBadge = ins.confidence != null
     ? `<span class="sb-conf-badge ${confClass(ins.confidence)}">${confLabel(ins.confidence)}${Math.round(ins.confidence * 100)}% confidence</span>` : '';
-  return `<div class="pc-ai-summary-row">${confBadge}<div class="pc-ai-summary">${ins.summary || ''}</div></div>${remHtml}`;
+  const featureHtml = ins.dynatraceFeature
+    ? `<div class="pc-ai-rem-reason">Dynatrace: ${ins.dynatraceFeature}</div>` : '';
+  return `<div class="pc-ai-summary-row">${confBadge}<div class="pc-ai-summary">${ins.summary || ''}</div>${featureHtml}</div>${remHtml}`;
 }
 
 const REMEDIATION_CATALOG = `Auto (fully autonomous):
@@ -1337,6 +1894,25 @@ Semi-auto (human initiates, tool executes):
   ansible | Ansible / AWX Runbook | ~15–30 min — on-premise or Linux hosts
 Manual:
   manual | Manual Engineering Ticket | ~2–8 hrs — always valid as last resort`;
+
+const DYNATRACE_OBSERVABILITY_FEATURES = `Broad Dynatrace features and action capabilities to recommend when relevant:
+  Davis AI - problem analysis, impact explanation, root-cause guidance, and prioritization
+  Live Debugger - capture code-level context for defects without redeploying
+  AWS DevOps Agent - automate AWS remediation actions and cloud operations
+  Azure DevOps Agent - automate Azure remediation actions and cloud operations
+  GCP DevOps Agent - automate Google Cloud remediation actions and cloud operations
+  Release Management - correlate incidents with deployments, releases, and change risk
+  Workflows - orchestrate notifications, tickets, approvals, and runbooks
+  AutomationEngine - standardize repeatable remediation and operational tasks
+  Site Reliability Guardian - validate service health, release readiness, and reliability objectives
+  Service-Level Objectives - manage reliability targets and error-budget risk
+  Ownership and Routing - route recurring problems to accountable teams with context
+  Digital Experience Monitoring - connect incidents to user journeys and customer experience
+  Business Analytics - connect incidents to revenue, conversion, and business process impact
+  Application Observability - improve reliability of customer-facing applications and services
+  Infrastructure and Cloud Observability - manage host, Kubernetes, cloud, and capacity risk
+
+Use these broad feature names only. Do not recommend granular telemetry sources such as Distributed Traces, Logs, Metrics, events, spans, stack traces, or dashboards as the feature.`;
 
 async function fetchSubBucketInsight(sb) {
   subBucketInsights.set(sb.id, { state: 'loading' });
@@ -1363,10 +1939,14 @@ Occurrences: ${JSON.stringify(ctx)}
 
 IMPORTANT: The summary MUST reference at least one specific metric (cost, count, duration, or RCA %) from the data above.
 
+Recommend the best broad Dynatrace feature or action capability that would help address or prevent this cluster:
+${DYNATRACE_OBSERVABILITY_FEATURES}
+
 Choose the best remediation tool for each tier:
 ${REMEDIATION_CATALOG}
 
 JSON format (pick exactly one tool per tier):
+Include a top-level "dynatraceFeature" string containing one broad Dynatrace feature or action capability from the list above.
 {"summary":"2 sentence summary referencing specific metrics (cost/duration/count)","remediationPath":{"auto":{"tool":"<id>","label":"<name>","reason":"one sentence why","time":"<estimate>"},"semi":{"tool":"<id>","label":"<name>","reason":"one sentence why","time":"<estimate>"},"manual":{"tool":"manual","label":"Manual Engineering Ticket","reason":"one sentence on investigation needed","time":"~2–8 hrs"}}}`;
     const raw = await callDavisSkill(prompt);
     console.log('[OpInt Davis] sub-bucket raw for', sb.entityLabel, ':', raw);
@@ -1392,10 +1972,13 @@ function schedulePatternInsights(patterns) {
 // ── INLINE AI CALL ──
 async function callInlineAI(p,persona){
   const cost=calcCost(p);
-  const prompt=`Analyze this single Dynatrace problem for a ${persona}. Respond ONLY with JSON: {"summary":"2 sentence plain summary","topFix":"one sentence describing the single best immediate fix"}
+  const prompt=`Analyze this single Dynatrace problem for a ${persona}. Respond ONLY with JSON: {"summary":"2 sentence plain summary","topFix":"one sentence describing the single best immediate fix","dynatraceFeature":"one broad Dynatrace feature or action capability that helps address or prevent this problem"}
 
 Problem: ${JSON.stringify({title:p.title,severity:p.sev,status:p.status,duration:p.dur,affectedUsers:p.users,hasRootCause:p.hasRCA,rootCause:p.rca,recurrenceScore:p.rec,estimatedCost:cost.total})}
-Persona rules: ${persona==='executive'?'Plain English, no jargon, business focus':persona==='developer'?'Technical, code-level, specific service names':'Full technical with infrastructure context'}`;
+Persona rules: ${persona==='executive'?'Plain English, no jargon, business focus':persona==='developer'?'Technical, code-level, specific service names':'Full technical with infrastructure context'}
+Dynatrace feature rules:
+${DYNATRACE_OBSERVABILITY_FEATURES}
+The topFix may be operational or technical, but dynatraceFeature must be broad and must not be Distributed Traces, Logs, Metrics, events, spans, stack traces, or dashboards.`;
   const raw = await callDavisSkill(prompt);
   console.log('[OpInt Davis] callInlineAI raw:', raw);
   return extractJSON(raw);
@@ -1474,9 +2057,10 @@ async function callAIWithPrompt(ps,persona,costs,totalCost,source){
   const t0=Date.now();
   const PINSTR={
     executive:`Brief a C-level executive. Plain English only — no pods, JVM, heap, GC, DQL. Focus on business impact, customer experience, revenue risk. CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number (cost, %, count, or duration) from the data. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure.`,
-    developer:`Brief a software developer. Technical root cause analysis. Name services, error types, config values. Recommend specific code-level or config-level fixes.`,
-    sre:`Brief an SRE. Full operational analysis. Include infrastructure signals, alert noise assessment, SLO impact, runbook steps, blast radius.`,
+    developer:`Brief a software developer. Technical root cause analysis. Name services, error types, config values. Recommend specific code-level or config-level fixes. Each recommendation must also name one broad Dynatrace feature or action capability that supports diagnosis, prevention, or ownership.`,
+    sre:`Brief an SRE. Full operational analysis. Include infrastructure signals, alert noise assessment, SLO impact, runbook steps, blast radius. Each recommendation must also name one broad Dynatrace feature or action capability that supports reliability operations.`,
   };
+  PINSTR.executive = `Brief a C-level executive. Plain English only - no pods, JVM, heap, GC, DQL, or low-level engineering terms. Focus on business impact, customer experience, revenue risk, and immediate, short-term, and strategic remediation. CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number (cost, %, count, or duration) from the data. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure. Remediation should be immediate, short term, and strategic.`;
   const ctx=ps.map((p,i)=>({title:p.title,severity:p.sev,status:p.status,duration:p.dur,affectedUsers:p.users,hasRootCause:p.hasRCA,rootCause:p.rca,services:p.svcs,recurrenceScore:p.rec,estimatedCost:costs[i]?.total||0,cloud:p.cloud,region:p.region}));
   const rcaCount   = ps.filter(p=>p.hasRCA).length;
   const rcaPct     = ps.length ? Math.round(rcaCount/ps.length*100) : 0;
@@ -1487,8 +2071,10 @@ async function callAIWithPrompt(ps,persona,costs,totalCost,source){
 TOTAL COST: $${totalCost.toLocaleString()}
 KEY METRICS: ${rcaPct}% auto-correlated (${rcaCount}/${ps.length} problems have RCA), ${noiseCount} noise-suppressed events, ${openCount} currently open, ${metrics.patternCount} recurring patterns, ${metrics.recurringCostPct}% of cost from recurring issues, avg MTTR ${metrics.avgMttr} minutes, MTTR delta ${metrics.mttrDeltaPct}%, ${metrics.newPatterns} new patterns, ${metrics.resolvedPatterns} resolved patterns, ${metrics.topTech} accounts for ${metrics.topTechCostPct}% of operational cost.
 PROBLEMS: ${JSON.stringify(ctx)}
+BROAD DYNATRACE FEATURES AND ACTION CAPABILITIES:
+${DYNATRACE_OBSERVABILITY_FEATURES}
 IMPORTANT: Every insight in "summary" and "patterns" MUST reference at least one specific metric (cost %, count, duration, or percentage) from the data above. Do not make generic statements without metric backing.
-Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrative":"string","recommendations":[{"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"string","estimatedImpact":"string","owner":"string"}]}`;
+Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrative":"string","recommendations":[{"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"string","dynatraceFeature":"one broad Dynatrace feature or action capability from the list","estimatedImpact":"string","owner":"string"}]}`;
   let text='';
   if(source==='davis-copilot'){
     text = await callDavisSkill(prompt);
@@ -1528,8 +2114,8 @@ function getFallbackMulti(ps,persona,costs){
     patterns:[`${metrics.patternCount} recurring patterns account for ${metrics.recurringCostPct}% of operational cost`,`Average MTTR is ${metrics.avgMttr} minutes with a ${metrics.mttrDeltaPct}% modeled movement versus the prior period`,`${metrics.topTech} accounts for ${metrics.topTechCostPct}% of operational cost`],
     costNarrative:`These ${ps.length} incidents represent approximately ${fmtC(total)} in combined revenue and engineering costs, with ${metrics.recurringCostPct}% tied to recurring issues.`,
     recommendations:[
-      {priority:'IMMEDIATE',title:'Address open incidents now',description:'Triage and escalate all OPEN status problems immediately. Follow existing runbooks.',estimatedImpact:'Stop active customer impact',owner:'on-call SRE'},
-      {priority:'SHORT_TERM',title:'Mandate root cause documentation',description:'Require RCA entry before closing P1/P2 problems. Reduces recurrence by ~35%.',estimatedImpact:'Reduce recurrence within 60 days',owner:'team:sre'},
+      {priority:'IMMEDIATE',title:'Address open incidents now',description:'Triage and escalate all OPEN status problems immediately. Follow existing runbooks.',dynatraceFeature:'Davis AI',estimatedImpact:'Stop active customer impact',owner:'on-call SRE'},
+      {priority:'SHORT_TERM',title:'Mandate root cause documentation',description:'Require RCA entry before closing P1/P2 problems. Reduces recurrence by ~35%.',dynatraceFeature:'Ownership and Routing',estimatedImpact:'Reduce recurrence within 60 days',owner:'team:sre'},
       {priority:'STRATEGIC',title:'Invest in autonomous remediation',description:'Configure AWS DevOps Agent for top recurring patterns. Each automated fix saves ~2–4 hours of engineer time per occurrence.',estimatedImpact:`Save ${fmtC(total*0.4)} per period once automated`,owner:'team:platform'},
     ],
     generatedBy:'mock',latencyMs:1400,
@@ -1550,8 +2136,20 @@ function switchView(view) {
   document.getElementById('view-patterns').style.display = view === 'patterns' ? '' : 'none';
   document.getElementById('view-explorer').style.display  = view === 'explorer'  ? '' : 'none';
   document.getElementById('view-progress').style.display  = view === 'progress'  ? '' : 'none';
+  renderKPIs(getFiltered());
+  renderTopPatternsSnapshot(getFiltered());
   if (view === 'patterns') renderPatternIntelligence();
   if (view === 'progress') { renderProgress(); requestAnimationFrame(() => drawTrendChart(WEEKLY_SNAPSHOTS)); }
+}
+
+function focusPatternExplorer() {
+  if (persona === 'executive' && execAnalyticalView !== 'explorer') {
+    execAnalyticalView = 'explorer';
+    rerenderPatternsView();
+  }
+  setTimeout(() => {
+  document.querySelector(persona === 'executive' ? '#patternExplorer' : '.pattern-explorer-shell')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 0);
 }
 
 function toggleExecValueBreakdown() {
@@ -1559,12 +2157,78 @@ function toggleExecValueBreakdown() {
   renderPatternIntelligence();
 }
 
+function toggleExecPatterns() {
+  toggleExecKpiDetail('patterns');
+}
+
+function toggleExecKpiDetail(mode) {
+  execKpiDetail = execKpiDetail === mode ? null : mode;
+  execPatternsOpen = execKpiDetail === 'patterns' || execKpiDetail === 'impact';
+  if (!execKpiDetail) expandedPatterns.clear();
+  render();
+}
+
+function rerenderPatternsView() {
+  if (currentView === 'patterns') renderPatternIntelligence();
+  else render();
+}
+
+function selectPatternRow(id, opts={}) {
+  patternExplorerState.selectedId = id;
+  if (persona === 'executive') execPatternSelectionMade = true;
+  renderTopPatternsSnapshot(getFiltered());
+  rerenderPatternsView();
+  if (opts.remediate !== false && persona !== 'executive') void getPatternRemediation(id, { openDrawers:true, scroll:false });
+}
+
+function setExecAnalyticalView(view) {
+  execAnalyticalView = view === 'map' ? 'map' : 'explorer';
+  rerenderPatternsView();
+}
+
+function selectExecMetric(metric) {
+  execMetricDrilldown = execMetricDrilldown === metric ? null : metric;
+  rerenderPatternsView();
+}
+
+function sortPatternTable(key) {
+  if (patternExplorerState.sort === key) {
+    patternExplorerState.dir = patternExplorerState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    patternExplorerState.sort = key;
+    patternExplorerState.dir = key === 'name' || key === 'trend' ? 'asc' : 'desc';
+  }
+  patternExplorerState.offset = 0;
+  rerenderPatternsView();
+}
+
+function setPatternFilter(key, value) {
+  patternExplorerState.filters = { ...(patternExplorerState.filters || {}), [key]: value };
+  if (!value) delete patternExplorerState.filters[key];
+  patternExplorerState.offset = 0;
+  rerenderPatternsView();
+}
+
+function setPatternSearch(value) {
+  patternExplorerState.search = value || '';
+  patternExplorerState.offset = 0;
+  rerenderPatternsView();
+}
+
+function pagePatternTable(dir) {
+  const patterns = detectPatterns(getFiltered()).patterns;
+  const total = getExplorerRows(patterns).length;
+  const pageSize = 160;
+  patternExplorerState.offset = clamp((patternExplorerState.offset || 0) + dir * pageSize, 0, Math.max(0, total - pageSize));
+  rerenderPatternsView();
+}
+
 // ── Pattern Detection ──
-// Groups problems by normalised signature
+// Groups problems by normalised title plus the best available causal entity.
 function detectPatterns(problems) {
   const groups = new Map();
   problems.forEach(p => {
-    const key = normaliseTitle(p.title);
+    const key = patternSignature(p);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(p);
   });
@@ -1591,6 +2255,576 @@ function normaliseTitle(title) {
     .replace(/\b(pod|node|host|instance|replica)[-_\s]+\S+/g, '$1-*')
     .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '<IP>')
     .replace(/[\s]+/g, ' ').trim();
+}
+
+function normaliseEntityKey(entity) {
+  return String(entity || 'unknown-entity').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function patternEntityKey(p) {
+  if (p.rca) return `rca:${normaliseEntityKey(p.rca)}`;
+  const primaryService = Array.isArray(p.svcs) ? p.svcs.find(Boolean) : null;
+  return `entity:${normaliseEntityKey(primaryService)}`;
+}
+
+function isGenericMultiEntityTitle(title) {
+  const t = normaliseTitle(title);
+  return /\bmultiple\s+(services|entities|applications|problems)\b/.test(t)
+    || /\bmultiple\s+services\s+problem\b/.test(t)
+    || /\bimpacted\s+services\b/.test(t);
+}
+
+function patternSignature(p) {
+  if (isGenericMultiEntityTitle(p.title)) return `${normaliseTitle(p.title)}|severity:${p.sev || 'unknown'}`;
+  return `${normaliseTitle(p.title)}|${patternEntityKey(p)}`;
+}
+
+function uniqVals(values) {
+  return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))].sort();
+}
+
+function topDimension(values, fallback='mixed') {
+  return arrMode(values.map(v => String(v || '').trim()).filter(Boolean)) || fallback;
+}
+
+function purityFor(values) {
+  const clean = values.map(v => String(v || '').trim()).filter(Boolean);
+  if (!clean.length) return 0.5;
+  const top = arrMode(clean);
+  return clean.filter(v => v === top).length / clean.length;
+}
+
+function buildPatternDimensions(problems) {
+  const rootCauseEntities = uniqVals(problems.filter(p => p.hasRCA && p.rca).map(p => p.rca));
+  const impactedServices = uniqVals(problems.flatMap(p => Array.isArray(p.svcs) ? p.svcs : []));
+  const managementZones = uniqVals(problems.flatMap(p => Array.isArray(p.mz) ? p.mz : []));
+  const regions = uniqVals(problems.map(p => p.region));
+  const clouds = uniqVals(problems.map(p => p.cloud).filter(c => c && c !== 'unknown'));
+  const severities = uniqVals(problems.map(p => p.sev));
+  const causalEntities = uniqVals(problems.map(patternEntityKey));
+  const dimensionPurity = clamp(arrMean([
+    purityFor(problems.map(patternEntityKey)),
+    purityFor(problems.map(p => p.sev)),
+    purityFor(problems.flatMap(p => Array.isArray(p.mz) ? p.mz : [])),
+    purityFor(problems.map(p => p.region || p.cloud || 'unknown')),
+  ]), 0, 1);
+
+  return {
+    rootCauseEntities,
+    causalEntities,
+    impactedServices,
+    managementZones,
+    regions,
+    clouds,
+    severities,
+    primaryRootCause: topDimension(rootCauseEntities, null),
+    primaryService: topDimension(impactedServices, null),
+    primaryZone: topDimension(managementZones, null),
+    primaryRegion: topDimension(regions, null),
+    primaryCloud: topDimension(clouds, null),
+    dimensionPurity,
+  };
+}
+
+function renderPatternDimensionChips(pat) {
+  const d = pat.dimensions || {};
+  const chips = [];
+  if (d.primaryRootCause) chips.push(`RCA: ${d.primaryRootCause}`);
+  else if (d.primaryService) chips.push(`Entity: ${d.primaryService}`);
+  if (d.primaryZone) chips.push(`Zone: ${d.primaryZone}${(d.managementZones?.length || 0) > 1 ? ` +${d.managementZones.length - 1}` : ''}`);
+  if (d.primaryRegion) chips.push(`Region: ${d.primaryRegion}${(d.regions?.length || 0) > 1 ? ` +${d.regions.length - 1}` : ''}`);
+  if ((d.impactedServices?.length || 0) > 1) chips.push(`${d.impactedServices.length} services`);
+  if ((d.severities?.length || 0) > 1) chips.push(`${d.severities.length} severities`);
+  return chips.slice(0, 5).map(c => `<span class="psh-pill dim-chip">${c}</span>`).join('');
+}
+
+function patternCost(pat) {
+  return pat.totalCost ?? (pat.problems || []).reduce((s, p) => s + calcCost(p).total, 0);
+}
+
+function patternOpenCount(pat) {
+  return (pat.problems || []).filter(p => p.status === 'OPEN').length;
+}
+
+function patternMaxImpact(pat) {
+  return Math.max(0, ...(pat.problems || []).map(p => p.impact || 0));
+}
+
+function isHighImpactPattern(pat, allPatterns=[]) {
+  const cost = patternCost(pat);
+  const totalPatternCost = allPatterns.reduce((s, p) => s + patternCost(p), 0);
+  const costShare = totalPatternCost ? cost / totalPatternCost : 0;
+  return patternMaxImpact(pat) >= 75
+    || cost >= 100000
+    || costShare >= 0.25
+    || patternOpenCount(pat) >= 5
+    || (pat.occurrences >= 5 && (pat.problems || []).some(p => p.sev === 'AVAILABILITY'));
+}
+
+function highImpactReason(pat, allPatterns=[]) {
+  const cost = patternCost(pat);
+  const totalPatternCost = allPatterns.reduce((s, p) => s + patternCost(p), 0);
+  const costShare = totalPatternCost ? cost / totalPatternCost : 0;
+  if (patternMaxImpact(pat) >= 75) return 'Davis app/env impact';
+  if (cost >= 100000) return 'material cost';
+  if (costShare >= 0.25) return 'dominant cost driver';
+  if (patternOpenCount(pat) >= 5) return 'many open occurrences';
+  if (pat.occurrences >= 5 && (pat.problems || []).some(p => p.sev === 'AVAILABILITY')) return 'recurring availability risk';
+  return '';
+}
+
+function patternPriorityScore(pat, allPatterns=[]) {
+  const totalPatternCost = allPatterns.reduce((s, p) => s + patternCost(p), 0);
+  const costShare = totalPatternCost ? patternCost(pat) / totalPatternCost : 0;
+  const recurrence = clamp((pat.occurrences || 0) / 10, 0, 1);
+  const impact = clamp(patternMaxImpact(pat) / 100, 0, 1);
+  const open = clamp(patternOpenCount(pat) / 5, 0, 1);
+  const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.65 : 0.35;
+  return Math.round((costShare * 35 + recurrence * 25 + impact * 20 + open * 15 + fix * 5));
+}
+
+function patternFixabilityScore(pat) {
+  const confidence = clamp(patternConfidenceScore(pat) / 100, 0, 1);
+  const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.62 : 0.28;
+  const rca = pat.rcaSummary && pat.rcaSummary !== 'RCA not identified' ? 0.18 : 0;
+  return clamp((fix * 0.7) + (confidence * 0.3) + rca, 0.08, 1);
+}
+
+function patternRecoverableValue(pat) {
+  return Math.round(patternCost(pat) * 0.35);
+}
+
+function attrText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[ch]));
+}
+
+function actFirstModel(pat, patterns) {
+  const totalCost = patterns.reduce((s, p) => s + patternCost(p), 0);
+  const maxCost = Math.max(1, ...patterns.map(p => patternCost(p)));
+  const cost = patternCost(pat);
+  const recoverable = patternRecoverableValue(pat);
+  const costShare = totalCost ? cost / totalCost : 0;
+  const exposure = clamp((cost / maxCost) * 0.72 + costShare * 0.28, 0.08, 1);
+  const fixability = patternFixabilityScore(pat);
+  const highExposure = costShare >= 0.25 || cost >= 100000 || exposure >= 0.58;
+  const readyToAct = fixability >= 0.6;
+  const quadrant = highExposure && readyToAct
+    ? 'Act first'
+    : highExposure
+      ? 'Escalate'
+      : readyToAct
+        ? 'Quick win'
+        : 'Monitor';
+  const reason = `${fmtC(cost)} exposure is ${Math.round(costShare * 100)}% of recurring pattern cost, with ${fmtC(recoverable)} modeled recoverable value and ${Math.round(fixability * 100)}% action readiness.`;
+  return { cost, recoverable, costShare, exposure, fixability, quadrant, reason };
+}
+
+function patternTeams(pat) {
+  return uniqVals((pat.problems || []).flatMap(p => (p.tags || [])
+    .map(t => String(t))
+    .filter(t => t.toLowerCase().startsWith('team:'))
+    .map(t => t.split(':').slice(1).join(':'))));
+}
+
+function patternServices(pat) {
+  return uniqVals((pat.problems || []).flatMap(p => Array.isArray(p.svcs) ? p.svcs : []));
+}
+
+function patternEnvironments(pat) {
+  return uniqVals((pat.problems || []).flatMap(p => Array.isArray(p.mz) ? p.mz : []));
+}
+
+function patternConfidenceScore(pat) {
+  return Math.round(pat.qualityScore || 0);
+}
+
+function simpleHash(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function primaryTeamFromPattern(pat) {
+  return patternTeams(pat)[0] || null;
+}
+
+function patternAffectedEntities(pat) {
+  return uniqVals((pat.problems || []).flatMap(p => [
+    ...(Array.isArray(p.affectedEntityIds) ? p.affectedEntityIds : []),
+    ...(Array.isArray(p.svcs) ? p.svcs : []),
+    p.rca,
+  ].filter(Boolean)));
+}
+
+function buildRemediationRequest(pat, allPatterns=[]) {
+  const problems = pat.problems || [];
+  const resolved = problems.filter(p => p.status === 'RESOLVED' && p.dur);
+  const operationalCost = patternCost(pat);
+  const services = patternServices(pat);
+  const envs = patternEnvironments(pat);
+  const tags = uniqVals(problems.flatMap(p => p.tags || []));
+  const clouds = uniqVals(problems.map(p => p.cloud).filter(Boolean).filter(c => c !== 'unknown'));
+  const users = problems.reduce((s, p) => s + (p.users || 0), 0);
+  const rcaList = pat.dimensions?.rootCauseEntities || problems.map(p => p.rca).filter(Boolean);
+  const req = {
+    patternId: pat.id,
+    patternName: pat.title,
+    problemIds: problems.map(p => p.displayId || p.id),
+    occurrenceCount: pat.occurrences,
+    openProblemCount: patternOpenCount(pat),
+    groupedProblemCount: problems.length,
+    operationalCost,
+    potentialSavings: Math.round(operationalCost * 0.35),
+    affectedServices: services,
+    affectedEntities: patternAffectedEntities(pat),
+    environment: envs.join(', ') || 'unknown',
+    cloudProvider: clouds[0] || null,
+    rootCauseSummary: rcaList.length ? rcaList.join(', ') : null,
+    rcaConfidence: Math.round((pat.rcaConsistency || 0) * 100),
+    deploymentCorrelation: tags.some(t => /deploy|release|version|build/i.test(t)) ? 'deployment-related tags present' : 'not available from current evidence',
+    changeCorrelation: tags.some(t => /change|deploy|release|version|build/i.test(t)) ? 'change-related tags present' : 'not available from current evidence',
+    timeClustering: pat.hasTimeCluster ? `clusters around ${String(pat.dominantHour).padStart(2, '0')}:00 UTC` : 'no strong time cluster detected',
+    mttr: resolved.length ? Math.round(arrMean(resolved.map(p => p.dur))) : null,
+    userImpact: users,
+    logsEvidenceSummary: 'not available in current pattern evidence package',
+    tracesEvidenceSummary: 'not available in current pattern evidence package',
+    metricsEvidenceSummary: `severity ${pat.severity}; max Davis impact ${patternMaxImpact(pat)}; recurrence score ${pat.recurrenceScore}`,
+    relevantTags: tags,
+    ownerTeam: primaryTeamFromPattern(pat),
+    confidenceScore: patternConfidenceScore(pat),
+    fixabilityScore: Math.round((pat.fixabilityRaw || 0) * 100),
+    trend: pat.trend,
+    priorityScore: patternPriorityScore(pat, allPatterns),
+  };
+  return { request: req, evidenceHash: simpleHash(JSON.stringify(req)) };
+}
+
+function patternFilterOptions(patterns, getter) {
+  return uniqVals(patterns.flatMap(getter));
+}
+
+function patternFilterMatch(pat, filters) {
+  const cost = patternCost(pat);
+  const confidence = patternConfidenceScore(pat);
+  if (filters.cost === 'high' && cost < 100000) return false;
+  if (filters.cost === 'medium' && (cost < 10000 || cost >= 100000)) return false;
+  if (filters.cost === 'low' && cost >= 10000) return false;
+  if (filters.recurrence === 'high' && pat.occurrences < 10) return false;
+  if (filters.recurrence === 'medium' && (pat.occurrences < 4 || pat.occurrences >= 10)) return false;
+  if (filters.recurrence === 'low' && pat.occurrences >= 4) return false;
+  if (filters.confidence === 'high' && confidence < 75) return false;
+  if (filters.confidence === 'medium' && (confidence < 50 || confidence >= 75)) return false;
+  if (filters.confidence === 'low' && confidence >= 50) return false;
+  if (filters.team && !patternTeams(pat).includes(filters.team)) return false;
+  if (filters.service && !patternServices(pat).includes(filters.service)) return false;
+  if (filters.environment && !patternEnvironments(pat).includes(filters.environment)) return false;
+  return true;
+}
+
+function getExplorerRows(patterns) {
+  const state = patternExplorerState;
+  const q = (state.search || '').toLowerCase().trim();
+  const rows = patterns
+    .filter(pat => !q || [
+      pat.title,
+      ...(pat.dimensions?.rootCauseEntities || []),
+      ...patternServices(pat),
+      ...patternTeams(pat),
+      ...patternEnvironments(pat),
+    ].join(' ').toLowerCase().includes(q))
+    .filter(pat => patternFilterMatch(pat, state.filters || {}))
+    .map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }));
+  const val = row => {
+    const pat = row.pat;
+    switch (state.sort) {
+      case 'name': return pat.title.toLowerCase();
+      case 'occurrences': return pat.occurrences;
+      case 'cost': return patternCost(pat);
+      case 'open': return patternOpenCount(pat);
+      case 'confidence': return patternConfidenceScore(pat);
+      case 'fixability': return pat.fixability === 'HIGH' ? 3 : pat.fixability === 'MEDIUM' ? 2 : 1;
+      case 'trend': return pat.trend;
+      case 'priority':
+      default: return row.score;
+    }
+  };
+  rows.sort((a, b) => {
+    const av = val(a), bv = val(b);
+    const cmp = typeof av === 'string' ? String(av).localeCompare(String(bv)) : av - bv;
+    return state.dir === 'asc' ? cmp : -cmp;
+  });
+  return rows;
+}
+
+function renderSelectOptions(values, selected, label) {
+  return `<option value="">${label}</option>${values.map(v => `<option value="${v}" ${v===selected?'selected':''}>${v}</option>`).join('')}`;
+}
+
+/**
+ * @typedef {Object} ToolDetectionRow
+ * @property {string} Vendor
+ * @property {string=} AgentName
+ * @property {("Standalone"|"Container"|"CodeModule"|"JS"|"Mobile"|string)=} Type
+ * @property {string[]|string=} Purpose
+ * @property {string=} EntityName
+ * @property {string=} id
+ * @property {string=} HostName
+ * @property {string=} HostId
+ * @property {string=} ServiceName
+ * @property {string=} ServiceId
+ */
+
+/**
+ * @typedef {Object} DetectedTool
+ * @property {string} vendor
+ * @property {string[]} types
+ * @property {string[]} purposes
+ * @property {number} count
+ * @property {string[]} affectedServices
+ * @property {string[]} affectedEntities
+ */
+
+/**
+ * @typedef {Object} InvestigationComplexity
+ * @property {number} score
+ * @property {number} rcaConfidence
+ * @property {"low"|"medium"|"high"} evidenceFragmentation
+ * @property {number} toolCount
+ * @property {number} signalSourceCount
+ * @property {DetectedTool[]} detectedTools
+ * @property {string} narrative
+ */
+
+function normaliseMatchValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+/**
+ * Accepts records returned by the attached row-producing DQL before its final
+ * `summarize countDistinct(Vendor)` line.
+ * @param {unknown[]} rows
+ */
+function setToolDetectionRowsFromDql(rows) {
+  TOOL_DETECTION_ROWS = (Array.isArray(rows) ? rows : [])
+    .filter(row => row && typeof row === 'object' && String(row.Vendor || '').trim())
+    .map(row => ({
+      Vendor: String(row.Vendor),
+      AgentName: row.AgentName ? String(row.AgentName) : undefined,
+      Type: row.Type ? String(row.Type) : undefined,
+      Purpose: Array.isArray(row.Purpose) ? row.Purpose.map(String) : row.Purpose ? String(row.Purpose) : undefined,
+      EntityName: row.EntityName ? String(row.EntityName) : undefined,
+      id: row.id ? String(row.id) : undefined,
+      HostName: row.HostName ? String(row.HostName) : undefined,
+      HostId: row.HostId ? String(row.HostId) : undefined,
+      ServiceName: row.ServiceName ? String(row.ServiceName) : undefined,
+      ServiceId: row.ServiceId ? String(row.ServiceId) : undefined,
+    }));
+}
+
+function applyToolDetectionDqlResult(result) {
+  const rows = Array.isArray(result)
+    ? result
+    : result?.result?.records || result?.records || [];
+  setToolDetectionRowsFromDql(rows);
+  if (currentView === 'patterns') rerenderPatternsView();
+}
+
+function patternToolMatchDimensions(pattern) {
+  const problems = pattern.problems || [];
+  const impactedIds = new Set(problems.flatMap(p => p.affectedEntityIds || []).map(normaliseMatchValue).filter(Boolean));
+  const serviceNames = new Set(patternServices(pattern).map(normaliseMatchValue).filter(Boolean));
+  const entityNames = new Set([
+    ...(pattern.dimensions?.rootCauseEntities || []),
+    ...(pattern.dimensions?.impactedEntities || []),
+    ...problems.map(p => p.rca),
+    ...patternServices(pattern),
+  ].map(normaliseMatchValue).filter(Boolean));
+  return { impactedIds, serviceNames, entityNames };
+}
+
+/**
+ * Matches tool rows to one selected pattern only. Matching precedence:
+ * ServiceId, ServiceName, HostId, HostName, EntityName.
+ * @param {Object} pattern
+ * @param {ToolDetectionRow[]} rows
+ * @returns {ToolDetectionRow[]}
+ */
+function matchToolDetectionRowsToPattern(pattern, rows) {
+  const { impactedIds, serviceNames, entityNames } = patternToolMatchDimensions(pattern);
+  return (Array.isArray(rows) ? rows : []).filter(row => {
+    const serviceId = normaliseMatchValue(row.ServiceId);
+    if (serviceId) return impactedIds.has(serviceId);
+
+    const serviceName = normaliseMatchValue(row.ServiceName);
+    if (serviceName) return serviceNames.has(serviceName) || entityNames.has(serviceName);
+
+    const hostId = normaliseMatchValue(row.HostId);
+    if (hostId) return impactedIds.has(hostId);
+
+    const hostName = normaliseMatchValue(row.HostName);
+    if (hostName) return entityNames.has(hostName);
+
+    const entityName = normaliseMatchValue(row.EntityName);
+    return Boolean(entityName && entityNames.has(entityName));
+  });
+}
+
+/**
+ * @param {ToolDetectionRow[]} rows
+ * @returns {DetectedTool[]}
+ */
+function mapDetectedToolsFromDqlRows(rows) {
+  const byVendor = new Map();
+  (Array.isArray(rows) ? rows : []).forEach(row => {
+    const vendor = String(row?.Vendor || '').trim();
+    if (!vendor) return;
+    const key = vendor.toLowerCase();
+    if (!byVendor.has(key)) {
+      byVendor.set(key, {
+        vendor,
+        types: new Set(),
+        purposes: new Set(),
+        count: 0,
+        affectedServices: new Set(),
+        affectedEntities: new Set(),
+      });
+    }
+    const tool = byVendor.get(key);
+    tool.count += 1;
+    if (row.Type) tool.types.add(String(row.Type));
+    const purposes = Array.isArray(row.Purpose)
+      ? row.Purpose
+      : row.Purpose
+        ? String(row.Purpose).split(',').map(p => p.trim()).filter(Boolean)
+        : [];
+    purposes.forEach(purpose => tool.purposes.add(String(purpose)));
+    if (row.ServiceName) tool.affectedServices.add(String(row.ServiceName));
+    [row.EntityName, row.HostName].filter(Boolean).forEach(entity => tool.affectedEntities.add(String(entity)));
+  });
+  return [...byVendor.values()].map(tool => ({
+    vendor: tool.vendor,
+    types: [...tool.types],
+    purposes: [...tool.purposes],
+    count: tool.count,
+    affectedServices: [...tool.affectedServices],
+    affectedEntities: [...tool.affectedEntities],
+  }));
+}
+
+/**
+ * @param {{pattern: Pattern, toolRows: ToolDetectionRow[]}} input
+ * @returns {InvestigationComplexity}
+ */
+function buildInvestigationComplexity({ pattern, toolRows }) {
+  const detectedTools = mapDetectedToolsFromDqlRows(toolRows);
+  const rcaConfidence = Math.round((pattern.rcaConsistency || 0) * 100);
+  const toolCount = detectedTools.length;
+  const signalSourceCount = uniqVals(detectedTools.flatMap(tool => tool.purposes)).length;
+  const fragmentedEvidence = toolCount > 1 && rcaConfidence < 70;
+  const evidenceFragmentation = fragmentedEvidence
+    ? toolCount > 2 ? 'high' : 'medium'
+    : 'low';
+  const score = Math.round(clamp(
+    (100 - rcaConfidence) * 0.6
+      + Math.min(25, Math.max(0, toolCount - 1) * 12)
+      + Math.min(15, Math.max(0, signalSourceCount - 1) * 4),
+    0,
+    100,
+  ));
+  const narrative = fragmentedEvidence
+    ? `Root cause confidence is ${rcaConfidence}% and investigation evidence is distributed across ${toolCount} tools. This may increase context-switching during incident response and contribute to longer resolution cycles.`
+    : rcaConfidence < 70
+      ? `Root cause confidence is ${rcaConfidence}%. This is a potential signal of investigation friction observed across affected entities.`
+      : `Root cause confidence is ${rcaConfidence}%. No evidence-fragmentation warning is indicated by the currently detected tool data.`;
+  return { score, rcaConfidence, evidenceFragmentation, toolCount, signalSourceCount, detectedTools, narrative };
+}
+
+function renderInvestigationComplexityCard(pat, patterns=[]) {
+  const patternToolRows = matchToolDetectionRowsToPattern(pat, TOOL_DETECTION_ROWS);
+  const insight = buildInvestigationComplexity({ pattern:pat, toolRows:patternToolRows });
+  if (insight.rcaConfidence >= 70 && insight.toolCount <= 1) return '';
+  const caution = insight.toolCount > 1 && insight.rcaConfidence < 70;
+  const vendors = insight.detectedTools.map(tool => tool.vendor);
+  const purposes = uniqVals(insight.detectedTools.flatMap(tool => tool.purposes));
+  return `<div class="investigation-complexity ${caution ? 'caution' : ''}">
+    <div class="ic-head">
+      <div>
+        <div class="ic-title">Investigation Complexity</div>
+        <div class="ic-sub">Contextual insight based on currently available pattern evidence</div>
+      </div>
+    </div>
+    <div class="ic-metrics">
+      <div><strong>${insight.score}</strong><span>Complexity score</span></div>
+      <div><strong>${insight.rcaConfidence}%</strong><span>RCA confidence</span></div>
+      <div><strong>${insight.toolCount}</strong><span>Tools detected</span></div>
+    </div>
+    ${vendors.length ? `<div class="ic-chip-row">${vendors.map(vendor => `<span class="ic-tool-chip">${attrText(vendor)}</span>`).join('')}</div>` : ''}
+    ${purposes.length ? `<div class="ic-chip-row">${purposes.map(purpose => `<span class="ic-purpose-chip">${attrText(purpose)}</span>`).join('')}</div>` : ''}
+    <p>${insight.narrative}</p>
+  </div>`;
+}
+
+function renderPatternDetailPane(pat, patterns) {
+  if (!pat) return `<div class="px-detail"><div class="exec-empty">Select a pattern to inspect recurrence evidence.</div></div>`;
+  const rec = pat.recommendation || {};
+  const rca = pat.dimensions?.rootCauseEntities || [];
+  const services = patternServices(pat);
+  const envs = patternEnvironments(pat);
+  const teams = patternTeams(pat);
+  const openCount = patternOpenCount(pat);
+  const reason = highImpactReason(pat, patterns) || 'recurrence and concentration';
+  const resolved = (pat.problems || []).filter(p => p.status === 'RESOLVED' && p.dur);
+  const avg = resolved.length ? arrMean(resolved.map(p => p.dur)) : 0;
+  return `<div class="px-detail">
+    <div>
+      <div class="px-detail-title">${pat.title}</div>
+      <div class="px-detail-sub">Why next: ${reason} · priority ${patternPriorityScore(pat, patterns)} · ${pat.occurrences} occurrences</div>
+    </div>
+    <div class="px-detail-grid">
+      <div class="px-detail-metric"><strong>${pat.occurrences}x</strong><span>Occurrences</span></div>
+      <div class="px-detail-metric"><strong>${fmtC(patternCost(pat))}</strong><span>Cost impact</span></div>
+      <div class="px-detail-metric"><strong>${openCount}</strong><span>Open</span></div>
+      <div class="px-detail-metric"><strong>${patternConfidenceScore(pat)}</strong><span>Confidence</span></div>
+    </div>
+    <div class="px-section">
+      <div class="px-section-title">Impacted entities</div>
+      <div class="px-chip-list">
+        ${services.slice(0, 12).map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}
+        ${envs.slice(0, 8).map(e => `<span class="px-chip">Env: ${e}</span>`).join('')}
+        ${teams.slice(0, 8).map(t => `<span class="px-chip">Team: ${t}</span>`).join('')}
+      </div>
+    </div>
+    <div class="px-section">
+      <div class="px-section-title">Evidence</div>
+      <div class="px-evidence">
+        <div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} events between ${fmtR(pat.firstSeen)} and ${fmtR(pat.lastSeen)}</strong></div>
+        <div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div>
+        <div class="px-evidence-row"><span>MTTR</span><strong>${avg ? fmtM(avg) : 'No resolved duration data'}</strong></div>
+        <div class="px-evidence-row"><span>Quality</span><strong>${patternConfidenceScore(pat)} / 100 · concentration ${pat.concentration}</strong></div>
+      </div>
+    </div>
+    ${renderInvestigationComplexityCard(pat, patterns)}
+    <div class="px-section">
+      <div class="px-section-title">Root-cause indicators</div>
+      <div class="px-chip-list">
+        ${rca.slice(0, 10).map(r => `<span class="px-chip">RCA: ${r}</span>`).join('') || '<span class="px-chip">Root cause not consistently identified</span>'}
+        <span class="px-chip">Fixability: ${pat.fixability}</span>
+        <span class="px-chip">RCA consistency: ${Math.round((pat.rcaConsistency || 0) * 100)}%</span>
+      </div>
+    </div>
+    <div class="px-section">
+      <div class="px-section-title">Recommended actions</div>
+      <div class="px-action-box">
+        <strong>Dynatrace Assist:</strong> Request pattern-level remediation guidance using aggregated recurrence, impact, entity, RCA, MTTR, and cost evidence.
+        <div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function buildPattern(problems) {
@@ -1633,6 +2867,7 @@ function buildPattern(problems) {
 
   // Spark data — one point per problem, value = cost
   const sparkData = problems.map(p => ({ t: p.start, v: calcCost(p).total }));
+  const dimensions = buildPatternDimensions(problems);
 
   // ── Pattern quality score ──
   const rcaList        = problems.filter(p=>p.hasRCA&&p.rca).map(p=>p.rca);
@@ -1650,21 +2885,23 @@ function buildPattern(problems) {
   // CV near 0 = each occurrence costs about the same (predictable). CV > 1 = costs vary wildly.
   const costCV         = arrMean(costs) > 0 ? arrStddev(costs) / arrMean(costs) : 0;
   const costConsistency= clamp(1 - costCV, 0, 1);
+  const dimensionPurity= dimensions.dimensionPurity;
   const qualityScore   = Math.round(
-    clusterPurity      *35 +
-    rcaConsistency     *35 +
+    clusterPurity      *25 +
+    rcaConsistency     *30 +
     recurrenceStability*15 +
-    costConsistency    *15
+    costConsistency    *15 +
+    dimensionPurity    *15
   );
 
   // Concentration: how tightly cost + entities cluster (high = one entity dominates)
   // Uses cost predictability (1 − CV) instead of Gini — easier to explain and equivalent directionally
-  const concentrationRaw   = clamp(clusterPurity * 0.5 + costConsistency * 0.5, 0, 1);
+  const concentrationRaw   = clamp(clusterPurity * 0.3 + costConsistency * 0.3 + dimensionPurity * 0.4, 0, 1);
   const concentration = scoreLabel(concentrationRaw);
   const concentrationScore = concentration[0] + concentration.slice(1).toLowerCase();
 
   // Fixability: how actionable is this pattern (high = consistent RCA + stable recurrence + tight cluster)
-  const fixabilityRaw   = clamp(rcaConsistency * 0.5 + recurrenceStability * 0.3 + clusterPurity * 0.2, 0, 1);
+  const fixabilityRaw   = clamp(rcaConsistency * 0.45 + recurrenceStability * 0.25 + clusterPurity * 0.15 + dimensionPurity * 0.15, 0, 1);
   const fixability = scoreLabel(fixabilityRaw);
   const fixabilityScore = fixability[0] + fixability.slice(1).toLowerCase();
 
@@ -1686,7 +2923,10 @@ function buildPattern(problems) {
   });
 
   return {
-    id: 'pat-' + normaliseTitle(problems[0].title).replace(/\W+/g, '-').substring(0, 20),
+    id: 'pat-' + patternSignature(problems[0]).replace(/\W+/g, '-').substring(0, 36),
+    signature: patternSignature(problems[0]),
+    causalEntity: patternEntityKey(problems[0]),
+    dimensions,
     title: problems[0].biz || problems[0].title,
     problems,
     occurrences: problems.length,
@@ -1709,6 +2949,7 @@ function buildPattern(problems) {
     qualityScore,
     rcaConsistency,
     clusterPurity,
+    dimensionPurity,
     interArrivalCV,
     recurrenceStability,
     concentrationRaw,
@@ -1759,6 +3000,7 @@ function recommendAction(p) {
 // ── Render Pattern Intelligence ──
 let expandedPatterns = new Set();
 let expandedActions = new Set();
+let execPatternsOpen = false;
 
 function renderPatternIntelligence() {
   const ps = getFiltered();
@@ -1769,13 +3011,16 @@ function renderPatternIntelligence() {
   document.getElementById('explorerTabCount').textContent = ps.length;
 
   // Summary bar
-  const totalCost = ps.reduce((s, p) => s + calcCost(p).total, 0);
-  const recurringCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
+  const patternCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
+  const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const fixable = patterns.filter(pat => ['FIX_ROOT_CAUSE','ADD_TIME_WINDOW'].includes(pat.recommendation.type)).length;
+  if (persona === 'executive') {
+    document.getElementById('intelSummary').innerHTML = '';
+  } else {
   document.getElementById('intelSummary').innerHTML = `
-    <div class="intel-icon">🧠</div>
+    <div class="intel-icon">P</div>
     <div class="intel-main">
-      <div class="intel-headline">${patterns.length} patterns across ${ps.length} problems — not ${ps.length} separate issues</div>
+      <div class="intel-headline">${patterns.length} patterns across ${patternOccurrences} grouped problems — ${ps.length} total problems</div>
       <div class="intel-sub">${fixable} patterns have clear actionable paths · ${oneOffs.length} one-off problems below pattern threshold</div>
     </div>
     <div class="intel-stats">
@@ -1784,21 +3029,21 @@ function renderPatternIntelligence() {
         <div class="intel-stat-lbl">Patterns</div>
       </div>
       <div class="intel-stat">
-        <div class="intel-stat-val" style="color:var(--amber)">${fmtC(recurringCost)}</div>
-        <div class="intel-stat-lbl">Recurring Cost</div>
+        <div class="intel-stat-val" style="color:var(--amber)">${fmtC(patternCost)}</div>
+        <div class="intel-stat-lbl">Pattern Cost</div>
       </div>
       <div class="intel-stat">
         <div class="intel-stat-val" style="color:var(--green)">${fixable}</div>
         <div class="intel-stat-lbl">Actionable</div>
       </div>
     </div>`;
+  }
 
   // Executive gets spotlight tiles + ranked list; engineers get sub-bucket cards
   if (persona === 'executive') {
-    renderExecutivePatternView(patterns, ps);
+    renderDecisionFirstExecView(patterns, ps);
     renderOneOffs(oneOffs);
     document.getElementById('explorerTabCount').textContent = ps.length;
-    if (PROBLEMS !== MOCK_PROBLEMS) schedulePatternInsights(patterns);
     return;
   }
 
@@ -1818,6 +3063,7 @@ function renderPatternIntelligence() {
       <span class="psh-icon">${meta.icon}</span>
       <span class="psh-title">${pat.title}</span>
       <span class="psh-pill">${pat.occurrences}×</span>
+      ${renderPatternDimensionChips(pat)}
       <span class="trend-chip ${pat.trend}">${TREND_ICONS[pat.trend]} ${TREND_LABELS[pat.trend]}</span>
       <span class="exec-pat-chip ${pat.concentration === 'HIGH' ? 'conc-high' : pat.concentration === 'MEDIUM' ? 'conc-med' : 'conc-low'}">Conc: ${pat.concentration}</span>
       <span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Fix: ${pat.fixability}</span>
@@ -1891,7 +3137,7 @@ function renderPatternIntelligence() {
   document.getElementById('explorerTabCount').textContent = ps.length;
 
   // Kick off Davis insight fetches only after real Grail data has loaded (not demo data)
-  if (PROBLEMS !== MOCK_PROBLEMS) schedulePatternInsights(patterns);
+  // Dynatrace Assist calls are intentionally on demand at pattern level for scale.
 }
 
 function buildPatternActions(pat) {
@@ -1985,7 +3231,638 @@ function calcSessionMetrics(ps, patterns) {
 }
 
 // ── Executive Board: 3-tier KPI + drivers + tech stack + efficiency chips ──
+function renderExecutivePatternDetail(pat) {
+  const d = pat.dimensions || {};
+  const rec = pat.recommendation || {};
+  const openCount = pat.problems.filter(p => p.status === 'OPEN').length;
+  const dim = (label, value) => value ? `<div><span>${label}</span><strong>${value}</strong></div>` : '';
+  const detailRows = pat.problems
+    .slice()
+    .sort((a, b) => b.start - a.start)
+    .slice(0, 6)
+    .map(p => `<div class="exec-pat-occ">
+      <span class="sdot ${p.status}"></span>
+      <span class="exec-pat-occ-title">${p.displayId || p.id}</span>
+      <span>${SEV_LBL[p.sev] || p.sev}</span>
+      <span>${p.rca || 'No RCA'}</span>
+      <span>${fmtR(p.start)}</span>
+      <span>${p.dur ? fmtM(p.dur) : 'Ongoing'}</span>
+      <span>${fmtC(calcCost(p).total)}</span>
+    </div>`).join('');
+
+  return `<div class="exec-pattern-detail">
+    <div class="exec-pattern-detail-grid">
+      ${dim('Root cause', d.primaryRootCause || pat.rcaLabel || 'Not consistently identified')}
+      ${dim('Primary service', d.primaryService)}
+      ${dim('Zone', d.primaryZone)}
+      ${dim('Region', d.primaryRegion)}
+      ${dim('Occurrences', `${pat.occurrences} total, ${openCount} open`)}
+      ${dim('Estimated cost', fmtC(pat.totalCost))}
+    </div>
+    <div class="exec-pattern-rec">
+      <strong>${REC_META[rec.type]?.label || 'Recommended action'}</strong>
+      <span>${rec.text || 'Review the recurring pattern and assign an owner.'}</span>
+    </div>
+    <div class="exec-pat-occ-head">
+      <span>Status</span><span>Problem</span><span>Severity</span><span>RCA</span><span>Seen</span><span>Duration</span><span>Cost</span>
+    </div>
+    ${detailRows}
+  </div>`;
+}
+
+function renderExecutivePatternsBoard(patterns, ps, label='Patterns') {
+  const TREND_ICON  = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
+  const TREND_CLS   = { INCREASING: 'trend-up', STABLE: 'trend-stable', DECREASING: 'trend-dn' };
+  const FIX_CLS     = { HIGH: 'fix-high', MEDIUM: 'fix-med', LOW: 'fix-low', High: 'fix-high', Medium: 'fix-med', Low: 'fix-low' };
+  const CONC_CLS    = { HIGH: 'conc-high', MEDIUM: 'conc-med', LOW: 'conc-low', High: 'conc-high', Medium: 'conc-med', Low: 'conc-low' };
+  const TREND_TOOLTIP = {
+    INCREASING: 'Trend: rate in second half of period is >30% higher than first half — pattern is worsening',
+    STABLE:     'Trend: occurrence rate is consistent across the period',
+    DECREASING: 'Trend: rate in second half is >30% lower than first half — pattern is improving',
+  };
+  const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component.';
+  const FIX_TOOLTIP  = 'Fixability: how likely a single engineering action can permanently resolve this pattern.';
+  const totalOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
+  const totalPatternCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
+  const emptyMessage = label === 'High-impact patterns'
+    ? 'No high-impact patterns in this selection. High impact is based on Davis impact, cost materiality, open occurrences, and recurring availability risk.'
+    : 'No recurring patterns detected for this selection.';
+  const patternRow = pat => {
+    const openCount = pat.problems.filter(p => p.status === 'OPEN').length;
+    const cost = pat.problems.reduce((s, p) => s + calcCost(p).total, 0);
+    const d = pat.dimensions || {};
+    return `<div class="exec-t2-row exec-pattern-row">
+      <span class="exec-t2-badge exec-t2-pattern">Pattern</span>
+      <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
+      <div class="exec-t2-chips">
+        <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
+        ${isHighImpactPattern(pat, patterns) ? `<span class="exec-pat-chip trend-up" title="High impact: ${highImpactReason(pat, patterns)}">Impact: High</span>` : ''}
+        <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
+        ${d.primaryRootCause ? `<span class="exec-pat-chip exec-dim-chip">RCA: ${d.primaryRootCause}</span>` : ''}
+      </div>
+      <span class="exec-t2-val">${pat.occurrences}x</span>
+      <span class="exec-t2-meta">${fmtC(cost)}${openCount ? ` · ${openCount} open` : ''}</span>
+      <button class="exec-detail-btn ${expandedPatterns.has(pat.id) ? 'open' : ''}" data-action="togglePatternExpand" data-pid="${pat.id}">
+        ${expandedPatterns.has(pat.id) ? 'Hide' : 'Details'}
+      </button>
+    </div>
+    ${expandedPatterns.has(pat.id) ? renderExecutivePatternDetail(pat) : ''}`;
+  };
+  return `<div class="exec-t2-board exec-patterns-board">
+    <div class="exec-t2-hdr">${label} - ${patterns.length} patterns - ${totalOccurrences} pattern occurrences - ${fmtC(totalPatternCost)} pattern cost</div>
+    <div class="exec-patterns-list">${patterns.length ? patterns.map(patternRow).join('') : `<div class="exec-empty">${emptyMessage}</div>`}</div>
+  </div>`;
+}
+
+function renderExecutiveOccurrencesBoard(ps) {
+  const rows = ps
+    .slice()
+    .sort((a, b) => b.start - a.start)
+    .slice(0, 30)
+    .map(p => `<div class="exec-pat-occ">
+      <span class="sdot ${p.status}"></span>
+      <span class="exec-pat-occ-title">${p.displayId || p.id}</span>
+      <span>${SEV_LBL[p.sev] || p.sev}</span>
+      <span>${p.rca || p.svcs?.[0] || 'No RCA'}</span>
+      <span>${fmtR(p.start)}</span>
+      <span>${p.dur ? fmtM(p.dur) : 'Ongoing'}</span>
+      <span>${fmtC(calcCost(p).total)}</span>
+    </div>`).join('');
+  return `<div class="exec-t2-board exec-patterns-board">
+    <div class="exec-t2-hdr">Occurrences - latest ${Math.min(ps.length, 30)} of ${ps.length}</div>
+    <div class="exec-pat-occ-head">
+      <span>Status</span><span>Problem</span><span>Severity</span><span>RCA / Entity</span><span>Seen</span><span>Duration</span><span>Cost</span>
+    </div>
+    ${rows}
+  </div>`;
+}
+
+function renderExecutiveMttrBoard(patterns, ps) {
+  const slowPatterns = patterns
+    .filter(pat => pat.avgDur > 0)
+    .sort((a, b) => b.avgDur - a.avgDur)
+    .slice(0, 8);
+  const rows = slowPatterns.map(pat => {
+    const cost = pat.problems.reduce((s, p) => s + calcCost(p).total, 0);
+    return `<div class="exec-t2-row exec-pattern-row">
+      <span class="exec-t2-badge exec-t2-pattern">MTTR</span>
+      <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
+      <div class="exec-t2-chips">
+        <span class="exec-pat-chip ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
+        <span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Fix: ${pat.fixability}</span>
+      </div>
+      <span class="exec-t2-val">${fmtM(pat.avgDur)}</span>
+      <span class="exec-t2-meta">${pat.occurrences}x - ${fmtC(cost)}</span>
+      <button class="exec-detail-btn ${expandedPatterns.has(pat.id) ? 'open' : ''}" data-action="togglePatternExpand" data-pid="${pat.id}">
+        ${expandedPatterns.has(pat.id) ? 'Hide' : 'Details'}
+      </button>
+    </div>
+    ${expandedPatterns.has(pat.id) ? renderExecutivePatternDetail(pat) : ''}`;
+  }).join('');
+  const resolved = ps.filter(p => p.status === 'RESOLVED' && p.dur);
+  return `<div class="exec-t2-board exec-patterns-board">
+    <div class="exec-t2-hdr">MTTR drivers - slowest recurring patterns - ${resolved.length} resolved occurrences</div>
+    ${rows || '<div class="exec-empty">No resolved-duration data available for this selection.</div>'}
+  </div>`;
+}
+
+function renderExecutiveKpiDetail(mode, ps) {
+  const patterns = detectPatterns(ps).patterns;
+  if (mode === 'patterns') return renderExecutivePatternsBoard(patterns, ps, 'Patterns');
+  if (mode === 'impact') {
+    const highImpact = patterns
+      .filter(pat => isHighImpactPattern(pat, patterns))
+      .sort((a, b) => patternCost(b) - patternCost(a));
+    return renderExecutivePatternsBoard(highImpact, ps, 'High-impact patterns');
+  }
+  if (mode === 'occurrences') return renderExecutiveOccurrencesBoard(ps);
+  if (mode === 'mttr') return renderExecutiveMttrBoard(patterns, ps);
+  return '';
+}
+
+function renderActFirstMap(patterns) {
+  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns), model: actFirstModel(pat, patterns) }))
+    .sort((a, b) => b.score - a.score);
+  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || ranked[0]?.pat;
+  if (!ranked.length) {
+    return `<section class="act-map"><div class="act-map-head"><div><div class="act-map-title">Act-First Map</div><div class="act-map-sub">No recurring patterns available for prioritization.</div></div></div></section>`;
+  }
+  const selectedModel = selected ? actFirstModel(selected, patterns) : null;
+  const bubbles = ranked.map(({ pat, score, model }, idx) => {
+    const selectedCls = pat.id === selected?.id ? ' selected' : '';
+    const left = Math.round(8 + model.fixability * 84);
+    const bottom = Math.round(9 + model.exposure * 80);
+    const size = Math.round(clamp(18 + (pat.occurrences || 0) * 2 + Math.sqrt(Math.max(0, model.cost)) / 65, 20, 44));
+    const tip = `${pat.title} | ${model.quadrant} | Exposure ${fmtC(model.cost)} | Recoverable ${fmtC(model.recoverable)} | ${model.reason}`;
+    return `<button class="act-map-bubble${selectedCls}" data-action="selectPatternRow" data-act-map="1" data-pid="${pat.id}" tabindex="0" role="option" aria-selected="${pat.id === selected?.id}" aria-label="Priority ${idx + 1}: ${attrText(pat.title)}. ${attrText(model.quadrant)}. Exposure ${fmtC(model.cost)}. Recoverable ${fmtC(model.recoverable)}." title="${attrText(tip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
+      <span>#${idx + 1}</span><em>${score}</em>
+    </button>`;
+  }).join('');
+  return `
+    <section class="act-map" aria-label="Act-First prioritization map">
+      <div class="act-map-head">
+        <div>
+          <div class="act-map-title">Act-First Map</div>
+          <div class="act-map-sub">Prioritize by cost exposure, recoverable value, recurrence, open risk, and action readiness.</div>
+        </div>
+        <div class="act-map-kbd">Arrow keys select - Enter opens remediation</div>
+      </div>
+      <div class="act-map-body">
+        <div class="act-map-plot" role="listbox" aria-label="Patterns plotted by exposure and fixability">
+          <div class="act-axis-label y">Higher exposure and recoverable value</div>
+          <div class="act-axis-label x">Higher fixability and readiness to act</div>
+          <div class="act-quad q1">Act first</div>
+          <div class="act-quad q2">Escalate</div>
+          <div class="act-quad q3">Monitor</div>
+          <div class="act-quad q4">Quick wins</div>
+          ${bubbles}
+        </div>
+        <div class="act-map-detail">
+          <div class="act-detail-kicker">Selected Pattern</div>
+          <div class="act-detail-title">${selected?.title || 'No pattern selected'}</div>
+          <div class="act-detail-grid">
+            <div><strong>${selectedModel ? fmtC(selectedModel.cost) : '-'}</strong><span>Exposure</span></div>
+            <div><strong>${selectedModel ? fmtC(selectedModel.recoverable) : '-'}</strong><span>Recoverable</span></div>
+            <div><strong>${selected ? selected.occurrences : '-'}</strong><span>Occurrences</span></div>
+            <div><strong>${selected ? patternOpenCount(selected) : '-'}</strong><span>Open</span></div>
+          </div>
+          <div class="act-quadrant ${selectedModel ? selectedModel.quadrant.toLowerCase().replace(/\s+/g, '-') : ''}">${selectedModel?.quadrant || 'Select a pattern'}</div>
+          <div class="act-reason">${selectedModel?.reason || 'Select a pattern to understand why it should be acted on now or monitored.'}</div>
+          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selected?.id || ''}" ${selected ? '' : 'disabled'}>Get Remediation Path</button>
+        </div>
+      </div>
+    </section>`;
+}
+
+function conciseExecMetrics(ps, patterns) {
+  const totalPatternCost = patterns.reduce((s, pat) => s + patternCost(pat), 0);
+  const groupedProblems = patterns.reduce((s, pat) => s + pat.occurrences, 0);
+  const highImpact = patterns.filter(pat => isHighImpactPattern(pat, patterns)).length;
+  const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
+  const session = calcSessionMetrics(ps, patterns);
+  const recoverable = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+  const resolved = ps.filter(p => p.status === 'RESOLVED' && p.dur);
+  const durs = resolved.map(p => p.dur);
+  const mttr = MTTR_SUMMARY || {
+    median: arrPercentile(durs, .5),
+    p85: arrPercentile(durs, .85),
+    count: resolved.length,
+  };
+  return { totalPatternCost, groupedProblems, highImpact, riskBacklog, recoverable, mttr };
+}
+
+function renderConciseKpiRow(ps, patterns) {
+  const m = conciseExecMetrics(ps, patterns);
+  const recoveryPct = m.totalPatternCost ? Math.round((m.recoverable / m.totalPatternCost) * 100) : 0;
+  const cards = [
+    { key:'risk', label:'Open Risk Exposure', value:fmtC(m.totalPatternCost), sub:`${m.highImpact} high-impact pattern${m.highImpact!==1?'s':''}`, cls:'risk' },
+    { key:'recoverable', label:'Recoverable Now', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure`, cls:'recover' },
+    { key:'patterns', label:'Active Patterns', value:patterns.length, sub:`${m.groupedProblems} grouped · ${m.riskBacklog} risk backlog`, cls:'patterns' },
+    { key:'resolution', label:'Resolution Time', value:`${fmtM(m.mttr.median || 0)} median`, sub:`p85 ${fmtM(m.mttr.p85 || 0)} · ${m.mttr.count || 0} resolved`, cls:'time' },
+  ];
+  return `<section class="cx-kpis">${cards.map(c => `
+    <button class="cx-kpi ${c.cls} ${execMetricDrilldown === c.key ? 'selected' : ''}" data-action="selectExecMetric" data-metric="${c.key}" aria-pressed="${execMetricDrilldown === c.key}">
+      <div class="cx-kpi-label">${c.label}</div>
+      <div class="cx-kpi-value">${c.value}</div>
+      <div class="cx-kpi-sub">${c.sub}</div>
+    </button>`).join('')}</section>`;
+}
+
+function renderMetricDrilldown(ps, patterns) {
+  const m = conciseExecMetrics(ps, patterns);
+  const ranked = [...patterns].sort((a, b) => patternPriorityScore(b, patterns) - patternPriorityScore(a, patterns));
+  const topPattern = ranked[0] || null;
+  const recoveryPct = m.totalPatternCost ? Math.round(m.recoverable / m.totalPatternCost * 100) : 0;
+  const base = {
+    risk: {
+      label:'Open Risk Exposure',
+      value:fmtC(m.totalPatternCost),
+      why:`${fmtC(m.totalPatternCost)} exposure is concentrated across ${m.highImpact} high-impact pattern${m.highImpact === 1 ? '' : 's'}.`,
+      action:'Review the Act-First Map to decide whether to remediate now or assign ownership.',
+      related:topPattern,
+    },
+    recoverable: {
+      label:'Recoverable Now',
+      value:fmtC(m.recoverable),
+      why:`${fmtC(m.recoverable)} is modeled as recoverable, representing ${recoveryPct}% of current exposure based on recurring pattern reduction assumptions.`,
+      action:'Validate the remediation path before committing effort.',
+      related:topPattern,
+    },
+    patterns: {
+      label:'Active Patterns',
+      value:String(patterns.length),
+      why:`${patterns.length} recurring patterns remain active. ${m.groupedProblems} problems were grouped, reducing investigation scope and prioritizing recurring operational risk.`,
+      action:'Use Pattern Explorer to assign ownership to the highest-priority recurring pattern.',
+      related:topPattern,
+    },
+    resolution: {
+      label:'Resolution Time',
+      value:`${fmtM(m.mttr.median || 0)} median`,
+      why:`Median resolution time is ${fmtM(m.mttr.median || 0)}, while p85 is ${fmtM(m.mttr.p85 || 0)} across ${m.mttr.count || 0} resolved problems.`,
+      action:'Focus on recurring patterns that repeatedly drive the long resolution-time tail.',
+      related:[...patterns].filter(pattern => pattern.avgDur > 0).sort((a, b) => b.avgDur - a.avgDur)[0] || null,
+    },
+  };
+  const detail = execMetricDrilldown ? base[execMetricDrilldown] : null;
+  if (!detail) {
+    return `<section class="cx-metric-drilldown neutral">
+      <div><div class="cx-eyebrow">Metric Drilldown</div><h2>${ps.length} problems reduced to ${patterns.length} recurring operational patterns</h2><p>Select a metric or pattern to inspect impact and recommended action.</p></div>
+    </section>`;
+  }
+  return `<section class="cx-metric-drilldown">
+    <div class="cx-metric-main"><div class="cx-eyebrow">Metric Drilldown</div><h2>${detail.label}: ${detail.value}</h2><p>${detail.why}</p></div>
+    <div class="cx-metric-context">
+      ${detail.related ? `<div><span>Related top pattern</span><strong>${detail.related.title}</strong></div>` : ''}
+      <div><span>Recommended next action</span><strong>${detail.action}</strong></div>
+    </div>
+  </section>`;
+}
+
+function renderConciseFocusBanner(patterns) {
+  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }))
+    .sort((a, b) => b.score - a.score);
+  const selected = execPatternSelectionMade
+    ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
+    : null;
+  if (!selected) {
+    return `<section class="cx-focus neutral"><div><div class="cx-eyebrow">Pattern prioritization</div><h2>Select a pattern to inspect</h2><p>Select a pattern from the Act-First Map or Pattern Explorer to view impact, evidence, and remediation.</p></div></section>`;
+  }
+  const exposure = patternCost(selected);
+  const recoverable = patternRecoverableValue(selected);
+  const why = actFirstModel(selected, patterns).reason || highImpactReason(selected, patterns) || 'This recurring pattern represents measurable operational risk.';
+  return `<section class="cx-focus">
+    <div>
+      <div class="cx-eyebrow">Selected pattern</div>
+      <h2>${selected.title}</h2>
+      <p>${selected.occurrences} occurrences · ${fmtC(exposure)} exposure · ${fmtC(recoverable)} recoverable · ${patternOpenCount(selected)} open</p>
+      <div class="cx-focus-why">${why}</div>
+    </div>
+    <div class="cx-focus-actions">
+      <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selected.id}">Get Remediation Path</button>
+      <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
+    </div>
+  </section>`;
+}
+
+function concisePatternStatus(pat) {
+  if (!Object.prototype.hasOwnProperty.call(pat, 'status')) return null;
+  return pat.status;
+}
+
+function renderConcisePatternTable(patterns) {
+  const rows = getExplorerRows(patterns);
+  const hasOwner = patterns.some(pat => Object.prototype.hasOwnProperty.call(pat, 'owner') || Object.prototype.hasOwnProperty.call(pat, 'ownerTeam'));
+  const hasStatus = patterns.some(pat => concisePatternStatus(pat));
+  const header = `
+    <th>Priority</th><th>Pattern</th>${hasOwner?'<th>Owner</th>':''}<th>Occurrences</th><th>Exposure</th><th>Recoverable</th><th>Confidence%</th><th>Fixability</th><th>Trend</th><th>Priority score</th>${hasStatus?'<th>Status</th>':''}`;
+  return `<section class="cx-table-card" id="patternExplorer">
+    <div class="cx-section-head">
+      <div><div class="cx-eyebrow">Pattern Explorer</div><h3>Which recurring issue should I fix next?</h3></div>
+      <div class="cx-muted">${rows.length} matching pattern${rows.length!==1?'s':''}</div>
+    </div>
+    <div class="cx-table-wrap">
+      <table class="cx-table">
+        <thead><tr>${header}</tr></thead>
+        <tbody>${rows.map(({ pat, score }, idx) => {
+          const services = patternServices(pat).slice(0, 2).join(', ');
+          const rca = pat.dimensions?.rootCauseEntities?.[0] || pat.rcaLabel || 'RCA not consistently identified';
+          return `<tr class="${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
+            <td><span class="px-priority">#${idx + 1}</span></td>
+            <td><div class="cx-pat-name">${pat.title}</div><div class="cx-pat-meta">${services || 'Service not identified'} · ${rca}</div></td>
+            ${hasOwner ? `<td>${pat.owner || pat.ownerTeam || ''}</td>` : ''}
+            <td>${pat.occurrences}</td>
+            <td>${fmtC(patternCost(pat))}</td>
+            <td>${fmtC(patternRecoverableValue(pat))}</td>
+            <td>${patternConfidenceScore(pat)}</td>
+            <td><span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">${pat.fixability}</span></td>
+            <td><span class="exec-pat-chip ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend}</span></td>
+            <td>${score}</td>
+            ${hasStatus ? `<td>${concisePatternStatus(pat) || ''}</td>` : ''}
+          </tr>`;
+        }).join('') || `<tr><td colspan="${hasOwner && hasStatus ? 11 : hasOwner || hasStatus ? 10 : 9}"><div class="exec-empty">No patterns match the current filters.</div></td></tr>`}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function renderConciseDetailPanel(pat, patterns) {
+  if (!pat) return `<aside class="cx-detail"><div class="exec-empty">Select a pattern to understand why it is recurring.</div></aside>`;
+  const openCount = patternOpenCount(pat);
+  const exposure = patternCost(pat);
+  const recoverable = patternRecoverableValue(pat);
+  const services = patternServices(pat);
+  const entities = patternAffectedEntities(pat);
+  const rcaList = pat.dimensions?.rootCauseEntities || [];
+  const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
+  const hasActionableRca = rcaList.length > 0 && rcaConfidence > 0;
+  return `<aside class="cx-detail">
+    <div class="cx-section-head compact">
+      <div><div class="cx-eyebrow">Pattern Details</div><h3>${pat.title}</h3></div>
+    </div>
+    <div class="cx-detail-tiles">
+      <div><strong>${pat.occurrences}</strong><span>Occurrences</span></div>
+      <div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div>
+      <div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div>
+      <div><strong>${openCount}</strong><span>Open</span></div>
+    </div>
+    <div class="cx-detail-section">
+      <div class="cx-eyebrow">Impacted entities</div>
+      <div class="px-chip-list">
+        ${services.slice(0, 8).map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">Service not identified</span>'}
+        ${(pat.problems || []).some(p => (p.users || 0) > 0) ? '<span class="px-chip">Customer-facing</span>' : ''}
+        ${entities.slice(0, 6).map(e => `<span class="px-chip">${e}</span>`).join('')}
+      </div>
+    </div>
+    <div class="cx-detail-section">
+      <div class="cx-eyebrow">Evidence</div>
+      <div class="px-evidence">
+        <div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div>
+        <div class="px-evidence-row"><span>Confidence</span><strong>${patternConfidenceScore(pat)} / 100 · RCA consistency ${rcaConfidence}%</strong></div>
+        <div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div>
+        <div class="px-evidence-row"><span>Cost</span><strong>${fmtC(exposure)} exposure · ${fmtC(recoverable)} recoverable</strong></div>
+      </div>
+    </div>
+    ${renderInvestigationComplexityCard(pat, patterns)}
+    <div class="cx-action-block ${hasActionableRca ? '' : 'low'}">
+      <div class="cx-eyebrow">Root cause / recommended action</div>
+      ${hasActionableRca
+        ? `<strong>${rcaList.slice(0, 2).join(', ')}</strong><p>${pat.recommendation?.text || 'Use the existing remediation path to validate the corrective action before automation.'}</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button>`
+        : `<strong>RCA not consistently identified</strong><p>Consistency is ${rcaConfidence}%, so this should remain in investigation until the root cause is validated.</p>`}
+    </div>
+  </aside>`;
+}
+
+function executiveAffectedAreas(pat) {
+  const ids = uniqVals((pat.problems || []).flatMap(p => p.affectedEntityIds || []));
+  const count = pattern => ids.filter(id => pattern.test(String(id))).length;
+  return { applications:count(/APPLICATION/i), synthetic:count(/SYNTHETIC/i), infrastructure:count(/HOST|PROCESS|CONTAINER|CLOUD|KUBERNETES/i), ids };
+}
+
+function renderExecDisclosure(title, summary, body) {
+  return `<details class="cx-disclosure"><summary><span><strong>${title}</strong><small>${summary}</small></span><b>+</b></summary><div class="cx-disclosure-body">${body}</div></details>`;
+}
+
+function renderDecisionDetailPanel(pat, patterns) {
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a pattern to see why it matters and what should be done next.</div></aside>`;
+  const openCount = patternOpenCount(pat);
+  const exposure = patternCost(pat);
+  const recoverable = patternRecoverableValue(pat);
+  const services = patternServices(pat);
+  const entities = patternAffectedEntities(pat);
+  const rcaList = pat.dimensions?.rootCauseEntities || [];
+  const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
+  const confidence = patternConfidenceScore(pat);
+  const hasActionableRca = rcaList.length > 0 && rcaConfidence > 0;
+  const totalExposure = patterns.reduce((sum, pattern) => sum + patternCost(pattern), 0);
+  const exposureShare = totalExposure ? Math.round(exposure / totalExposure * 100) : 0;
+  const affected = executiveAffectedAreas(pat);
+  const complexity = buildInvestigationComplexity({ pattern:pat, toolRows:matchToolDetectionRowsToPattern(pat, TOOL_DETECTION_ROWS) });
+  const resolved = (pat.problems || []).filter(p => p.status === 'RESOLVED' && p.dur);
+  const avgMttr = resolved.length ? arrMean(resolved.map(p => p.dur)) : 0;
+  const recommendedAction = hasActionableRca
+    ? pat.recommendation?.text || 'Validate the identified root cause and initiate the remediation path.'
+    : 'Continue investigation until the root cause is consistently identified.';
+  const actionCount = remediationState.patternId === pat.id && Array.isArray(remediationState.response?.recommendations)
+    ? remediationState.response.recommendations.length
+    : hasActionableRca ? 1 : 0;
+  const hasRemediation = remediationState.patternId === pat.id && remediationState.status === 'done';
+  const remediationResponse = hasRemediation ? remediationState.response : null;
+  const remediationBody = hasRemediation ? renderAssistRemediationResponse(remediationResponse, remediationState.evidence) : '';
+  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity · ${complexity.signalSourceCount} signal sources · RCA confidence ${complexity.rcaConfidence}%`;
+  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 · concentration ${pat.concentration}</strong></div></div>`;
+  const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
+  return `<aside class="cx-detail">
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Pattern Details</div><h3>${pat.title}</h3></div></div>
+    <div class="cx-exec-summary"><div class="cx-eyebrow">Executive Summary</div><p>${pat.title} is responsible for ${exposureShare}% of current pattern exposure. It has recurred ${pat.occurrences} times and currently has ${openCount} open incidents. Estimated recoverable value is ${fmtC(recoverable)}. Recommended action: ${recommendedAction}</p></div>
+    <div class="cx-detail-label">Why This Pattern Matters</div>
+    <div class="cx-detail-tiles"><div><strong>${pat.occurrences}</strong><span>Occurrences</span></div><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div><div><strong>${rcaConfidence}%</strong><span>RCA Confidence</span></div><div><strong>${pat.fixability}</strong><span>Fixability</span></div></div>
+    <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
+    <div class="cx-complexity-summary"><span>Investigation Complexity</span><strong>${complexitySummary}</strong><p>${complexity.narrative}</p></div>
+    ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services · ${affected.applications} applications · ${affected.synthetic} synthetic monitors · ${affected.infrastructure} infrastructure components`, impactedBody)}
+    ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences · ${pat.trend.toLowerCase()} · RCA confidence ${rcaConfidence}%`, evidenceBody)}
+    ${renderExecDisclosure('Investigation Complexity', complexitySummary, renderInvestigationComplexityCard(pat, patterns) || `<p>${complexity.narrative}</p>`)}
+    ${hasRemediation ? renderExecDisclosure('Remediation Path', `${actionCount} recommended actions · Estimated recovery ${fmtC(recoverable)}`, remediationBody) : ''}
+  </aside>`;
+}
+
+function renderConciseActFirstMap(patterns) {
+  const maxCost = Math.max(1, ...patterns.map(p => patternCost(p)));
+  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }))
+    .sort((a, b) => b.score - a.score);
+  const bubbles = ranked.map(({ pat, score }, idx) => {
+    const cost = patternCost(pat);
+    const recoverable = patternRecoverableValue(pat);
+    const fixability = patternFixabilityScore(pat);
+    const model = actFirstModel(pat, patterns);
+    const costPosition = clamp(cost / maxCost, 0.06, 1);
+    const left = Math.round(8 + fixability * 84);
+    const bottom = Math.round(9 + costPosition * 80);
+    const size = Math.round(clamp(18 + Math.sqrt(Math.max(0, cost)) / 60, 20, 48));
+    const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Recoverable ${fmtC(recoverable)} | Fixability ${pat.fixability} | Priority ${score} | ${model.reason}`;
+    return `<button class="cx-map-bubble ${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" data-tooltip="${attrText(tooltip)}" title="${attrText(tooltip)}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">#${idx + 1}</button>`;
+  }).join('');
+  return `<section class="cx-map">
+    <div class="cx-section-head">
+      <div><div class="cx-eyebrow">Act-First Map</div><h3>Cost exposure x fixability</h3><div class="cx-map-helper">Click a bubble to inspect the pattern.</div></div>
+      <div class="cx-muted">Bubble size = exposure</div>
+    </div>
+    <div class="cx-map-plot">
+      <div class="cx-map-axis y">Cost impact</div>
+      <div class="cx-map-axis x">Fixability</div>
+      <div class="cx-map-q q1">Do now</div><div class="cx-map-q q2">High cost-hard</div><div class="cx-map-q q3">Backlog</div><div class="cx-map-q q4">Quick win</div>
+      ${bubbles}
+    </div>
+    <div class="cx-map-selection">${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</div>
+  </section>`;
+}
+
+function renderConciseExecView(patterns, ps) {
+  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
+  if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
+    patternExplorerState.selectedId = ranked[0]?.pat.id || null;
+  }
+  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || ranked[0]?.pat;
+  document.getElementById('intelSummary').innerHTML = '';
+  document.getElementById('patternGrid').innerHTML = `<div class="cx-view">
+    ${renderConciseKpiRow(ps, patterns)}
+    ${renderConciseFocusBanner(patterns)}
+    <div class="cx-main-grid">
+      <div class="cx-left">
+        ${renderConciseActFirstMap(patterns)}
+        ${renderConcisePatternTable(patterns)}
+      </div>
+      ${renderConciseDetailPanel(selected, patterns)}
+    </div>
+  </div>`;
+}
+
+function renderDecisionFirstExecView(patterns, ps) {
+  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
+  const selected = execPatternSelectionMade
+    ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
+    : null;
+  const selectedView = execAnalyticalView === 'map' ? renderConciseActFirstMap(patterns) : renderConcisePatternTable(patterns);
+  document.getElementById('intelSummary').innerHTML = '';
+  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
+    ${renderConciseKpiRow(ps, patterns)}
+    ${renderMetricDrilldown(ps, patterns)}
+    <section class="cx-view-controls">
+      <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>
+      <div class="cx-view-switch">
+        <button class="${execAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="explorer">Pattern Explorer</button>
+        <button class="${execAnalyticalView === 'map' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="map">Act-First Map</button>
+      </div>
+    </section>
+    <div class="cx-selected-view">${selectedView}</div>
+    ${selected ? renderDecisionDetailPanel(selected, patterns) : '<div class="cx-selection-prompt">Select a pattern to reveal its executive summary, recommended action, and optional evidence.</div>'}
+  </div>`;
+}
+
 function renderExecutivePatternView(patterns, ps) {
+  {
+    const totalProblems = ps.length;
+    const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
+    const oneOffCount = totalProblems - patternOccurrences;
+    const actions = patterns.filter(pat => ['FIX_ROOT_CAUSE','ADD_TIME_WINDOW','INVESTIGATE_FIRST'].includes(pat.recommendation?.type)).length;
+    const totalPatternCost = patterns.reduce((s, pat) => s + patternCost(pat), 0);
+    const reductionPct = totalProblems ? Math.round((1 - (patterns.length / totalProblems)) * 100) : 0;
+    const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }))
+      .sort((a, b) => b.score - a.score);
+    if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
+      patternExplorerState.selectedId = ranked[0]?.pat.id || null;
+    }
+    const teams = patternFilterOptions(patterns, patternTeams);
+    const services = patternFilterOptions(patterns, patternServices);
+    const envs = patternFilterOptions(patterns, patternEnvironments);
+    const rows = getExplorerRows(patterns);
+    if (rows.length && !rows.some(r => r.pat.id === patternExplorerState.selectedId)) {
+      patternExplorerState.selectedId = rows[0].pat.id;
+    }
+    const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || rows[0]?.pat;
+    const pageSize = 160;
+    const offset = clamp(patternExplorerState.offset || 0, 0, Math.max(0, rows.length - pageSize));
+    patternExplorerState.offset = offset;
+    const visibleRows = rows.slice(offset, offset + pageSize);
+    const sortMark = key => patternExplorerState.sort === key ? (patternExplorerState.dir === 'asc' ? ' ↑' : ' ↓') : '';
+    const rowHtml = visibleRows.map(({ pat, score }, idx) => `
+      <tr class="px-row ${pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
+        <td><span class="px-priority">#${idx + 1}</span></td>
+        <td><div class="px-name">${pat.title}</div><div class="px-meta">${highImpactReason(pat, patterns) || 'recurring operational pattern'}</div></td>
+        <td><span class="px-num">${pat.occurrences}</span></td>
+        <td><span class="px-num">${fmtC(patternCost(pat))}</span></td>
+        <td><span class="px-num">${patternOpenCount(pat)}</span></td>
+        <td><span class="px-num">${patternConfidenceScore(pat)}</span></td>
+        <td><span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">${pat.fixability}</span></td>
+        <td><span class="exec-pat-chip ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend[0] + pat.trend.slice(1).toLowerCase()}</span></td>
+      </tr>`).join('');
+    document.getElementById('patternGrid').innerHTML = `
+      <div class="exec-board">
+        <div class="pattern-lead">
+          <div>
+            <div class="pattern-lead-title">${totalProblems} problems reduced to <strong>${patterns.length} recurring patterns</strong></div>
+            <div class="pattern-lead-sub">${patternOccurrences} grouped incidents · ${oneOffCount} one-off problems · ${reductionPct}% reduction in operational investigation scope</div>
+          </div>
+          <div class="pattern-lead-meta">
+            <div class="pattern-mini-stat"><div class="pattern-mini-val">${fmtC(totalPatternCost)}</div><div class="pattern-mini-lbl">Pattern cost</div></div>
+            <div class="pattern-mini-stat"><div class="pattern-mini-val">${actions}</div><div class="pattern-mini-lbl">Actions</div></div>
+            <div class="pattern-mini-stat"><div class="pattern-mini-val">${ranked.filter(x => isHighImpactPattern(x.pat, patterns)).length}</div><div class="pattern-mini-lbl">High impact</div></div>
+          </div>
+        </div>
+
+        <div class="pattern-funnel">
+          <div class="funnel-step"><div class="funnel-lbl">Problems</div><div class="funnel-val">${totalProblems}</div><div class="funnel-sub">Non-duplicate Davis problems</div></div>
+          <div class="funnel-step"><div class="funnel-lbl">Grouped Incidents</div><div class="funnel-val">${patternOccurrences}</div><div class="funnel-sub">${oneOffCount} excluded as one-off</div></div>
+          <div class="funnel-step patterns"><div class="funnel-lbl">Patterns</div><div class="funnel-val">${patterns.length}</div><div class="funnel-sub">Recurring operational issues</div></div>
+          <div class="funnel-step actions"><div class="funnel-lbl">Recommended Actions</div><div class="funnel-val">${actions}</div><div class="funnel-sub">Ranked by impact and recurrence</div></div>
+        </div>
+
+        ${renderActFirstMap(patterns)}
+
+        <div class="pattern-explorer-shell">
+          <div class="px-panel">
+            <div class="px-toolbar">
+              <input class="px-search" data-action="patternSearch" value="${patternExplorerState.search || ''}" placeholder="Search patterns, RCA, service, team">
+              <select class="px-filter" data-action="patternFilter" data-filter="cost">${renderSelectOptions(['high','medium','low'], patternExplorerState.filters.cost, 'Cost')}</select>
+              <select class="px-filter" data-action="patternFilter" data-filter="recurrence">${renderSelectOptions(['high','medium','low'], patternExplorerState.filters.recurrence, 'Recurrence')}</select>
+              <select class="px-filter" data-action="patternFilter" data-filter="confidence">${renderSelectOptions(['high','medium','low'], patternExplorerState.filters.confidence, 'Confidence')}</select>
+              <select class="px-filter" data-action="patternFilter" data-filter="team">${renderSelectOptions(teams, patternExplorerState.filters.team, 'Team')}</select>
+              <select class="px-filter" data-action="patternFilter" data-filter="service">${renderSelectOptions(services, patternExplorerState.filters.service, 'Service')}</select>
+              <select class="px-filter" data-action="patternFilter" data-filter="environment">${renderSelectOptions(envs, patternExplorerState.filters.environment, 'Environment')}</select>
+            </div>
+            <div class="px-table-wrap">
+              <table class="px-table">
+                <thead><tr>
+                  <th data-action="sortPatternTable" data-sort="priority">Priority${sortMark('priority')}</th>
+                  <th data-action="sortPatternTable" data-sort="name">Pattern Name${sortMark('name')}</th>
+                  <th data-action="sortPatternTable" data-sort="occurrences">Occurrences${sortMark('occurrences')}</th>
+                  <th data-action="sortPatternTable" data-sort="cost">Cost Impact${sortMark('cost')}</th>
+                  <th data-action="sortPatternTable" data-sort="open">Open Incidents${sortMark('open')}</th>
+                  <th data-action="sortPatternTable" data-sort="confidence">Confidence${sortMark('confidence')}</th>
+                  <th data-action="sortPatternTable" data-sort="fixability">Fixability${sortMark('fixability')}</th>
+                  <th data-action="sortPatternTable" data-sort="trend">Trend${sortMark('trend')}</th>
+                </tr></thead>
+                <tbody>${rowHtml || '<tr><td colspan="8"><div class="exec-empty">No patterns match the selected filters.</div></td></tr>'}</tbody>
+              </table>
+            </div>
+            <div class="px-footer">
+              <span>${rows.length} matching patterns · showing ${rows.length ? offset + 1 : 0}-${Math.min(offset + visibleRows.length, rows.length)}</span>
+              <span>Sorted by ${patternExplorerState.sort}
+                <button class="px-page-btn" data-action="pagePatternTable" data-dir="-1" ${offset <= 0 ? 'disabled' : ''}>Prev</button>
+                <button class="px-page-btn" data-action="pagePatternTable" data-dir="1" ${offset + pageSize >= rows.length ? 'disabled' : ''}>Next</button>
+              </span>
+            </div>
+          </div>
+          <div class="px-panel">${renderPatternDetailPane(selected, patterns)}</div>
+        </div>
+
+        <div class="exec-t2-board">
+          <div class="exec-t2-hdr">Pattern Explorer Notes</div>
+          <div class="exec-empty">First screen: select the highest priority recurring issue. Second click: inspect timeline, entities, evidence, root-cause indicators, and recommended actions.</div>
+        </div>
+      </div>`;
+    return;
+  }
   const sm = calcSessionMetrics(ps, patterns);
 
   // Tier 1 financials
@@ -2136,13 +4013,43 @@ function renderExecutivePatternView(patterns, ps) {
       <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
       <div class="exec-t2-chips">
         <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
+        ${isHighImpactPattern(pat, patterns) ? `<span class="exec-pat-chip trend-up" title="High impact: ${highImpactReason(pat, patterns)}">Impact: High</span>` : ''}
         <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
         <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
         ${renderConfidenceBadge(pat.confidence, 'pattern')}
       </div>
       <span class="exec-t2-val">${valHtml}</span>
       <span class="exec-t2-meta">${metaHtml}</span>
-    </div>`;
+    </div>
+    `;
+
+  const patternRow = pat => {
+    const openCount = pat.problems.filter(p => p.status === 'OPEN').length;
+    const cost = pat.problems.reduce((s, p) => s + calcCost(p).total, 0);
+    const d = pat.dimensions || {};
+    return `<div class="exec-t2-row exec-pattern-row">
+      <span class="exec-t2-badge exec-t2-pattern">Pattern</span>
+      <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
+      <div class="exec-t2-chips">
+        <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
+        <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
+        ${d.primaryRootCause ? `<span class="exec-pat-chip exec-dim-chip">RCA: ${d.primaryRootCause}</span>` : ''}
+      </div>
+      <span class="exec-t2-val">${pat.occurrences}x</span>
+      <span class="exec-t2-meta">${fmtC(cost)}${openCount ? ` · ${openCount} open` : ''}</span>
+      <button class="exec-detail-btn ${expandedPatterns.has(pat.id) ? 'open' : ''}" data-action="togglePatternExpand" data-pid="${pat.id}">
+        ${expandedPatterns.has(pat.id) ? 'Hide' : 'Details'}
+      </button>
+    </div>
+    ${expandedPatterns.has(pat.id) ? renderExecutivePatternDetail(pat) : ''}`;
+  };
+
+  const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
+  const patternsBoard = execPatternsOpen ? `<div class="exec-t2-board exec-patterns-board">
+    <div class="exec-t2-hdr">Patterns · ${patterns.length} patterns · ${patternOccurrences} pattern occurrences · ${fmtC(patterns.reduce((s, pat) => s + pat.totalCost, 0))} pattern cost</div>
+    <div class="exec-patterns-list">${patterns.map(patternRow).join('')}</div>
+  </div>` : '';
 
   document.getElementById('patternGrid').innerHTML = `
     <div class="exec-board">
@@ -2329,7 +4236,8 @@ function toggleOneOffs() {
 function togglePatternExpand(id) {
   if (expandedPatterns.has(id)) expandedPatterns.delete(id);
   else expandedPatterns.add(id);
-  renderPatternIntelligence();
+  if (persona === 'executive' && execKpiDetail) render();
+  else renderPatternIntelligence();
 }
 
 function togglePatternActions(id) {
@@ -2378,7 +4286,7 @@ const WEEKLY_SNAPSHOTS = [
 
 // ── Mock pattern history with ServiceNow ticket references ──
 // Production: pulled from Dynatrace Problems API linkedTickets field
-// DQL: fetch dt.entity.problem | fields problemId, linkedTickets | filter isNotNull(linkedTickets)
+// DQL: fetch dt.davis.problems | fields problemId = event.id, title = event.name, status = event.status
 const PATTERN_HISTORY = [
   {
     id: 'ph-checkout',
@@ -2915,6 +4823,20 @@ document.addEventListener('click', function(e) {
     case 'drillToExplorer': e.stopPropagation(); switchView('explorer'); onRowClick(pid); break;
     case 'toggleOneOffs': toggleOneOffs(); break;
     case 'toggleExecValueBreakdown': e.stopPropagation(); toggleExecValueBreakdown(); break;
+    case 'toggleExecPatterns': e.stopPropagation(); toggleExecPatterns(); break;
+    case 'toggleExecKpiDetail': e.stopPropagation(); toggleExecKpiDetail(el.dataset.mode); break;
+    case 'selectPatternRow': e.stopPropagation(); selectPatternRow(pid); break;
+    case 'focusPatternExplorer': e.stopPropagation(); focusPatternExplorer(); break;
+    case 'getPatternRemediation': e.stopPropagation(); if (pid) getPatternRemediation(pid); break;
+    case 'setExecAnalyticalView': e.stopPropagation(); setExecAnalyticalView(el.dataset.mode); break;
+    case 'selectExecMetric': e.stopPropagation(); selectExecMetric(el.dataset.metric); break;
+    case 'openPatternAnalysis':
+      e.stopPropagation();
+      document.getElementById('aiCard')?.closest('details')?.setAttribute('open', '');
+      if (pid) deepAnalyze(pid);
+      break;
+    case 'sortPatternTable': e.stopPropagation(); sortPatternTable(el.dataset.sort); break;
+    case 'pagePatternTable': e.stopPropagation(); pagePatternTable(Number(el.dataset.dir || 1)); break;
 
     // Trend chart legend
     case 'toggleMetric': toggleMetric(key); break;
@@ -2945,7 +4867,7 @@ document.querySelector('.ai-src-bar').addEventListener('click', function(e) {
 
 // Select change listeners
 document.getElementById('appFilter').addEventListener('change', render);
-document.getElementById('timeRange').addEventListener('change', () => { PROBLEMS = MOCK_PROBLEMS; render(); loadProblems(); });
+document.getElementById('timeRange').addEventListener('change', () => { PROBLEMS = MOCK_PROBLEMS; MTTR_SUMMARY = null; render(); loadProblems(); });
 document.getElementById('extProvider').addEventListener('change', onProviderChange);
 
 // Modal overlay: close only when clicking the overlay itself
@@ -2957,9 +4879,43 @@ document.getElementById('awsModal').addEventListener('click', function(e) {
 document.addEventListener('change', function(e) {
   const cb = e.target.closest('.rc[data-action="toggleSel"]');
   if (cb) { e.stopPropagation(); toggleSel(cb.dataset.pid, cb.checked, e); }
+  const pf = e.target.closest('[data-action="patternFilter"]');
+  if (pf) { e.stopPropagation(); setPatternFilter(pf.dataset.filter, pf.value); }
+});
+
+document.addEventListener('input', function(e) {
+  const ps = e.target.closest('[data-action="patternSearch"]');
+  if (ps) {
+    e.stopPropagation();
+    clearTimeout(patternSearchTimer);
+    const value = ps.value;
+    patternSearchTimer = setTimeout(() => setPatternSearch(value), 180);
+  }
 });
 
 // BOOT — render immediately with demo data, then replace with live Grail data
+document.addEventListener('keydown', function(e) {
+  const bubble = e.target.closest('.act-map-bubble[data-act-map="1"]');
+  if (!bubble) return;
+  const bubbles = [...document.querySelectorAll('.act-map-bubble[data-act-map="1"]')];
+  const idx = bubbles.indexOf(bubble);
+  if (idx < 0) return;
+  if (['ArrowRight','ArrowDown','ArrowLeft','ArrowUp'].includes(e.key)) {
+    e.preventDefault();
+    const dir = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+    const next = bubbles[(idx + dir + bubbles.length) % bubbles.length];
+    if (next?.dataset.pid) {
+      selectPatternRow(next.dataset.pid, { remediate:false });
+      setTimeout(() => document.querySelector(`.act-map-bubble[data-pid="${next.dataset.pid}"]`)?.focus(), 0);
+    }
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    if (bubble.dataset.pid) getPatternRemediation(bubble.dataset.pid);
+  }
+});
+
 render();
 switchView('patterns');
 loadProblems();

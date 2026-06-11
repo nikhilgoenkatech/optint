@@ -83,27 +83,75 @@ export async function fetchWeeklySnapshots(): Promise<WeeklySnapshot[]> {
 
 // ── Record → model mappers ─────────────────────────────────
 
+function toEpochMs(value: unknown): number | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'number') return value > 1e15 ? Math.floor(value / 1e6) : value;
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? undefined : ms;
+  }
+  if (typeof value === 'object' && 'seconds' in value) {
+    const duration = value as { seconds?: number; nanos?: number };
+    return (duration.seconds ?? 0) * 1000 + Math.floor((duration.nanos ?? 0) / 1e6);
+  }
+  return undefined;
+}
+
+function toMinutes(value: unknown): number | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'number') {
+    return value > 10000 ? Math.round(value / 60000) : value;
+  }
+  const ms = toEpochMs(value);
+  return ms ? Math.round(ms / 60000) : undefined;
+}
+
 function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
-  const duration     = r['duration'] ? Number(r['duration']) : undefined;
+  const duration      = toMinutes(r['duration']);
   const affectedUsers = r['affectedUsers'] ? Number(r['affectedUsers']) : 0;
-  const severity     = String(r['severityLevel'] ?? 'CUSTOM_ALERT') as DynatraceProblem['severity'];
+  const severityMap: Record<string, DynatraceProblem['severity']> = {
+    ERROR: 'ERROR',
+    AVAILABILITY: 'AVAILABILITY',
+    SLOWDOWN: 'PERFORMANCE',
+    PERFORMANCE: 'PERFORMANCE',
+    RESOURCE_CONTENTION: 'RESOURCE_CONTENTION',
+    CUSTOM_ALERT: 'CUSTOM_ALERT',
+  };
+  const statusMap: Record<string, DynatraceProblem['status']> = {
+    OPEN: 'OPEN',
+    ACTIVE: 'OPEN',
+    RESOLVED: 'RESOLVED',
+    CLOSED: 'RESOLVED',
+  };
+  const severity = severityMap[String(r['severityLevel'] ?? '').toUpperCase()] ?? 'CUSTOM_ALERT';
+  const status = statusMap[String(r['status'] ?? '').toUpperCase()] ?? 'OPEN';
   const recurrence   = computeRecurrenceScore(1, 7); // will be re-scored by pattern engine
+  const rootCauseName = r['rootCauseEntityName'] ? String(r['rootCauseEntityName']) : '';
+  const impactedIds = Array.isArray(r['impactedEntityIds']) ? r['impactedEntityIds'].map(String) : [];
 
   return {
-    problemId:        String(r['problemId'] ?? ''),
+    problemId:        String(r['problemId'] ?? r['displayId'] ?? ''),
     title:            String(r['title'] ?? ''),
-    status:           String(r['status'] ?? 'OPEN') as DynatraceProblem['status'],
+    status,
     severity,
-    startTime:        Number(r['startTime'] ?? Date.now()),
-    endTime:          r['endTime'] ? Number(r['endTime']) : undefined,
+    startTime:        toEpochMs(r['startTime']) ?? Date.now(),
+    endTime:          toEpochMs(r['endTime']),
     duration,
-    impactedEntities: (r['impactedEntities'] as DynatraceProblem['impactedEntities']) ?? [],
-    rootCauseEntity:  r['rootCauseEntity']  as DynatraceProblem['rootCauseEntity'],
+    impactedEntities: impactedIds.map(entityId => ({
+      entityId,
+      name: entityId,
+      type: entityId.split('-')[0] as DynatraceProblem['impactedEntities'][number]['type'],
+    })),
+    rootCauseEntity:  rootCauseName ? {
+      entityId: rootCauseName,
+      name: rootCauseName,
+      type: 'SERVICE',
+    } : undefined,
     affectedUsers,
     managementZones:  (r['managementZones'] as string[]) ?? [],
     tags:             (r['tags']            as string[]) ?? [],
     linkedTickets:    (r['linkedTickets']   as DynatraceProblem['linkedTickets']) ?? [],
-    hasRootCause:     Boolean(r['rootCauseEntity']),
+    hasRootCause:     Boolean(rootCauseName),
     recurrenceScore:  recurrence,
     operationalImpactScore: computeOperationalImpactScore(
       severity, duration ?? 30, affectedUsers, recurrence

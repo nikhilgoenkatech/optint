@@ -88,7 +88,9 @@ export interface LinkedTicket {
 // ── Pattern detection ──────────────────────────────────────
 export interface ProblemPattern {
   patternId:        string;
-  signature:        string;   // normalised title fingerprint
+  signature:        string;   // normalised title plus causal/entity fingerprint
+  causalEntity:     string;
+  dimensions:       PatternDimensions;
   title:            string;
   occurrences:      number;
   firstSeen:        number;
@@ -111,6 +113,22 @@ export interface ProblemPattern {
   autoResolveRate:  number;
   sparkData:        TrendPoint[];
   recommendation:   PatternRecommendation;
+}
+
+export interface PatternDimensions {
+  rootCauseEntities: string[];
+  causalEntities:    string[];
+  impactedServices:  string[];
+  managementZones:   string[];
+  regions:           string[];
+  clouds:            string[];
+  severities:        Severity[];
+  primaryRootCause:  string | null;
+  primaryService:    string | null;
+  primaryZone:       string | null;
+  primaryRegion:     string | null;
+  primaryCloud:      string | null;
+  dimensionPurity:   number;
 }
 
 export type RecommendationType =
@@ -175,6 +193,7 @@ export interface AIRecommendation {
   priority:        'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
   title:           string;
   description:     string;
+  dynatraceFeature?: string;
   estimatedImpact: string;
   owner:           string;
 }

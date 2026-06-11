@@ -3,10 +3,9 @@
 // Interface + Davis CoPilot production adapter + Mock adapter
 // ============================================================
 
-import { DynatraceProblem } from '../models';
+import { CostEstimate, DynatraceProblem } from '../models';
 import { PersonaType } from '../persona/PersonaResolver';
 import { AISummaryRequest, buildDavisCopilotPayload } from '../persona/PersonaPromptBuilder';
-import { CostEstimate } from '../cost/CostModel';
 
 // ------------------------------------
 // Shared types
@@ -15,6 +14,7 @@ export interface AIRecommendation {
   priority: 'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
   title: string;
   description: string;
+  dynatraceFeature?: string;
   estimatedImpact: string;
   owner: string;
 }

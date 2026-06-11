@@ -2,7 +2,7 @@
 // DYNATRACE OPERATIONAL INTELLIGENCE - ANALYTICS UTILITIES
 // ============================================================
 
-import { DynatraceProblem, ProblemPattern, TrendPoint, Severity, PatternRecommendation, RecommendationType } from '../models';
+import { DynatraceProblem, ProblemPattern, TrendPoint, Severity, PatternRecommendation, RecommendationType, PatternDimensions } from '../models';
 import { normaliseTitle } from '../queries/dqlQueries';
 import { estimateCost }   from '../cost/CostModel';
 
@@ -58,7 +58,7 @@ export function detectPatterns(problems: DynatraceProblem[]): {
 } {
   const groups = new Map<string, DynatraceProblem[]>();
   problems.forEach(p => {
-    const key = normaliseTitle(p.title);
+    const key = patternSignature(p);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(p);
   });
@@ -74,6 +74,82 @@ export function detectPatterns(problems: DynatraceProblem[]): {
   return {
     patterns: patterns.sort((a, b) => b.recurrenceScore - a.recurrenceScore),
     oneOffs,
+  };
+}
+
+function normaliseEntityKey(entity: string | undefined): string {
+  return String(entity || 'unknown-entity').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function patternEntityKey(problem: DynatraceProblem): string {
+  if (problem.rootCauseEntity?.name) return `rca:${normaliseEntityKey(problem.rootCauseEntity.name)}`;
+  const primaryEntity = problem.impactedEntities.find(e => e.name)?.name;
+  return `entity:${normaliseEntityKey(primaryEntity)}`;
+}
+
+function isGenericMultiEntityTitle(title: string): boolean {
+  const normalized = normaliseTitle(title);
+  return /\bmultiple\s+(services|entities|applications|problems)\b/.test(normalized)
+    || /\bimpacted\s+services\b/.test(normalized);
+}
+
+function patternSignature(problem: DynatraceProblem): string {
+  if (isGenericMultiEntityTitle(problem.title)) {
+    return `${normaliseTitle(problem.title)}|severity:${problem.severity}`;
+  }
+  return `${normaliseTitle(problem.title)}|${patternEntityKey(problem)}`;
+}
+
+function mean(values: number[]): number {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function uniqueValues(values: Array<string | undefined | null>): string[] {
+  return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))].sort();
+}
+
+function mode(values: Array<string | undefined | null>): string | null {
+  const counts = new Map<string, number>();
+  values.map(v => String(v || '').trim()).filter(Boolean).forEach(v => counts.set(v, (counts.get(v) ?? 0) + 1));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+function purity(values: Array<string | undefined | null>): number {
+  const clean = values.map(v => String(v || '').trim()).filter(Boolean);
+  if (!clean.length) return 0.5;
+  const top = mode(clean);
+  return clean.filter(v => v === top).length / clean.length;
+}
+
+function buildPatternDimensions(problems: DynatraceProblem[]): PatternDimensions {
+  const rootCauseEntities = uniqueValues(problems.filter(p => p.hasRootCause && p.rootCauseEntity?.name).map(p => p.rootCauseEntity?.name));
+  const impactedServices = uniqueValues(problems.flatMap(p => p.impactedEntities.map(e => e.name)));
+  const managementZones = uniqueValues(problems.flatMap(p => p.managementZones));
+  const regions = uniqueValues(problems.map(p => p.region));
+  const clouds = uniqueValues(problems.map(p => p.cloud ?? undefined).filter(Boolean));
+  const severities = [...new Set(problems.map(p => p.severity))].sort() as Severity[];
+  const causalEntities = uniqueValues(problems.map(patternEntityKey));
+  const dimensionPurity = Math.max(0, Math.min(1, mean([
+    purity(problems.map(patternEntityKey)),
+    purity(problems.map(p => p.severity)),
+    purity(problems.flatMap(p => p.managementZones)),
+    purity(problems.map(p => p.region || p.cloud || 'unknown')),
+  ])));
+
+  return {
+    rootCauseEntities,
+    causalEntities,
+    impactedServices,
+    managementZones,
+    regions,
+    clouds,
+    severities,
+    primaryRootCause: mode(rootCauseEntities),
+    primaryService: mode(impactedServices),
+    primaryZone: mode(managementZones),
+    primaryRegion: mode(regions),
+    primaryCloud: mode(clouds),
+    dimensionPurity,
   };
 }
 
@@ -117,12 +193,14 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
     timestamp: p.startTime,
     value:     estimateCost(p).total,
   }));
+  const dimensions = buildPatternDimensions(problems);
   const uniqueTitles = new Set(problems.map(p => normaliseTitle(p.title))).size;
   const clusterPurity = Math.max(0, Math.min(1, 1 - ((uniqueTitles - 1) / problems.length)));
   const rcaConsistency = rcaValues.length === 1 ? 1 : rcaValues.length > 1 ? 0.5 : 0;
-  const concentration = level(clusterPurity * 0.5 + (rcaConsistency || 0.2) * 0.5);
-  const fixability = level(rcaConsistency * 0.6 + (recScore / 100) * 0.25 + clusterPurity * 0.15);
-  const confidence = level(clusterPurity * 0.35 + rcaConsistency * 0.35 + Math.min(problems.length / 5, 1) * 0.3);
+  const dimensionPurity = dimensions.dimensionPurity;
+  const concentration = level(clusterPurity * 0.3 + (rcaConsistency || 0.2) * 0.3 + dimensionPurity * 0.4);
+  const fixability = level(rcaConsistency * 0.45 + (recScore / 100) * 0.2 + clusterPurity * 0.15 + dimensionPurity * 0.2);
+  const confidence = level(clusterPurity * 0.25 + rcaConsistency * 0.3 + dimensionPurity * 0.2 + Math.min(problems.length / 5, 1) * 0.25);
 
   const recommendation = recommendAction({
     recurrenceScore:     recScore,
@@ -141,8 +219,10 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
   });
 
   return {
-    patternId:       `pat-${normaliseTitle(problems[0].title).replace(/\W+/g, '-').substring(0, 20)}`,
-    signature:       normaliseTitle(problems[0].title),
+    patternId:       `pat-${patternSignature(problems[0]).replace(/\W+/g, '-').substring(0, 36)}`,
+    signature:       patternSignature(problems[0]),
+    causalEntity:    patternEntityKey(problems[0]),
+    dimensions,
     title:           problems[0].businessTitle ?? problems[0].title,
     occurrences:     problems.length,
     firstSeen:       times[0],
