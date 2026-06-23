@@ -529,6 +529,7 @@ let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
 let execPanelMaximized=false;
 let execClosedBubblePopupId=null;
+let execInfoPopoverId=null;
 let patternSearchTimer=null;
 let remediationPatternId=null;
 let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
@@ -2781,6 +2782,11 @@ function closeBubblePopup(id) {
   rerenderPatternsView();
 }
 
+function toggleExecInfo(id) {
+  execInfoPopoverId = execInfoPopoverId === id ? null : id;
+  rerenderPatternsView();
+}
+
 function setExecAnalyticalView(view) {
   execAnalyticalView = view === 'map' ? 'map' : 'explorer';
   rerenderPatternsView();
@@ -4238,7 +4244,7 @@ function renderConciseKpiRow(ps, patterns) {
   ];
   return `<section class="cx-kpis">${cards.map(c => `
     <button class="cx-kpi ${c.cls} ${execMetricDrilldown === c.key ? 'selected' : ''}" data-action="selectExecMetric" data-metric="${c.key}" aria-pressed="${execMetricDrilldown === c.key}">
-      <div class="cx-kpi-label">${c.label}${infoPill(c.info)}</div>
+      <div class="cx-kpi-label">${c.label}${infoPill(c.info, `kpi-${c.key}`)}</div>
       <div class="cx-kpi-value">${c.value}</div>
       <div class="cx-kpi-sub">${c.sub}</div>
     </button>`).join('')}</section>`;
@@ -4510,6 +4516,15 @@ function executiveTimelineLabel(startMs, endMs) {
   return start === end ? start : `${start}-${end}`;
 }
 
+function executiveTimelineShortLabel(startMs, endMs) {
+  const startDate = new Date(startMs);
+  const endDate = new Date(Math.max(startMs, endMs - 1));
+  const fmt = date => `${date.getMonth() + 1}/${date.getDate()}`;
+  const start = fmt(startDate);
+  const end = fmt(endDate);
+  return start === end ? start : `${start}-${end}`;
+}
+
 function selectedRangeDays() {
   const value = document.getElementById('timeRange')?.value || '7d';
   const match = /(\d+)/.exec(value);
@@ -4528,6 +4543,7 @@ function renderExecutiveRecurrenceTimeline(pat) {
     start:start + i * bucketMs,
     end:start + (i + 1) * bucketMs,
     label: executiveTimelineLabel(start + i * bucketMs, start + (i + 1) * bucketMs),
+    shortLabel: executiveTimelineShortLabel(start + i * bucketMs, start + (i + 1) * bucketMs),
   }));
   const problems = Array.isArray(pat.problems) ? pat.problems : [];
   const timestamps = problems
@@ -4549,7 +4565,7 @@ function renderExecutiveRecurrenceTimeline(pat) {
   const max = Math.max(1, ...buckets.map(b => b.count));
   const bars = buckets.map((b, idx) => {
     const showLabel = b.count > 0 || idx === 0 || idx === buckets.length - 1;
-    const label = showLabel ? b.label : '';
+    const label = showLabel ? b.shortLabel : '';
     const cls = [b.count > 0 ? 'has-occurrence' : '', idx === 0 || idx === buckets.length - 1 ? 'edge' : ''].filter(Boolean).join(' ');
     return `<div class="exec-timeline-bucket ${cls}" title="${b.label}: ${b.count} occurrence${b.count === 1 ? '' : 's'}"><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><b>${b.count}</b><small>${label}</small></div>`;
   }).join('');
@@ -4586,8 +4602,10 @@ function estimatedPatternTimelinePoints(pat, start, now, bucketCount) {
   return allocations.flatMap((bucketCountValue, idx) => Array.from({ length:bucketCountValue }, (_, n) => start + idx * bucketMs + ((n + 1) / (bucketCountValue + 1)) * bucketMs));
 }
 
-function infoPill(text) {
-  return `<span class="cx-info-pill" title="${attrText(text)}" aria-label="${attrText(text)}">i</span>`;
+function infoPill(text, key) {
+  const id = key || String(text || 'info').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+  const open = execInfoPopoverId === id;
+  return `<span class="cx-info-wrap"><span class="cx-info-pill ${open ? 'open' : ''}" role="button" tabindex="0" data-action="toggleExecInfo" data-info-id="${attrText(id)}" title="${attrText(text)}" aria-label="${attrText(text)}" aria-expanded="${open}">i</span>${open ? `<span class="cx-info-popover" role="tooltip">${text}</span>` : ''}</span>`;
 }
 
 function executiveBubbleAgeClass(pat) {
@@ -4636,11 +4654,11 @@ function renderDecisionDetailPanel(pat, patterns) {
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection">Clear Selection</button></div></div>
-    <div class="cx-detail-label">Business Impact${infoPill('Exposure, recoverable value, and currently open incidents for the selected recurring pattern.')}</div>
+    <div class="cx-detail-label">Business Impact${infoPill('Exposure, recoverable value, and currently open incidents for the selected recurring pattern.', 'business-impact')}</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
-    <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.')}</div>
+    <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.', 'technical-actionability')}</div>
     <div class="cx-detail-tiles actionability"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidenceLabel(confidence)}</strong><span>Confidence</span></div><div><strong>${priority}</strong><span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
-    <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
+    <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
     ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
@@ -6116,6 +6134,7 @@ document.addEventListener('click', function(e) {
     case 'toggleExecKpiDetail': e.stopPropagation(); toggleExecKpiDetail(el.dataset.mode); break;
     case 'selectPatternRow': e.stopPropagation(); selectPatternRow(pid); break;
     case 'closeBubblePopup': e.stopPropagation(); closeBubblePopup(pid); break;
+    case 'toggleExecInfo': e.stopPropagation(); toggleExecInfo(el.dataset.infoId); break;
     case 'focusPatternExplorer': e.stopPropagation(); focusPatternExplorer(); break;
     case 'getPatternRemediation':
       e.stopPropagation();
