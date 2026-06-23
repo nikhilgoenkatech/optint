@@ -4218,7 +4218,7 @@ function renderConciseKpiRow(ps, patterns) {
     { key:'risk', label:'Open Risk Exposure', value:fmtC(m.totalPatternCost), sub:`Active recurring pattern impact`, cls:'risk' },
     { key:'recoverable', label:'Recoverable Now', value:fmtC(m.recoverable), sub:`Recovery model ${modelPct}% | ${recoveryPct}% of exposure`, cls:'recover' },
     { key:'patterns', label:'Active Patterns', value:patterns.length, sub:`Recurring patterns requiring attention`, cls:'patterns' },
-    { key:'resolution', label:'Resolution Time', value:fmtM(m.mttr.median), sub:`Median MTTR | ${m.mttr.count || 0} resolved`, cls:'time' },
+    { key:'resolution', label:'Median MTTR', value:fmtM(m.mttr.median), sub:`${m.mttr.count || 0} resolved problems`, cls:'time' },
   ];
   return `<section class="cx-kpis">${cards.map(c => `
     <button class="cx-kpi ${c.cls} ${execMetricDrilldown === c.key ? 'selected' : ''}" data-action="selectExecMetric" data-metric="${c.key}" aria-pressed="${execMetricDrilldown === c.key}">
@@ -4265,9 +4265,7 @@ function renderMetricDrilldown(ps, patterns) {
   };
   const detail = execMetricDrilldown ? base[execMetricDrilldown] : null;
   if (!detail) {
-    return `<section class="cx-metric-drilldown neutral">
-      <div><div class="cx-eyebrow">Metric Drilldown</div><h2>${ps.length} problems reduced to ${patterns.length} recurring operational patterns</h2><p>Select a metric or pattern to inspect impact and recommended action.</p></div>
-    </section>`;
+    return '';
   }
   const costAction = ['risk','recoverable'].includes(execMetricDrilldown)
     ? `<button class="snap-cta" data-action="toggleCfg">Cost assumptions</button>`
@@ -4429,7 +4427,7 @@ function renderWorkspaceRemediationBlock(pat) {
   if (isCurrent && remediationState.status === 'done') {
     return renderAssistRemediationResponse(remediationState.response, remediationState.evidence);
   }
-  return `<div class="cx-remediation-summary"><strong>No remediation path generated yet</strong><p>Select Get Remediation Path to generate recommended next actions for this pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`;
+  return '';
 }
 
 function selectedRangeDays() {
@@ -4480,7 +4478,17 @@ function executiveBubbleAgeClass(pat) {
 }
 
 function renderDecisionDetailPanel(pat, patterns) {
-  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty"><strong>Select a recurring pattern to review business impact, recurrence, and remediation opportunities.</strong></div></aside>`;
+  if (!pat) return `<aside class="cx-detail cx-detail-empty">
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div></div>
+    <div class="exec-empty"><strong>Select a pattern to understand:</strong>
+      <ul class="cx-evidence-list">
+        <li>why it matters</li>
+        <li>business impact</li>
+        <li>recurrence</li>
+        <li>recommended action</li>
+      </ul>
+    </div>
+  </aside>`;
   const openCount = patternOpenCount(pat);
   const exposure = patternCost(pat);
   const recoverable = patternRecoverableValue(pat);
@@ -4503,18 +4511,17 @@ function renderDecisionDetailPanel(pat, patterns) {
   const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 | concentration ${pat.concentration}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
   const remediationPanel = renderWorkspaceRemediationBlock(pat);
+  const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div></div>
-    <div class="cx-exec-summary"><div class="cx-eyebrow">Executive Summary</div><p>${pat.title} is responsible for ${exposureShare}% of current pattern exposure. It has recurred ${pat.occurrences} times and currently has ${openCount} open incidents. Estimated recoverable value is ${fmtC(recoverable)}. Recommended action: ${recommendedAction}</p></div>
     <div class="cx-detail-label">Business Impact</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
     <div class="cx-detail-label">Technical Actionability</div>
     <div class="cx-detail-tiles"><div><strong>${pat.fixability}</strong><span>Remediation Effort</span></div><div><strong>${confidence}/100</strong><span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
-    <div class="cx-complexity-summary"><span>Recurrence Timeline</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
+    <div class="cx-complexity-summary"><span>Pattern Timeline</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
-    <div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>
-    <div class="cx-complexity-summary"><span>Investigation Complexity</span><strong>${complexitySummary}</strong><p>${complexity.narrative}</p></div>
+    ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
     ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
     ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences | ${pat.trend.toLowerCase()} | RCA confidence ${rcaConfidence}%`, evidenceBody)}
     ${renderExecDisclosure('Investigation Complexity', complexitySummary, renderInvestigationComplexityCard(pat, patterns) || `<p>${complexity.narrative}</p>`)}
@@ -4814,9 +4821,10 @@ function renderDecisionFirstExecView(patterns, ps) {
   document.getElementById('intelSummary').innerHTML = '';
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
     ${renderConciseKpiRow(ps, patterns)}
-    ${renderConciseFocusBanner(patterns)}
+    ${renderMetricDrilldown(ps, patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${renderConciseFocusBanner(patterns)}
         <section class="cx-view-controls">
           <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>
           <div class="cx-view-switch">

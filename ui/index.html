@@ -682,6 +682,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .cx-map-bubble.age-old{border-color:rgba(255,103,112,.60);background:rgba(255,103,112,.22)}
 .cx-map-bubble:hover,.cx-map-bubble.selected{border-color:var(--amber);background:rgba(245,197,24,.24);box-shadow:0 0 0 2px rgba(245,197,24,.20),0 10px 24px rgba(0,0,0,.34)}
 .cx-map-bubble:hover::after,.cx-map-bubble:focus-visible::after{content:attr(data-tooltip);position:absolute;z-index:8;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:260px;padding:8px 9px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 12px 28px rgba(0,0,0,.45);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:600;line-height:1.45;text-align:left;pointer-events:none}
+.exec-persona .cx-map-bubble:hover::after,.exec-persona .cx-map-bubble:focus-visible::after{bottom:auto;top:calc(100% + 10px)}
 .cx-map-bubble:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
 .cx-map-helper{margin-top:4px;font-size:10px;color:var(--blue)}
 .cx-map-selection{padding:8px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-3)}
@@ -705,6 +706,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-action-block strong{display:block;color:var(--text-1);margin-top:7px}
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
+.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,1fr) 500px}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
 .cx-decision-workspace .cx-detail{position:sticky;top:76px;max-height:calc(100vh - 98px);overflow:auto}
 .cx-view-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl)}
@@ -713,6 +715,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-view-switch button{border:0;border-radius:4px;padding:6px 11px;background:transparent;color:var(--text-3);font-family:var(--font);font-size:11px;font-weight:750;cursor:pointer}
 .cx-view-switch button.active{background:rgba(77,184,255,.14);color:var(--text-1);box-shadow:inset 0 0 0 1px rgba(77,184,255,.24)}
 .cx-selected-view{min-width:0}
+.exec-persona .cx-selected-view .cx-map-plot{height:420px}
+.exec-persona .cx-selected-view .cx-table-wrap{max-height:520px}
 .cx-selection-prompt{padding:18px;background:var(--bg-1);border:1px dashed var(--border-hi);border-radius:var(--rl);font-size:12px;color:var(--text-3);text-align:center}
 .cx-exec-summary{padding:11px 12px;margin-bottom:10px;border:1px solid rgba(77,184,255,.18);background:rgba(77,184,255,.045);border-radius:var(--r)}
 .cx-exec-summary p{margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--text-2)}
