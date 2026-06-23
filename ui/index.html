@@ -628,8 +628,12 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .analysis-ai-drawer{display:none!important}
 .exec-persona .view-tabs,.exec-persona .oneoffs-section{display:none!important}
 .cx-view{display:flex;flex-direction:column;gap:12px;grid-column:1/-1}
+.exec-persona .cx-view{gap:8px}
+.exec-persona #intelSummary:empty{display:none}
 .cx-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.exec-persona .cx-kpis{gap:8px}
 .cx-kpi{appearance:none;text-align:left;font-family:var(--font);cursor:pointer;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl);padding:13px 15px;min-width:0;border-bottom:3px solid rgba(77,184,255,.45);transition:border-color .15s,background .15s,box-shadow .15s}
+.exec-persona .cx-kpi{padding:9px 11px;border-bottom-width:2px}
 .cx-kpi:hover{background:rgba(77,184,255,.035);border-color:var(--border-hi)}
 .cx-kpi:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .cx-kpi.selected{background:rgba(77,184,255,.06);border-color:rgba(77,184,255,.4);box-shadow:inset 0 0 0 1px rgba(77,184,255,.12)}
@@ -638,9 +642,13 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-kpi.patterns{border-bottom-color:var(--amber)}
 .cx-kpi.time{border-bottom-color:var(--teal)}
 .cx-kpi-label,.cx-eyebrow{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3)}
+.exec-persona .cx-kpi-label{font-size:9px}
 .cx-kpi-value{font-size:28px;font-weight:900;font-family:var(--mono);line-height:1;margin-top:7px;color:var(--text-1)}
+.exec-persona .cx-kpi-value{font-size:22px;margin-top:4px}
 .cx-kpi-sub,.cx-muted{font-size:11px;color:var(--text-3);margin-top:6px}
+.exec-persona .cx-kpi-sub{font-size:10px;margin-top:4px}
 .cx-focus{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,rgba(245,197,24,.10),rgba(77,184,255,.035));border:1px solid rgba(245,197,24,.22);border-radius:var(--rl);padding:13px 16px}
+.exec-persona .cx-focus{padding:10px 12px}
 .cx-focus.neutral{background:var(--bg-1);border-color:var(--border)}
 .cx-focus h2,.cx-section-head h3{margin:0;color:var(--text-1);font-size:17px;font-weight:850;letter-spacing:-.2px}
 .cx-focus p{margin:4px 0 0;color:var(--text-3);font-size:12px}
@@ -682,7 +690,17 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .cx-map-bubble.age-old{border-color:rgba(255,103,112,.60);background:rgba(255,103,112,.22)}
 .cx-map-bubble:hover,.cx-map-bubble.selected{border-color:var(--amber);background:rgba(245,197,24,.24);box-shadow:0 0 0 2px rgba(245,197,24,.20),0 10px 24px rgba(0,0,0,.34)}
 .cx-map-bubble:hover::after,.cx-map-bubble:focus-visible::after{content:attr(data-tooltip);position:absolute;z-index:8;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:260px;padding:8px 9px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 12px 28px rgba(0,0,0,.45);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:600;line-height:1.45;text-align:left;pointer-events:none}
-.exec-persona .cx-map-bubble:hover::after,.exec-persona .cx-map-bubble:focus-visible::after{bottom:auto;top:calc(100% + 10px)}
+.exec-persona .cx-map-bubble:hover::after,.exec-persona .cx-map-bubble:focus-visible::after{display:none}
+.cx-bubble-popover{display:none;position:absolute;z-index:12;left:50%;top:calc(100% + 10px);transform:translateX(-50%);width:280px;padding:10px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 16px 36px rgba(0,0,0,.55);font-family:var(--font);font-weight:600;color:var(--text-2);text-align:left;pointer-events:none}
+.cx-map-bubble:hover .cx-bubble-popover,.cx-map-bubble:focus-visible .cx-bubble-popover,.cx-map-bubble.selected .cx-bubble-popover{display:block}
+.cx-pop-title{font-size:12px;font-weight:900;color:var(--text-1);line-height:1.25;margin-bottom:8px}
+.cx-pop-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.cx-pop-row>span{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)}
+.cx-pop-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.cx-pop-grid div{padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:rgba(255,255,255,.025)}
+.cx-pop-grid small{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+.cx-pop-grid strong{display:block;margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--text-1)}
+.cx-bubble-popover p{margin:8px 0 0;font-size:10px;line-height:1.45;color:var(--text-2)}
 .cx-map-bubble:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
 .cx-map-helper{margin-top:4px;font-size:10px;color:var(--blue)}
 .cx-map-selection{padding:8px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-3)}
@@ -707,9 +725,12 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
 .exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,1fr) 500px}
+.exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(260px,.55fr) minmax(640px,1.45fr)}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
+.exec-persona .cx-decision-main{gap:8px}
 .cx-decision-workspace .cx-detail{position:sticky;top:76px;max-height:calc(100vh - 98px);overflow:auto}
 .cx-view-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl)}
+.exec-persona .cx-view-controls{padding:8px 12px}
 .cx-view-controls>div:first-child>span{display:block;font-size:10px;color:var(--text-3);margin-top:2px}
 .cx-view-switch{display:flex;gap:3px;padding:3px;background:var(--bg-2);border:1px solid var(--border-hi);border-radius:var(--r)}
 .cx-view-switch button{border:0;border-radius:4px;padding:6px 11px;background:transparent;color:var(--text-3);font-family:var(--font);font-size:11px;font-weight:750;cursor:pointer}
@@ -729,6 +750,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-timeline-bucket span{width:100%;max-width:20px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--amber),rgba(245,197,24,.35))}
 .exec-timeline-bucket b{font-family:var(--mono);font-size:10px;color:var(--text-1);line-height:1}
 .exec-timeline-bucket small{font-size:8px;color:var(--text-3);white-space:nowrap}
+.exec-rec-timeline.estimated .exec-timeline-bucket span{opacity:.72;background:repeating-linear-gradient(135deg,var(--amber),var(--amber) 3px,rgba(245,197,24,.25) 3px,rgba(245,197,24,.25) 6px)}
+.exec-timeline-note,.exec-timeline-empty{margin-top:6px;font-size:10px;color:var(--text-3)}
 .cx-evidence-list{margin:0;padding-left:17px;color:var(--text-2);font-size:11px;line-height:1.55}
 .cx-complexity-summary{margin-top:10px;padding:10px 11px;border:1px solid var(--border);background:rgba(77,184,255,.025);border-radius:var(--r)}
 .cx-complexity-summary span{display:block;font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)}
@@ -747,6 +770,18 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-disclosure[open] summary b{transform:rotate(45deg);color:var(--blue)}
 .cx-disclosure-body{padding:11px;border-top:1px solid var(--border);background:rgba(255,255,255,.01)}
 .cx-disclosure-body .investigation-complexity{margin-top:0}
+.cx-panel-toggle{appearance:none;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-2);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:800;padding:6px 8px;cursor:pointer;white-space:nowrap}
+.cx-panel-toggle:hover{border-color:var(--blue);color:var(--text-1)}
+.cx-badge-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 10px}
+.exec-traffic-badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;border:1px solid var(--border);padding:4px 7px;background:var(--bg-2);font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.exec-traffic-badge span{color:var(--text-3)}
+.exec-traffic-badge strong{color:var(--text-1);font-family:var(--mono);font-size:10px}
+.exec-traffic-badge.high{border-color:rgba(255,103,112,.45);background:rgba(255,103,112,.13)}
+.exec-traffic-badge.high strong{color:var(--coral)}
+.exec-traffic-badge.medium{border-color:rgba(245,197,24,.45);background:rgba(245,197,24,.12)}
+.exec-traffic-badge.medium strong{color:var(--amber)}
+.exec-traffic-badge.low{border-color:rgba(61,214,140,.38);background:rgba(61,214,140,.10)}
+.exec-traffic-badge.low strong{color:var(--green)}
 .top-pattern-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .top-pattern-card{background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl);padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-height:220px}
 .top-pattern-card.priority-1{border-color:rgba(255,107,107,.28)}
@@ -1143,7 +1178,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
   <select class="hsel" id="timeRange"><option value="7d" selected>Last 7 days</option><option value="14d">Last 14 days</option><option value="30d">Last 30 days</option></select>
   <select class="hsel" id="appFilter"><option value="">All Applications</option><option value="ShopApp">ShopApp</option><option value="MobileApp">MobileApp</option><option value="AdminPortal">AdminPortal</option></select>
   <div class="hdr-right">
-    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Executive workspace reconstructed</span>
+    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Executive workspace polish restored</span>
     <div class="live" title="Connected"></div>
     <button class="btn btn-ghost" id="dqlNotebookBtn" data-action="downloadDqlNotebook">DQL Validation</button>
     <button class="btn btn-ghost" id="refreshBtn" data-action="doRefresh">Refresh</button>

@@ -524,6 +524,7 @@ let developerAnalyticalView='heatmap';
 let developerPanelTab='details';
 let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
+let execPanelMaximized=false;
 let patternSearchTimer=null;
 let remediationPatternId=null;
 let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
@@ -2807,6 +2808,11 @@ function selectExecMetric(metric) {
   rerenderPatternsView();
 }
 
+function toggleExecPanelMaximize() {
+  execPanelMaximized = !execPanelMaximized;
+  rerenderPatternsView();
+}
+
 function sortPatternTable(key) {
   if (patternExplorerState.sort === key) {
     patternExplorerState.dir = patternExplorerState.dir === 'asc' ? 'desc' : 'asc';
@@ -4430,6 +4436,34 @@ function renderWorkspaceRemediationBlock(pat) {
   return '';
 }
 
+function executivePriorityLevel(pat, patterns) {
+  const score = patternPriorityScore(pat, patterns);
+  if (score >= 70) return 'High';
+  if (score >= 40) return 'Medium';
+  return 'Low';
+}
+
+function trafficBadge(label, value) {
+  const normalized = String(value || label || '').toLowerCase();
+  const cls = normalized.includes('high') || normalized.includes('low confidence') ? 'high'
+    : normalized.includes('medium') ? 'medium'
+    : 'low';
+  return `<span class="exec-traffic-badge ${cls}"><span>${label}</span><strong>${value}</strong></span>`;
+}
+
+function confidenceBadge(score) {
+  const value = Number(score) || 0;
+  const label = value >= 70 ? 'High' : value >= 40 ? 'Medium' : 'Low';
+  const cls = value >= 70 ? 'low' : value >= 40 ? 'medium' : 'high';
+  return `<span class="exec-traffic-badge ${cls}"><span>Confidence</span><strong>${label} ${value}/100</strong></span>`;
+}
+
+function remediationEffortLabel(fixability) {
+  if (fixability === 'HIGH') return 'Low';
+  if (fixability === 'MEDIUM') return 'Medium';
+  return 'High';
+}
+
 function selectedRangeDays() {
   const value = document.getElementById('timeRange')?.value || '7d';
   const match = /(\d+)/.exec(value);
@@ -4438,9 +4472,10 @@ function selectedRangeDays() {
 
 function renderExecutiveRecurrenceTimeline(pat) {
   const days = selectedRangeDays();
-  const bucketCount = days <= 14 ? Math.min(days, 14) : 10;
+  const bucketCount = days <= 14 ? Math.max(2, Math.min(days, 14)) : 10;
   const now = Date.now();
   const start = now - days * 86400000;
+  const bucketMs = Math.max(1, (now - start) / bucketCount);
   const buckets = Array.from({ length: bucketCount }, (_, i) => ({
     idx:i,
     count:0,
@@ -4448,12 +4483,16 @@ function renderExecutiveRecurrenceTimeline(pat) {
       ? (i === bucketCount - 1 ? 'now' : `${days - i}d`)
       : (i === bucketCount - 1 ? 'now' : `${Math.max(1, days - i * Math.ceil(days / bucketCount))}d`),
   }));
-  const timestamps = (pat.problems || []).map(p => Number(p.start || p.eventStart || p.event?.start)).filter(Number.isFinite);
+  const problems = Array.isArray(pat.problems) ? pat.problems : [];
+  const timestamps = problems
+    .map(p => Number(p.start || p.eventStart || p.event?.start))
+    .filter(ts => Number.isFinite(ts) && ts >= start && ts <= now);
+  const hasExact = timestamps.length >= Math.min(2, pat.occurrences || 0);
   timestamps.forEach(ts => {
-    const pos = clamp((ts - start) / Math.max(1, now - start), 0, 0.9999);
-    buckets[Math.floor(pos * bucketCount)].count += 1;
+    const bucketIdx = Math.min(bucketCount - 1, Math.max(0, Math.floor((ts - start) / bucketMs)));
+    buckets[bucketIdx].count += 1;
   });
-  if (!timestamps.length && pat.occurrences > 0) {
+  if (!hasExact && timestamps.length === 0 && pat.occurrences > 1) {
     const trendBias = pat.trend === 'INCREASING' ? 1.25 : pat.trend === 'DECREASING' ? .75 : 1;
     for (let i = 0; i < pat.occurrences; i++) {
       const base = pat.trend === 'INCREASING'
@@ -4464,9 +4503,14 @@ function renderExecutiveRecurrenceTimeline(pat) {
       buckets[Math.floor(clamp(base, 0, .9999) * bucketCount)].count += 1;
     }
   }
+  const totalBucketed = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  if (totalBucketed < 2) {
+    return `<div class="exec-timeline-empty">Insufficient recurrence data</div>`;
+  }
   const max = Math.max(1, ...buckets.map(b => b.count));
   const bars = buckets.map(b => `<div class="exec-timeline-bucket" title="${b.count} occurrence${b.count === 1 ? '' : 's'}"><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><b>${b.count}</b><small>${b.label}</small></div>`).join('');
-  return `<div class="exec-rec-timeline">${bars}</div>`;
+  const note = hasExact ? '' : '<div class="exec-timeline-note">Timeline estimated because exact occurrence timestamps are incomplete.</div>';
+  return `<div class="exec-rec-timeline ${hasExact ? '' : 'estimated'}">${bars}</div>${note}`;
 }
 
 function executiveBubbleAgeClass(pat) {
@@ -4479,7 +4523,7 @@ function executiveBubbleAgeClass(pat) {
 
 function renderDecisionDetailPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty">
-    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div></div>
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button></div>
     <div class="exec-empty"><strong>Select a pattern to understand:</strong>
       <ul class="cx-evidence-list">
         <li>why it matters</li>
@@ -4497,6 +4541,8 @@ function renderDecisionDetailPanel(pat, patterns) {
   const rcaList = pat.dimensions?.rootCauseEntities || [];
   const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
   const confidence = patternConfidenceScore(pat);
+  const priority = executivePriorityLevel(pat, patterns);
+  const effort = remediationEffortLabel(pat.fixability);
   const hasActionableRca = rcaList.length > 0 && rcaConfidence > 0;
   const totalExposure = patterns.reduce((sum, pattern) => sum + patternCost(pattern), 0);
   const exposureShare = totalExposure ? Math.round(exposure / totalExposure * 100) : 0;
@@ -4514,11 +4560,12 @@ function renderDecisionDetailPanel(pat, patterns) {
   const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
   return `<aside class="cx-detail">
-    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div></div>
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button></div>
+    <div class="cx-badge-row">${trafficBadge('Priority', priority)}${confidenceBadge(confidence)}${trafficBadge('Effort', effort)}</div>
     <div class="cx-detail-label">Business Impact</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
     <div class="cx-detail-label">Technical Actionability</div>
-    <div class="cx-detail-tiles"><div><strong>${pat.fixability}</strong><span>Remediation Effort</span></div><div><strong>${confidence}/100</strong><span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
+    <div class="cx-detail-tiles"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidence}/100</strong><span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
@@ -4542,8 +4589,24 @@ function renderConciseActFirstMap(patterns) {
     const bottom = Math.round(9 + costPosition * 80);
     const size = Math.round(clamp(18 + Math.sqrt(Math.max(0, cost)) / 60, 20, 48));
     const primaryAction = pat.recommendation?.text || model.reason;
+    const priority = executivePriorityLevel(pat, patterns);
+    const confidence = patternConfidenceScore(pat);
     const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Occurrences ${pat.occurrences} | Open incidents ${patternOpenCount(pat)} | Confidence ${patternConfidenceScore(pat)}/100 | Action ${primaryAction}`;
-    return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" data-tooltip="${attrText(tooltip)}" title="${attrText(tooltip)}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">#${idx + 1}</button>`;
+    return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
+      <span>#${idx + 1}</span>
+      <div class="cx-bubble-popover" role="tooltip">
+        <div class="cx-pop-title">${pat.title}</div>
+        <div class="cx-pop-row"><span>Priority</span>${trafficBadge('Priority', priority)}</div>
+        <div class="cx-pop-grid">
+          <div><small>Exposure</small><strong>${fmtC(cost)}</strong></div>
+          <div><small>Recoverable</small><strong>${fmtC(recoverable)}</strong></div>
+          <div><small>Occurrences</small><strong>${pat.occurrences}</strong></div>
+          <div><small>Open</small><strong>${patternOpenCount(pat)}</strong></div>
+          <div><small>Confidence</small><strong>${confidence}/100</strong></div>
+        </div>
+        <p>${primaryAction}</p>
+      </div>
+    </button>`;
   }).join('');
   return `<section class="cx-map">
     <div class="cx-section-head">
@@ -4657,7 +4720,7 @@ function renderSreWorkspace(patterns, ps) {
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns) : renderSreRiskMatrix(patterns);
   document.getElementById('intelSummary').innerHTML = '';
-  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
+  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     ${renderSreFocus(patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
@@ -5978,6 +6041,7 @@ document.addEventListener('click', function(e) {
       if (pid) getPatternRemediation(pid, currentView === 'patterns' ? { openDrawers:false, scroll:false } : {});
       break;
     case 'setExecAnalyticalView': e.stopPropagation(); setExecAnalyticalView(el.dataset.mode); break;
+    case 'toggleExecPanelMaximize': e.stopPropagation(); toggleExecPanelMaximize(); break;
     case 'setSreAnalyticalView': e.stopPropagation(); setSreAnalyticalView(el.dataset.mode); break;
     case 'setSrePanelTab': e.stopPropagation(); setSrePanelTab(el.dataset.tab); break;
     case 'setDeveloperAnalyticalView': e.stopPropagation(); setDeveloperAnalyticalView(el.dataset.mode); break;
