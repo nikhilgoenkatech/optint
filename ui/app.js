@@ -501,16 +501,16 @@ function renderKPIs(ps){
       {lbl:'Median MTTR',val:fmtM(execMttr.median),sub:`p85: ${fmtM(execMttr.p85)} | ${execMttr.count} resolved`,c:'kc-teal',mode:'mttr',actionText:execKpiDetail==='mttr'?'Hide MTTR':'View MTTR drivers'},
     ],
     developer:[
-      {lbl:'Active Problems',val:ps.length,sub:`${open} open`,c:'kc-blue'},
-      {lbl:'Services Affected',val:svcs,sub:'unique entities',c:'kc-coral'},
-      {lbl:'Missing Root Cause',val:miss,sub:`${Math.round(miss/ps.length*100)||0}% of total`,c:'kc-amber'},
-      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-green'},
+      {lbl:'Active Problems',val:ps.length,sub:`${open} open`,c:'kc-blue',mode:'dev-open',actionText:execKpiDetail==='dev-open'?'Hide details':'View details'},
+      {lbl:'Services Affected',val:svcs,sub:'unique entities',c:'kc-coral',mode:'dev-services',actionText:execKpiDetail==='dev-services'?'Hide details':'View details'},
+      {lbl:'Missing Root Cause',val:miss,sub:`${ps.length ? Math.round(miss/ps.length*100) : 0}% of total`,c:'kc-amber',mode:'dev-rca',actionText:execKpiDetail==='dev-rca'?'Hide details':'View details'},
+      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-green',mode:'dev-mttr',actionText:execKpiDetail==='dev-mttr'?'Hide details':'View details'},
     ],
     sre:[
-      {lbl:'Total Problems',val:ps.length,sub:`${open} open now`,c:'kc-blue'},
-      {lbl:'Recurring Waste',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'}},
-      {lbl:'Noisy Alerts',val:noisy,sub:'noise candidates',c:'kc-amber'},
-      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-violet'},
+      {lbl:'Total Problems',val:ps.length,sub:`${open} open now`,c:'kc-blue',mode:'sre-total',actionText:execKpiDetail==='sre-total'?'Hide details':'View details'},
+      {lbl:'Recurring Waste',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
+      {lbl:'Noisy Alerts',val:noisy,sub:'noise candidates',c:'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
+      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-violet',mode:'sre-mttr',actionText:execKpiDetail==='sre-mttr'?'Hide details':'View details'},
     ],
   };
   if (persona === 'executive') {
@@ -546,15 +546,15 @@ function renderKPIs(ps){
     ];
   }
   document.getElementById('kpiRow').innerHTML=KPIS[persona].map(k=>`
-    <div class="kcard ${k.c} fade-in">
+    <div class="kcard ${k.c} fade-in ${execKpiDetail===k.mode?'selected':''}" ${k.mode?`role="button" tabindex="0" aria-pressed="${execKpiDetail===k.mode}" data-action="toggleExecKpiDetail" data-mode="${k.mode}"`:''}>
       <div class="k-lbl">${k.lbl}</div>
       <div class="k-val">${k.val}</div>
       <div class="k-sub">${k.sub}${k.badge?`<span class="badge ${k.badge.cls}">${k.badge.t}</span>`:''}</div>
-      ${k.mode?`<button class="k-action ${execKpiDetail===k.mode?'open':''}" data-action="toggleExecKpiDetail" data-mode="${k.mode}">${k.actionText}</button>`:''}
+      ${k.mode?`<div class="k-action ${execKpiDetail===k.mode?'open':''}">${k.actionText}</div>`:''}
     </div>`).join('');
   const kpiDetails = document.getElementById('kpiDetails');
   if (kpiDetails) {
-    kpiDetails.innerHTML = persona === 'executive' && execKpiDetail ? renderExecutiveKpiDetail(execKpiDetail, ps) : '';
+    kpiDetails.innerHTML = execKpiDetail ? renderPersonaKpiDetail(persona, execKpiDetail, ps) : '';
   }
 }
 
@@ -3405,6 +3405,131 @@ function renderExecutiveKpiDetail(mode, ps) {
   return '';
 }
 
+function renderKpiDetailCard({ title, value, why, drivers = [], action }) {
+  return `<div class="exec-t2-board exec-patterns-board">
+    <div class="exec-t2-hdr">${title}</div>
+    <div class="px-evidence">
+      <div class="px-evidence-row"><span>Current value</span><strong>${value}</strong></div>
+      <div class="px-evidence-row"><span>Why it matters</span><strong>${why}</strong></div>
+      ${drivers.map(driver => `<div class="px-evidence-row"><span>${driver.label}</span><strong>${driver.value}</strong></div>`).join('')}
+      <div class="px-evidence-row"><span>Recommended next action</span><strong>${action}</strong></div>
+    </div>
+  </div>`;
+}
+
+function serviceCounts(ps) {
+  const counts = new Map();
+  (ps || []).forEach(p => (p.svcs || ['Unresolved service']).forEach(s => counts.set(s || 'Unresolved service', (counts.get(s || 'Unresolved service') || 0) + 1)));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function severityCounts(ps) {
+  const counts = new Map();
+  (ps || []).forEach(p => counts.set(p.sev || 'Unknown', (counts.get(p.sev || 'Unknown') || 0) + 1));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function renderPersonaKpiDetail(currentPersona, mode, ps) {
+  if (currentPersona === 'executive') return renderExecutiveKpiDetail(mode, ps);
+  const patterns = detectPatterns(ps).patterns;
+  const mttr = mttrSummaryFromProblems(ps);
+  const open = ps.filter(p => p.status === 'OPEN').length;
+  const resolved = ps.filter(p => p.status === 'RESOLVED').length;
+  const missingRca = ps.filter(p => !p.hasRCA).length;
+  const noisy = ps.filter(p => p.noise).length;
+  const waste = calcRecurringWaste(ps);
+  const topService = serviceCounts(ps)[0];
+  const topSeverity = severityCounts(ps)[0];
+  const topPattern = [...patterns].sort((a, b) => b.occurrences - a.occurrences)[0];
+  const emptyAction = 'No problems are available in the selected period. Adjust the time range or filters.';
+
+  const details = {
+    'dev-open': {
+      title: 'Open Errors',
+      value: `${open} open of ${ps.length} total`,
+      why: 'Open errors are the active work queue developers need to triage first.',
+      drivers: [
+        { label:'Top severity', value:topSeverity ? `${topSeverity[0]} (${topSeverity[1]})` : 'No problems' },
+        { label:'Top service', value:topService ? `${topService[0]} (${topService[1]})` : 'No service data' },
+      ],
+      action: ps.length ? 'Open Problem Explorer and start with unresolved high-severity errors.' : emptyAction,
+    },
+    'dev-services': {
+      title: 'Services Affected',
+      value: `${serviceCounts(ps).length} services`,
+      why: 'Service concentration shows where developers can focus investigation effort.',
+      drivers: [
+        { label:'Most affected service', value:topService ? `${topService[0]} (${topService[1]} problems)` : 'No service data' },
+        { label:'Recurring patterns', value:`${patterns.length}` },
+      ],
+      action: ps.length ? 'Filter by the most affected service and inspect repeated root-cause signals.' : emptyAction,
+    },
+    'dev-rca': {
+      title: 'Needs Investigation',
+      value: `${missingRca} missing RCA`,
+      why: 'Missing root cause blocks durable fixes and makes recurrence harder to prevent.',
+      drivers: [
+        { label:'RCA gap', value:`${ps.length ? Math.round(missingRca / ps.length * 100) : 0}% of problems` },
+        { label:'Top recurring issue', value:topPattern ? `${topPattern.title} (${topPattern.occurrences}x)` : 'No recurring pattern' },
+      ],
+      action: ps.length ? 'Select a recurring issue and generate scoped analysis only when more evidence is needed.' : emptyAction,
+    },
+    'dev-mttr': {
+      title: 'Median MTTR',
+      value: fmtM(mttr.median),
+      why: 'Median MTTR gives a stable view of typical developer resolution time without outlier distortion.',
+      drivers: [
+        { label:'p85 MTTR', value:fmtM(mttr.p85) },
+        { label:'Resolved problems', value:`${mttr.count}` },
+      ],
+      action: mttr.count ? 'Inspect slow recurring patterns and validate whether RCA evidence is complete.' : 'No resolved-duration data is available for this period.',
+    },
+    'sre-total': {
+      title: 'Operational Debt',
+      value: `${ps.length} problems`,
+      why: 'The total problem volume shows the current reliability workload for the selected period.',
+      drivers: [
+        { label:'Open now', value:`${open}` },
+        { label:'Resolved', value:`${resolved}` },
+      ],
+      action: ps.length ? 'Prioritize repeat offenders and unresolved RCA before isolated issues.' : emptyAction,
+    },
+    'sre-waste': {
+      title: 'Automation Candidates',
+      value: fmtC(waste),
+      why: 'Recurring waste indicates where automation or prevention could reduce repeated operational effort.',
+      drivers: [
+        { label:'Recurring patterns', value:`${patterns.length}` },
+        { label:'Top repeat offender', value:topPattern ? `${topPattern.title} (${topPattern.occurrences}x)` : 'No recurring pattern' },
+      ],
+      action: patterns.length ? 'Select the highest-repeat pattern and decide whether to automate, assign ownership, or tune alerting.' : emptyAction,
+    },
+    'sre-noise': {
+      title: 'Repeat Offenders',
+      value: `${noisy} noise candidates`,
+      why: 'Noise candidates consume on-call attention and can hide real reliability risk.',
+      drivers: [
+        { label:'Noisy share', value:`${ps.length ? Math.round(noisy / ps.length * 100) : 0}% of problems` },
+        { label:'Top service', value:topService ? `${topService[0]} (${topService[1]})` : 'No service data' },
+      ],
+      action: ps.length ? 'Review recurring low-impact alerts for suppression windows or threshold tuning.' : emptyAction,
+    },
+    'sre-mttr': {
+      title: 'Reliability Trend',
+      value: fmtM(mttr.median),
+      why: 'Median MTTR shows whether reliability operations are resolving typical incidents efficiently.',
+      drivers: [
+        { label:'p85 MTTR', value:fmtM(mttr.p85) },
+        { label:'Resolved problems', value:`${mttr.count}` },
+      ],
+      action: mttr.count ? 'Focus on long-tail patterns with repeat recurrence and incomplete RCA.' : 'No resolved-duration data is available for this period.',
+    },
+  };
+
+  const detail = details[mode];
+  return detail ? renderKpiDetailCard(detail) : '';
+}
+
 function renderActFirstMap(patterns) {
   const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns), model: actFirstModel(pat, patterns) }))
     .sort((a, b) => b.score - a.score);
@@ -4768,6 +4893,7 @@ function openTicket(url) {
 // ── UTILS ──
 function switchPersona(p){
   persona=p;selectedIds.clear();expandedIds.clear();aiState='idle';lastAIResult=null;
+  execKpiDetail=null;
   document.querySelectorAll('.pbtn').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
   document.documentElement.style.setProperty('--persona',PMETA[p].color);
   render();renderAIPanel(null);renderRemPanel();
@@ -4908,6 +5034,15 @@ document.addEventListener('input', function(e) {
     clearTimeout(patternSearchTimer);
     const value = ps.value;
     patternSearchTimer = setTimeout(() => setPatternSearch(value), 180);
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  const card = e.target.closest('.kcard[role="button"][data-action="toggleExecKpiDetail"]');
+  if (!card) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    toggleExecKpiDetail(card.dataset.mode);
   }
 });
 
