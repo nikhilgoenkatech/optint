@@ -4969,6 +4969,7 @@ function renderDecisionDetailPanel(pat, patterns) {
   const openCount = patternOpenCount(pat);
   const exposure = patternCost(pat);
   const recoverable = patternRecoverableValue(pat);
+  const costCalc = patternCostCalculation(pat);
   const services = patternServices(pat);
   const entities = patternAffectedEntities(pat);
   const rcaList = pat.dimensions?.rootCauseEntities || [];
