@@ -629,6 +629,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .view-tabs,.exec-persona .oneoffs-section{display:none!important}
 .cx-view{display:flex;flex-direction:column;gap:12px;grid-column:1/-1}
 .exec-persona .cx-view{gap:8px}
+.exec-persona .cx-decision-view{height:calc(100vh - 132px);min-height:560px;overflow:hidden}
 .exec-persona #intelSummary:empty{display:none}
 .cx-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .exec-persona .cx-kpis{gap:8px}
@@ -655,8 +656,10 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-focus-why{margin-top:6px;font-size:11px;line-height:1.4;color:var(--text-2)}
 .cx-focus-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .exec-persona .cx-focus-stat{min-width:104px;padding:8px 10px;background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:var(--r)}
+.exec-persona .cx-focus-stat.badge-stat{min-width:128px}
 .exec-persona .cx-focus-stat span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
 .exec-persona .cx-focus-stat strong{display:block;margin-top:3px;font-family:var(--mono);font-size:12px;color:var(--text-1)}
+.exec-persona .cx-focus-stat .exec-traffic-badge{margin-top:4px}
 .cx-metric-drilldown{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:14px;align-items:center;padding:13px 16px;background:var(--bg-1);border:1px solid rgba(77,184,255,.22);border-radius:var(--rl)}
 .cx-metric-drilldown.neutral{grid-template-columns:1fr;border-color:var(--border)}
 .cx-metric-drilldown h2{margin:3px 0 0;color:var(--text-1);font-size:16px}
@@ -718,17 +721,19 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-detail-tiles div{background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);padding:8px}
 .cx-detail-tiles strong{display:block;font-size:15px;font-family:var(--mono);color:var(--text-1);white-space:nowrap}
 .cx-detail-tiles span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-top:3px}
+.cx-detail-tiles.actionability .exec-traffic-badge{margin-bottom:4px}
 .cx-detail-section{border-top:1px solid var(--border);padding-top:11px;margin-top:11px}
 .cx-action-block{margin-top:12px;padding:11px;border:1px solid rgba(61,214,140,.18);background:rgba(61,214,140,.06);border-radius:var(--r)}
 .cx-action-block.low{border-color:rgba(245,197,24,.22);background:rgba(245,197,24,.06)}
 .cx-action-block strong{display:block;color:var(--text-1);margin-top:7px}
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
-.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,1fr) 500px}
-.exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(260px,.55fr) minmax(640px,1.45fr)}
+.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,72fr) minmax(360px,28fr);height:100%;align-items:stretch}
+.exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(240px,35fr) minmax(620px,65fr)}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
-.exec-persona .cx-decision-main{gap:8px}
+.exec-persona .cx-decision-main{gap:8px;min-height:0;overflow:hidden}
 .cx-decision-workspace .cx-detail{position:sticky;top:76px;max-height:calc(100vh - 98px);overflow:auto}
+.exec-persona .cx-decision-workspace .cx-detail{position:static;top:auto;max-height:none;height:100%;overflow:auto}
 .cx-view-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl)}
 .exec-persona .cx-view-controls{padding:8px 12px}
 .cx-view-controls>div:first-child>span{display:block;font-size:10px;color:var(--text-3);margin-top:2px}
@@ -736,8 +741,11 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-view-switch button{border:0;border-radius:4px;padding:6px 11px;background:transparent;color:var(--text-3);font-family:var(--font);font-size:11px;font-weight:750;cursor:pointer}
 .cx-view-switch button.active{background:rgba(77,184,255,.14);color:var(--text-1);box-shadow:inset 0 0 0 1px rgba(77,184,255,.24)}
 .cx-selected-view{min-width:0}
-.exec-persona .cx-selected-view .cx-map-plot{height:420px}
-.exec-persona .cx-selected-view .cx-table-wrap{max-height:520px}
+.exec-persona .cx-selected-view{display:flex;flex-direction:column;min-height:0;flex:1}
+.exec-persona .cx-selected-view .cx-map{display:flex;flex-direction:column;min-height:0;flex:1}
+.exec-persona .cx-selected-view .cx-map-plot{height:auto;min-height:320px;flex:1}
+.exec-persona .cx-selected-view .cx-table-card{display:flex;flex-direction:column;min-height:0;flex:1}
+.exec-persona .cx-selected-view .cx-table-wrap{max-height:none;min-height:0;flex:1}
 .cx-selection-prompt{padding:18px;background:var(--bg-1);border:1px dashed var(--border-hi);border-radius:var(--rl);font-size:12px;color:var(--text-3);text-align:center}
 .cx-exec-summary{padding:11px 12px;margin-bottom:10px;border:1px solid rgba(77,184,255,.18);background:rgba(77,184,255,.045);border-radius:var(--r)}
 .cx-exec-summary p{margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--text-2)}
@@ -1178,7 +1186,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
   <select class="hsel" id="timeRange"><option value="7d" selected>Last 7 days</option><option value="14d">Last 14 days</option><option value="30d">Last 30 days</option></select>
   <select class="hsel" id="appFilter"><option value="">All Applications</option><option value="ShopApp">ShopApp</option><option value="MobileApp">MobileApp</option><option value="AdminPortal">AdminPortal</option></select>
   <div class="hdr-right">
-    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Executive workspace polish restored</span>
+    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Executive timeline and panel polish</span>
     <div class="live" title="Connected"></div>
     <button class="btn btn-ghost" id="dqlNotebookBtn" data-action="downloadDqlNotebook">DQL Validation</button>
     <button class="btn btn-ghost" id="refreshBtn" data-action="doRefresh">Refresh</button>

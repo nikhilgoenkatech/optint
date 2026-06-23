@@ -437,6 +437,7 @@ async function loadProblems() {
         status,
         sev: SEV_MAP[String(r['event.category'] ?? '').toUpperCase()] ?? 'CUSTOM_ALERT',
         start,
+        end: toMs(r['event.end']),
         dur,
         users: typeof r['dt.davis.affected_users_count'] === 'number' ? r['dt.davis.affected_users_count'] : (entityIds.length || 0),
         mz: mz.length ? mz : ['Production'],
@@ -4297,6 +4298,7 @@ function renderConciseFocusBanner(patterns) {
   }
   const exposure = patternCost(selected);
   const primaryAction = selected.recommendation?.text || actFirstModel(selected, patterns).reason || 'Sponsor remediation for the selected recurring pattern.';
+  const priority = executivePriorityLevel(selected, patterns);
   return `<section class="cx-focus">
     <div>
       <div class="cx-eyebrow">Selected Focus</div>
@@ -4304,6 +4306,7 @@ function renderConciseFocusBanner(patterns) {
       <p><strong>Primary Action:</strong> ${primaryAction}</p>
     </div>
     <div class="cx-focus-actions">
+      <div class="cx-focus-stat badge-stat"><span>Priority</span>${trafficBadge('Priority', priority)}</div>
       <div class="cx-focus-stat"><span>Exposure</span><strong>${fmtC(exposure)}</strong></div>
       <div class="cx-focus-stat"><span>Occurrences</span><strong>${selected.occurrences}</strong></div>
       <div class="cx-focus-stat"><span>Open Incidents</span><strong>${patternOpenCount(selected)}</strong></div>
@@ -4464,6 +4467,27 @@ function remediationEffortLabel(fixability) {
   return 'High';
 }
 
+function occurrenceTimestamp(problem) {
+  return toMs(problem?.event?.start)
+    ?? toMs(problem?.eventStart)
+    ?? toMs(problem?.startTime)
+    ?? toMs(problem?.timestamp)
+    ?? toMs(problem?.start)
+    ?? toMs(problem?.event?.end)
+    ?? toMs(problem?.eventEnd)
+    ?? toMs(problem?.end)
+    ?? null;
+}
+
+function executiveTimelineLabel(startMs, endMs) {
+  const startDate = new Date(startMs);
+  const endDate = new Date(Math.max(startMs, endMs - 1));
+  const fmt = date => date.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  const start = fmt(startDate);
+  const end = fmt(endDate);
+  return start === end ? start : `${start}-${end}`;
+}
+
 function selectedRangeDays() {
   const value = document.getElementById('timeRange')?.value || '7d';
   const match = /(\d+)/.exec(value);
@@ -4472,45 +4496,36 @@ function selectedRangeDays() {
 
 function renderExecutiveRecurrenceTimeline(pat) {
   const days = selectedRangeDays();
-  const bucketCount = days <= 14 ? Math.max(2, Math.min(days, 14)) : 10;
+  const bucketCount = days <= 14 ? days : 10;
   const now = Date.now();
   const start = now - days * 86400000;
   const bucketMs = Math.max(1, (now - start) / bucketCount);
   const buckets = Array.from({ length: bucketCount }, (_, i) => ({
     idx:i,
     count:0,
-    label: days <= 14
-      ? (i === bucketCount - 1 ? 'now' : `${days - i}d`)
-      : (i === bucketCount - 1 ? 'now' : `${Math.max(1, days - i * Math.ceil(days / bucketCount))}d`),
+    start:start + i * bucketMs,
+    end:start + (i + 1) * bucketMs,
+    label: executiveTimelineLabel(start + i * bucketMs, start + (i + 1) * bucketMs),
   }));
   const problems = Array.isArray(pat.problems) ? pat.problems : [];
   const timestamps = problems
-    .map(p => Number(p.start || p.eventStart || p.event?.start))
+    .map(occurrenceTimestamp)
     .filter(ts => Number.isFinite(ts) && ts >= start && ts <= now);
-  const hasExact = timestamps.length >= Math.min(2, pat.occurrences || 0);
+  if (timestamps.length < 2) {
+    return `<div class="exec-timeline-empty">Insufficient recurrence data</div>`;
+  }
   timestamps.forEach(ts => {
     const bucketIdx = Math.min(bucketCount - 1, Math.max(0, Math.floor((ts - start) / bucketMs)));
     buckets[bucketIdx].count += 1;
   });
-  if (!hasExact && timestamps.length === 0 && pat.occurrences > 1) {
-    const trendBias = pat.trend === 'INCREASING' ? 1.25 : pat.trend === 'DECREASING' ? .75 : 1;
-    for (let i = 0; i < pat.occurrences; i++) {
-      const base = pat.trend === 'INCREASING'
-        ? Math.pow((i + 1) / pat.occurrences, 1 / trendBias)
-        : pat.trend === 'DECREASING'
-          ? 1 - Math.pow((i + 1) / pat.occurrences, trendBias)
-          : (i + .5) / pat.occurrences;
-      buckets[Math.floor(clamp(base, 0, .9999) * bucketCount)].count += 1;
-    }
-  }
   const totalBucketed = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
   if (totalBucketed < 2) {
     return `<div class="exec-timeline-empty">Insufficient recurrence data</div>`;
   }
   const max = Math.max(1, ...buckets.map(b => b.count));
   const bars = buckets.map(b => `<div class="exec-timeline-bucket" title="${b.count} occurrence${b.count === 1 ? '' : 's'}"><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><b>${b.count}</b><small>${b.label}</small></div>`).join('');
-  const note = hasExact ? '' : '<div class="exec-timeline-note">Timeline estimated because exact occurrence timestamps are incomplete.</div>';
-  return `<div class="exec-rec-timeline ${hasExact ? '' : 'estimated'}">${bars}</div>${note}`;
+  const note = timestamps.length < (pat.occurrences || 0) ? '<div class="exec-timeline-note">Timeline estimated from available occurrence data.</div>' : '';
+  return `<div class="exec-rec-timeline ${note ? 'estimated' : ''}">${bars}</div>${note}`;
 }
 
 function executiveBubbleAgeClass(pat) {
@@ -4524,14 +4539,7 @@ function executiveBubbleAgeClass(pat) {
 function renderDecisionDetailPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button></div>
-    <div class="exec-empty"><strong>Select a pattern to understand:</strong>
-      <ul class="cx-evidence-list">
-        <li>why it matters</li>
-        <li>business impact</li>
-        <li>recurrence</li>
-        <li>recommended action</li>
-      </ul>
-    </div>
+    <div class="exec-empty"><strong>Select a pattern to understand business impact, recurrence, and remediation opportunity.</strong></div>
   </aside>`;
   const openCount = patternOpenCount(pat);
   const exposure = patternCost(pat);
@@ -4565,7 +4573,7 @@ function renderDecisionDetailPanel(pat, patterns) {
     <div class="cx-detail-label">Business Impact</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
     <div class="cx-detail-label">Technical Actionability</div>
-    <div class="cx-detail-tiles"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidence}/100</strong><span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
+    <div class="cx-detail-tiles actionability"><div>${trafficBadge('Priority', priority)}<span>Priority</span></div><div>${trafficBadge('Effort', effort)}<span>Remediation Effort</span></div><div>${confidenceBadge(confidence)}<span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
@@ -4882,11 +4890,11 @@ function renderDecisionFirstExecView(patterns, ps) {
     : null;
   const selectedView = execAnalyticalView === 'map' ? renderConciseActFirstMap(patterns) : renderConcisePatternTable(patterns);
   document.getElementById('intelSummary').innerHTML = '';
-  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
-    ${renderConciseKpiRow(ps, patterns)}
-    ${renderMetricDrilldown(ps, patterns)}
+  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${renderConciseKpiRow(ps, patterns)}
+        ${renderMetricDrilldown(ps, patterns)}
         ${renderConciseFocusBanner(patterns)}
         <section class="cx-view-controls">
           <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>
