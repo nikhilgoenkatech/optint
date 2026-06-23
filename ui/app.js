@@ -480,6 +480,8 @@ let execValueBreakdownOpen=false;
 let execKpiDetail=null;
 let patternExplorerState = { selectedId:null, sort:'priority', dir:'desc', search:'', filters:{}, offset:0 };
 let execAnalyticalView='map';
+let sreAnalyticalView='matrix';
+let srePanelTab='details';
 let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
 let patternSearchTimer=null;
@@ -2720,11 +2722,21 @@ function selectPatternRow(id, opts={}) {
   if (persona === 'executive') execPatternSelectionMade = true;
   renderTopPatternsSnapshot(getFiltered());
   rerenderPatternsView();
-  if (opts.remediate !== false && persona !== 'executive') void getPatternRemediation(id, { openDrawers:true, scroll:false });
+  if (opts.remediate !== false && !['executive','sre'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
 }
 
 function setExecAnalyticalView(view) {
   execAnalyticalView = view === 'map' ? 'map' : 'explorer';
+  rerenderPatternsView();
+}
+
+function setSreAnalyticalView(view) {
+  sreAnalyticalView = view === 'explorer' ? 'explorer' : 'matrix';
+  rerenderPatternsView();
+}
+
+function setSrePanelTab(tab) {
+  srePanelTab = ['details','analysis','remediation'].includes(tab) ? tab : 'details';
   rerenderPatternsView();
 }
 
@@ -3565,7 +3577,7 @@ function renderPatternIntelligence() {
   const patternCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
   const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const fixable = patterns.filter(pat => ['FIX_ROOT_CAUSE','ADD_TIME_WINDOW'].includes(pat.recommendation.type)).length;
-  if (persona === 'executive') {
+  if (persona === 'executive' || persona === 'sre') {
     document.getElementById('intelSummary').innerHTML = '';
   } else {
   document.getElementById('intelSummary').innerHTML = `
@@ -3593,6 +3605,13 @@ function renderPatternIntelligence() {
   // Executive gets spotlight tiles + ranked list; engineers get sub-bucket cards
   if (persona === 'executive') {
     renderDecisionFirstExecView(patterns, ps);
+    renderOneOffs(oneOffs);
+    document.getElementById('explorerTabCount').textContent = ps.length;
+    return;
+  }
+
+  if (persona === 'sre') {
+    renderSreWorkspace(patterns, ps);
     renderOneOffs(oneOffs);
     document.getElementById('explorerTabCount').textContent = ps.length;
     return;
@@ -4407,6 +4426,121 @@ function renderConciseActFirstMap(patterns) {
     </div>
     <div class="cx-map-selection">${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</div>
   </section>`;
+}
+
+function sreReliabilityPriority(pat, patterns) {
+  const base = patternPriorityScore(pat, patterns);
+  const rcaPenalty = Math.max(0, 25 - Math.round((pat.rcaConsistency || 0) * 100));
+  return clamp(Math.round(base + rcaPenalty), 0, 100);
+}
+
+function sreAutomationOpportunity(pat) {
+  const fix = patternFixabilityScore(pat);
+  const rec = clamp((pat.occurrences || 0) * 8, 0, 40);
+  const rca = Math.round((pat.rcaConsistency || 0) * 25);
+  return clamp(Math.round(fix * 0.45 + rec + rca), 0, 100);
+}
+
+function sreBlastRadiusScore(pat) {
+  const affected = new Set();
+  (pat.problems || []).forEach(p => (p.entities || []).forEach(e => affected.add(e)));
+  return clamp(Math.max(affected.size, pat.problems?.length || 0), 0, 100);
+}
+
+function renderSreFocus(patterns) {
+  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || patterns[0] || null;
+  if (!selected) return `<section class="cx-focus neutral"><div><div class="cx-eyebrow">Selected Focus</div><h2>No recurring reliability patterns</h2><p>No pattern is available in the selected period.</p></div></section>`;
+  const priority = sreReliabilityPriority(selected, patterns);
+  const rcaConfidence = Math.round((selected.rcaConsistency || 0) * 100);
+  return `<section class="cx-focus ${rcaConfidence < 25 ? 'risk' : ''}">
+    <div><div class="cx-eyebrow">Selected Focus</div><h2>${selected.title}</h2><p>${rcaConfidence < 25 ? 'RCA warning: ' : ''}RCA confidence is ${rcaConfidence}%. Prioritize evidence enrichment before automation or prevention work.</p></div>
+    <div class="cx-focus-actions">
+      <div class="cx-focus-stat"><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
+      <div class="cx-focus-stat"><span>Reliability Priority</span><strong>${priority}/100</strong></div>
+      <div class="cx-focus-stat"><span>RCA Confidence</span><strong>${rcaConfidence}%</strong></div>
+      <div class="cx-focus-stat"><span>Trend</span><strong>${selected.trend}</strong></div>
+    </div>
+  </section>`;
+}
+
+function renderSreRiskMatrix(patterns) {
+  const ranked = [...patterns].map(pat => ({ pat, score: sreReliabilityPriority(pat, patterns) }))
+    .sort((a, b) => b.score - a.score);
+  const bubbles = ranked.map(({ pat, score }, idx) => {
+    const effort = 100 - patternFixabilityScore(pat);
+    const left = Math.round(8 + clamp(effort / 100, 0.05, 0.95) * 84);
+    const bottom = Math.round(10 + clamp(score / 100, 0.06, 1) * 78);
+    const size = Math.round(clamp(22 + sreBlastRadiusScore(pat) / 3, 22, 48));
+    const selected = pat.id === patternExplorerState.selectedId;
+    const tooltip = `${pat.title} | Reliability priority ${score}/100 | Automation opportunity ${sreAutomationOpportunity(pat)}/100 | Blast radius score ${sreBlastRadiusScore(pat)}/100`;
+    return `<button class="cx-map-bubble ${selected ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" data-tooltip="${attrText(tooltip)}" title="${attrText(tooltip)}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">#${idx + 1}</button>`;
+  }).join('');
+  return `<section class="cx-map">
+    <div class="cx-section-head">
+      <div><div class="cx-eyebrow">Reliability Risk Matrix</div><h3>Operational risk x remediation effort</h3></div>
+      <div class="cx-muted">Bubble size = Blast Radius Score</div>
+    </div>
+    <div class="cx-map-plot">
+      <div class="cx-map-axis y">Operational risk high</div>
+      <div class="cx-map-axis x">Remediation effort low to high</div>
+      <div class="cx-map-q q1">Act Now</div><div class="cx-map-q q2">Strategic Investment</div><div class="cx-map-q q3">Quick Wins</div><div class="cx-map-q q4">Monitor</div>
+      ${bubbles || '<div class="exec-empty">No recurring reliability patterns available.</div>'}
+    </div>
+  </section>`;
+}
+
+function renderSreDebtExplorer(patterns) {
+  return `<section class="cx-table-card"><div class="cx-section-head"><div><div class="cx-eyebrow">Operational Debt Explorer</div><h3>Recurring reliability work queue</h3></div></div>${renderConcisePatternTable(patterns)}</section>`;
+}
+
+function renderSreContextPanel(pat, patterns) {
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a reliability pattern to inspect operational context, automation opportunities, and remediation.</div></aside>`;
+  const priority = sreReliabilityPriority(pat, patterns);
+  const automation = sreAutomationOpportunity(pat);
+  const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
+  const blast = sreBlastRadiusScore(pat);
+  const selectedTab = srePanelTab;
+  const repeatedRca = pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || 'RCA not consistently identified';
+  const tabBody = selectedTab === 'analysis'
+    ? `<div class="cx-complexity-summary"><span>Analysis</span><strong>Reliability-focused analysis is available on request.</strong><p>Use this tab to review recurring reliability signals, recurrence drivers, and prevention recommendations.</p></div>`
+    : selectedTab === 'remediation'
+      ? `<div class="cx-complexity-summary"><span>Remediation</span><strong>Automation and prevention path</strong><p>Generate a remediation path to identify workflow automation, ownership routing, or validation guardrails.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`
+      : `<div class="cx-detail-tiles"><div><strong>${priority}/100</strong><span>Reliability Priority</span></div><div><strong>${automation}/100</strong><span>Automation Opportunity</span></div><div><strong>${rcaConfidence}%</strong><span>RCA Confidence</span></div><div><strong>${blast}/100</strong><span>Blast Radius Score</span></div></div>
+        ${rcaConfidence < 25 ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Confidence Warning</div><strong>RCA confidence is ${rcaConfidence}%.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
+        <div class="cx-complexity-summary"><span>Reliability Signals</span><strong>${repeatedRca}</strong><p>${pat.occurrences} recurring incidents | ${pat.trend} trend | ${patternOpenCount(pat)} still open</p></div>
+        <div class="cx-complexity-summary"><span>Automation Opportunity</span><strong>Candidate for workflow automation.</strong><p>Pattern has recurred ${pat.occurrences} times with ${repeatedRca}.</p></div>
+        <div class="cx-complexity-summary"><span>Operational Debt Drivers</span><strong>Unresolved recurring reliability risk.</strong><p>${pat.occurrences} recurring incidents | RCA ${rcaConfidence ? 'partially identified' : 'incomplete'} | ownership or prevention path needs confirmation.</p></div>`;
+  return `<aside class="cx-detail">
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Reliability Context</div><h3>${pat.title}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
+    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="details">Details</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="remediation">Remediation</button></div>
+    ${tabBody}
+  </aside>`;
+}
+
+function renderSreWorkspace(patterns, ps) {
+  const ranked = [...patterns].map(pat => ({ pat, score: sreReliabilityPriority(pat, patterns) })).sort((a, b) => b.score - a.score);
+  if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
+    patternExplorerState.selectedId = ranked[0]?.pat.id || null;
+  }
+  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
+  const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns) : renderSreRiskMatrix(patterns);
+  document.getElementById('intelSummary').innerHTML = '';
+  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
+    ${renderSreFocus(patterns)}
+    <div class="cx-decision-workspace">
+      <div class="cx-decision-main">
+        <section class="cx-view-controls">
+          <div><div class="cx-eyebrow">View Controls</div><span>Choose one reliability engineering view</span></div>
+          <div class="cx-view-switch">
+            <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
+            <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
+          </div>
+        </section>
+        <div class="cx-selected-view">${selectedView}</div>
+      </div>
+      ${renderSreContextPanel(selected, patterns)}
+    </div>
+  </div>`;
 }
 
 function renderConciseExecView(patterns, ps) {
@@ -5591,7 +5725,10 @@ document.addEventListener('click', function(e) {
     case 'focusPatternExplorer': e.stopPropagation(); focusPatternExplorer(); break;
     case 'getPatternRemediation': e.stopPropagation(); if (pid) getPatternRemediation(pid); break;
     case 'setExecAnalyticalView': e.stopPropagation(); setExecAnalyticalView(el.dataset.mode); break;
+    case 'setSreAnalyticalView': e.stopPropagation(); setSreAnalyticalView(el.dataset.mode); break;
+    case 'setSrePanelTab': e.stopPropagation(); setSrePanelTab(el.dataset.tab); break;
     case 'selectExecMetric': e.stopPropagation(); selectExecMetric(el.dataset.metric); break;
+    case 'clearPatternSelection': e.stopPropagation(); patternExplorerState.selectedId = null; execPatternSelectionMade = false; rerenderPatternsView(); break;
     case 'openPatternAnalysis':
       e.stopPropagation();
       document.getElementById('aiCard')?.closest('details')?.setAttribute('open', '');
