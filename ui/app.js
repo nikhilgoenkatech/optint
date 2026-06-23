@@ -479,7 +479,7 @@ let davisConversationId=null; // unused, kept for backwards compat
 let execValueBreakdownOpen=false;
 let execKpiDetail=null;
 let patternExplorerState = { selectedId:null, sort:'priority', dir:'desc', search:'', filters:{}, offset:0 };
-let execAnalyticalView='explorer';
+let execAnalyticalView='map';
 let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
 let patternSearchTimer=null;
@@ -2037,6 +2037,18 @@ function deepAnalyze(pid){
   switchAISrc('davis');
   openAnalysisDrawer();
   analyzeMulti();
+}
+
+async function analyzePattern(patternId) {
+  const pat = detectPatterns(getFiltered()).find(p => p.id === patternId);
+  if (!pat) return;
+  patternExplorerState.selectedId = pat.id;
+  if (persona === 'executive') execPatternSelectionMade = true;
+  selectedIds.clear();
+  (pat.problems || []).forEach(p => selectedIds.add(p.id));
+  switchAISrc('davis');
+  await analyzeMulti();
+  rerenderPatternsView();
 }
 
 // ── MULTI-PROBLEM AI ANALYSIS ──
@@ -4329,17 +4341,35 @@ function renderDecisionDetailPanel(pat, patterns) {
     ? remediationState.response.recommendations.length
     : hasActionableRca ? 1 : 0;
   const hasRemediation = remediationState.patternId === pat.id && remediationState.status === 'done';
+  const remediationLoading = remediationState.patternId === pat.id && remediationState.status === 'loading';
+  const remediationError = remediationState.patternId === pat.id && remediationState.status === 'error';
   const remediationResponse = hasRemediation ? remediationState.response : null;
   const remediationBody = hasRemediation ? renderAssistRemediationResponse(remediationResponse, remediationState.evidence) : '';
   const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources | RCA confidence ${complexity.rcaConfidence}%`;
   const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 | concentration ${pat.concentration}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
+  const analysisBody = aiState === 'result' && lastAIResult
+    ? `<div class="ai-compact"><div class="cx-eyebrow">Dynatrace Intelligence Analysis</div><p>${lastAIResult.summary || 'Analysis generated for the selected context.'}</p>${Array.isArray(lastAIResult.recommendations) ? `<ul>${lastAIResult.recommendations.slice(0,3).map(r => `<li>${typeof r === 'string' ? r : r.title || r.action || r.description || 'Recommended action'}</li>`).join('')}</ul>` : ''}</div>`
+    : `<div class="cx-complexity-summary"><span>Analysis</span><strong>Available on request</strong><p>Use assisted analysis when leadership needs a concise business-risk explanation for this selected pattern.</p><button class="snap-cta" data-action="analyzeSelectedPattern" data-pid="${pat.id}">Generate Analysis</button></div>`;
+  const remediationPanel = remediationLoading
+    ? `<div class="cx-remediation-summary"><span>Generating remediation path from Dynatrace Assist...</span></div>`
+    : remediationError
+      ? `<div class="cx-remediation-summary"><strong>Remediation unavailable</strong><p>${remediationState.error || 'Dynatrace Assist is unavailable, try again.'}</p></div>`
+      : hasRemediation
+        ? remediationBody
+        : `<div class="cx-remediation-summary"><strong>No remediation path generated yet</strong><p>Select Get Remediation Path to generate recommended next actions for this pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`;
+  const timelineBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Occurrences</span><strong>${pat.occurrences}</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>First seen</span><strong>${pat.firstSeen ? new Date(pat.firstSeen).toLocaleString() : 'Not available'}</strong></div><div class="px-evidence-row"><span>Last seen</span><strong>${pat.lastSeen ? new Date(pat.lastSeen).toLocaleString() : 'Not available'}</strong></div></div>`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Pattern Details</div><h3>${pat.title}</h3></div></div>
     <div class="cx-exec-summary"><div class="cx-eyebrow">Executive Summary</div><p>${pat.title} is responsible for ${exposureShare}% of current pattern exposure. It has recurred ${pat.occurrences} times and currently has ${openCount} open incidents. Estimated recoverable value is ${fmtC(recoverable)}. Recommended action: ${recommendedAction}</p></div>
-    <div class="cx-detail-label">Why This Pattern Matters</div>
-    <div class="cx-detail-tiles"><div><strong>${pat.occurrences}</strong><span>Occurrences</span></div><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div><div><strong>${rcaConfidence}%</strong><span>RCA Confidence</span></div><div><strong>${pat.fixability}</strong><span>Fixability</span></div></div>
+    <div class="cx-detail-label">Business Impact</div>
+    <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
+    <div class="cx-detail-label">Technical Actionability</div>
+    <div class="cx-detail-tiles"><div><strong>${pat.fixability}</strong><span>Remediation Effort</span></div><div><strong>${confidence}/100</strong><span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
+    <div class="cx-complexity-summary"><span>Recurrence Timeline</span><strong>${pat.occurrences} occurrences | ${pat.trend}</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
+    <div class="cx-complexity-summary"><span>Analysis</span>${analysisBody}</div>
+    <div class="cx-complexity-summary"><span>Remediation</span>${remediationPanel}</div>
     <div class="cx-complexity-summary"><span>Investigation Complexity</span><strong>${complexitySummary}</strong><p>${complexity.narrative}</p></div>
     ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
     ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences | ${pat.trend.toLowerCase()} | RCA confidence ${rcaConfidence}%`, evidenceBody)}
@@ -4408,7 +4438,7 @@ function renderDecisionFirstExecView(patterns, ps) {
   document.getElementById('intelSummary').innerHTML = '';
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
     ${renderConciseKpiRow(ps, patterns)}
-    ${renderMetricDrilldown(ps, patterns)}
+    ${renderConciseFocusBanner(patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
         <section class="cx-view-controls">
@@ -5567,6 +5597,7 @@ document.addEventListener('click', function(e) {
       document.getElementById('aiCard')?.closest('details')?.setAttribute('open', '');
       if (pid) deepAnalyze(pid);
       break;
+    case 'analyzeSelectedPattern': e.stopPropagation(); if (pid) analyzePattern(pid); break;
     case 'sortPatternTable': e.stopPropagation(); sortPatternTable(el.dataset.sort); break;
     case 'pagePatternTable': e.stopPropagation(); pagePatternTable(Number(el.dataset.dir || 1)); break;
 
