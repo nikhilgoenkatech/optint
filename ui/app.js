@@ -1550,36 +1550,221 @@ function renderAssistRemediationResponse(response, evidence=null) {
   `;
 }
 
-function buildExecutivePatternPrompt(request) {
-  return `Brief a C-level executive. Plain English only - no pods, JVM, heap, GC, DQL, or low-level engineering terms. Focus on business impact, customer experience, revenue risk, and immediate, short-term, and strategic remediation.
+const EXECUTIVE_ASSIST_PROMPT_LIMIT = 10000;
+const EXECUTIVE_ALLOWED_DYNATRACE_CAPABILITIES = [
+  'Davis AI',
+  'Live Debugger',
+  'Release Management',
+  'Workflows',
+  'AutomationEngine',
+  'Site Reliability Guardian',
+  'Service-Level Objectives',
+  'Ownership and Routing',
+  'Digital Experience Monitoring',
+  'Business Analytics',
+  'Application Observability',
+  'Infrastructure and Cloud Observability',
+  'AWS DevOps Agent',
+  'Azure DevOps Agent',
+  'GCP DevOps Agent',
+];
 
-CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number from the data, such as cost, percentage, count, or duration. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure. Remediation should be strategic, immediate, and short term.
-
-Use only this RemediationRequest evidence. If evidence is missing, say what validation is needed.
-
-Respond ONLY with valid JSON matching this shape:
-{
-  "summary": "2-3 executive sentences; every sentence includes at least one specific number from the request",
-  "patterns": ["Each item includes at least one specific number from the request"],
-  "costNarrative": "Executive cost and revenue-risk narrative referencing the estimated cost figure",
-  "recommendations": [
-    {"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"strategic recommendation referencing the estimated cost figure","dynatraceFeature":"string","estimatedImpact":"string","owner":"string"}
-  ],
-  "recommendedRemediationPath": "string",
-  "immediateRemediation": "string",
-  "shortTermRemediation": "string",
-  "strategicRemediation": "string",
-  "whySuggested": "string",
-  "supportingEvidence": ["string"],
-  "suggestedDynatraceCapabilities": ["string"],
-  "estimatedImplementationEffort": "string",
-  "expectedOperationalCostReduction": "string",
-  "missingEvidenceOrNextValidationSteps": ["string"],
-  "confidenceLevel": "LOW|MEDIUM|HIGH"
+function truncateForExecutiveEvidence(value, max=160) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
-RemediationRequest:
-${JSON.stringify(request, null, 2)}`;
+function executiveArraySummary(values, max=5) {
+  const list = uniqVals((Array.isArray(values) ? values : [values])
+    .flat()
+    .filter(v => v != null && String(v).trim())
+    .map(v => truncateForExecutiveEvidence(v, 80)))
+    .slice(0, max);
+  const total = Array.isArray(values) ? values.filter(Boolean).length : list.length;
+  return { count: total, sample: list, truncated: Math.max(0, total - list.length) };
+}
+
+function isWeakExecutiveEvidence(value) {
+  if (value == null) return true;
+  if (Array.isArray(value)) return !value.length;
+  if (typeof value === 'number') return !Number.isFinite(value);
+  const text = String(value).trim().toLowerCase();
+  return !text
+    || text === 'unknown'
+    || text === 'n/a'
+    || text === 'na'
+    || text === 'null'
+    || text === 'undefined'
+    || text.includes('not available')
+    || text.includes('not identified')
+    || text.includes('unresolved')
+    || text.includes('placeholder');
+}
+
+function buildExecutiveEvidenceGate(evidence) {
+  const keyFields = [
+    ['patternName', evidence.patternName],
+    ['eventType', evidence.eventType],
+    ['occurrenceCount', evidence.occurrenceCount],
+    ['openProblemCount', evidence.openProblemCount],
+    ['operationalCost', evidence.operationalCost],
+    ['potentialSavings', evidence.potentialSavings],
+    ['affectedServices', evidence.affectedServices?.sample],
+    ['affectedEntities', evidence.affectedEntities?.sample],
+    ['rootCauseSummary', evidence.rootCauseSummary],
+    ['rcaConfidence', evidence.rcaConfidence],
+    ['timeClustering', evidence.timeClustering],
+    ['mttr', evidence.mttr],
+    ['userImpact', evidence.userImpact],
+    ['trend', evidence.trend],
+    ['priority', evidence.priority],
+  ];
+  const missing = keyFields.filter(([, value]) => isWeakExecutiveEvidence(value)).map(([field]) => field);
+  const confidenceLevel = missing.length > keyFields.length / 2 ? 'LOW'
+    : missing.length > keyFields.length / 4 ? 'MEDIUM'
+      : 'HIGH';
+  return {
+    confidenceLevel,
+    keyFieldCount: keyFields.length,
+    weakFieldCount: missing.length,
+    weakFields: missing,
+  };
+}
+
+function buildCompactExecutiveEvidence(request) {
+  const confidenceInputs = {
+    patternConfidence: request.confidenceScore,
+    rcaConfidence: request.rcaConfidence,
+    priorityScore: request.priorityScore,
+  };
+  const evidence = {
+    patternId: request.patternId || null,
+    patternName: truncateForExecutiveEvidence(request.patternName, 120),
+    eventType: truncateForExecutiveEvidence(request.eventType || request.eventName || 'Unknown', 80),
+    occurrenceCount: Number.isFinite(Number(request.occurrenceCount)) ? Number(request.occurrenceCount) : null,
+    openProblemCount: Number.isFinite(Number(request.openProblemCount)) ? Number(request.openProblemCount) : null,
+    operationalCost: Number.isFinite(Number(request.operationalCost)) ? Math.round(Number(request.operationalCost)) : null,
+    potentialSavings: Number.isFinite(Number(request.potentialSavings)) ? Math.round(Number(request.potentialSavings)) : null,
+    affectedServices: executiveArraySummary(request.affectedServices, 5),
+    affectedEntities: executiveArraySummary(request.affectedEntities, 5),
+    rootCauseSummary: truncateForExecutiveEvidence(request.rootCauseSummary, 180),
+    rcaConfidence: Number.isFinite(Number(request.rcaConfidence)) ? Math.round(Number(request.rcaConfidence)) : null,
+    timeClustering: truncateForExecutiveEvidence(request.timeClustering, 180),
+    mttr: truncateForExecutiveEvidence(request.mttr, 80),
+    userImpact: Number.isFinite(Number(request.userImpact)) ? Math.round(Number(request.userImpact)) : null,
+    confidenceInputs,
+    trend: truncateForExecutiveEvidence(request.trend, 60),
+    priority: Number.isFinite(Number(request.priorityScore)) ? Math.round(Number(request.priorityScore)) : null,
+    problemIds: Array.isArray(request.problemIds) ? request.problemIds.filter(Boolean).slice(0, 8) : [],
+  };
+  const gate = buildExecutiveEvidenceGate(evidence);
+  evidence.confidenceGate = gate;
+  evidence.missingEvidence = gate.weakFields.map(field => `${field} is missing, weak, unresolved, or generic`);
+  return evidence;
+}
+
+function executiveCapability(value) {
+  const candidate = String(value || '').trim();
+  return EXECUTIVE_ALLOWED_DYNATRACE_CAPABILITIES.includes(candidate) ? candidate : 'Davis AI';
+}
+
+function buildExecutivePromptFromEvidence(evidence) {
+  return `You are an operational intelligence assistant embedded in a Dynatrace app briefing a C-level executive.
+
+Assess the quality of the evidence before responding.
+
+If more than half of the key fields are null, unresolved, empty, or generic placeholders, set confidenceLevel to LOW.
+
+When confidenceLevel is LOW:
+- do not fabricate analysis
+- focus on missing evidence
+- explain what must be clarified before action can be recommended
+- keep recommendations conservative
+
+When evidence is sufficient:
+- use plain English inside JSON values
+- avoid technical jargon
+- avoid infrastructure terms
+- avoid platform-specific implementation language
+- focus on business impact, customer experience, operational risk, and revenue exposure
+
+For summary and patterns:
+- every sentence or item must reference at least one specific number from the evidence
+- do not write generic claims without metric backing
+
+Recommendations must be strategic and reference a specific cost, exposure, recurrence, customer impact, or risk number from the evidence.
+
+Allowed broad Dynatrace capabilities:
+${EXECUTIVE_ALLOWED_DYNATRACE_CAPABILITIES.map(c => `- ${c}`).join('\n')}
+
+Do not recommend logs, traces, metrics, spans, dashboards, or stack traces.
+
+Return ONLY valid JSON matching this schema:
+{
+  "summary": "2-3 sentences citing numbers",
+  "keyRisk": "primary business risk",
+  "patterns": ["2-3 evidence-backed items"],
+  "recommendations": [
+    {
+      "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
+      "title": "string",
+      "description": "string citing cost, exposure, recurrence, customer impact, or risk",
+      "dynatraceFeature": "allowed broad capability only",
+      "owner": "string"
+    }
+  ],
+  "nextAction": "single most important action",
+  "missingEvidence": ["missing or weak evidence"],
+  "confidenceLevel": "LOW | MEDIUM | HIGH"
+}
+
+EVIDENCE:
+${JSON.stringify(evidence, null, 2)}`;
+}
+
+function buildExecutivePatternPrompt(request) {
+  let evidence = buildCompactExecutiveEvidence(request || {});
+  let prompt = buildExecutivePromptFromEvidence(evidence);
+  if (prompt.length > EXECUTIVE_ASSIST_PROMPT_LIMIT) {
+    evidence = {
+      ...evidence,
+      problemIds: evidence.problemIds.slice(0, 3),
+      affectedServices: executiveArraySummary(evidence.affectedServices?.sample || [], 3),
+      affectedEntities: executiveArraySummary(evidence.affectedEntities?.sample || [], 3),
+      rootCauseSummary: truncateForExecutiveEvidence(evidence.rootCauseSummary, 100),
+      timeClustering: truncateForExecutiveEvidence(evidence.timeClustering, 100),
+      missingEvidence: (evidence.missingEvidence || []).slice(0, 6),
+    };
+    prompt = buildExecutivePromptFromEvidence(evidence);
+  }
+  if (prompt.length > EXECUTIVE_ASSIST_PROMPT_LIMIT) {
+    evidence = {
+      patternId: evidence.patternId,
+      patternName: evidence.patternName,
+      eventType: evidence.eventType,
+      occurrenceCount: evidence.occurrenceCount,
+      openProblemCount: evidence.openProblemCount,
+      operationalCost: evidence.operationalCost,
+      potentialSavings: evidence.potentialSavings,
+      rootCauseSummary: evidence.rootCauseSummary,
+      rcaConfidence: evidence.rcaConfidence,
+      mttr: evidence.mttr,
+      userImpact: evidence.userImpact,
+      trend: evidence.trend,
+      priority: evidence.priority,
+      problemIds: evidence.problemIds.slice(0, 3),
+      confidenceGate: evidence.confidenceGate,
+      missingEvidence: (evidence.missingEvidence || []).slice(0, 4),
+    };
+    prompt = buildExecutivePromptFromEvidence(evidence);
+  }
+  if (typeof window !== 'undefined') {
+    window.__OPINT_LAST_EXECUTIVE_EVIDENCE__ = evidence;
+    window.__OPINT_LAST_EXECUTIVE_PROMPT_LENGTH__ = prompt.length;
+  }
+  console.log('[OpInt Davis] executive prompt length:', prompt.length);
+  return prompt;
 }
 
 function buildDeveloperRemediationPrompt(request) {
@@ -1718,7 +1903,50 @@ function personaRemediationRecommendations(response, request) {
   return recommendations;
 }
 
+function safeParseExecutiveAssistResponse(raw) {
+  const text = String(raw ?? '').trim();
+  try {
+    const unfenced = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    const direct = JSON.parse(unfenced);
+    return direct;
+  } catch (directError) {
+    try {
+      return extractJSON(text);
+    } catch (extractError) {
+      console.warn('[OpInt Davis] executive response parse failed:', {
+        directError: directError.message,
+        extractError: extractError.message,
+        rawResponse: text,
+      });
+      return {
+        __parseError: true,
+        message: 'Dynatrace Assist returned an unexpected response format.',
+        rawSnippet: truncateForExecutiveEvidence(text, 300),
+      };
+    }
+  }
+}
+
 function normalizePatternAssistResponse(response, request) {
+  if (persona === 'executive' && response && typeof response === 'object' && response.__parseError) {
+    return {
+      summary: response.message,
+      patterns: [],
+      costNarrative: response.message,
+      recommendations: [],
+      recommendedRemediationPath: response.message,
+      immediateRemediation: response.message,
+      whySuggested: 'The Executive remediation response could not be parsed as valid JSON.',
+      supportingEvidence: [],
+      missingEvidenceOrNextValidationSteps: ['Retry the request or inspect the raw response in the browser console.'],
+      confidenceLevel: 'LOW',
+      generatedBy:'davis-copilot',
+      latencyMs:0,
+    };
+  }
   const fallbackCost = fmtC(request?.operationalCost || 0);
   if (!response || typeof response === 'string') {
     return {
@@ -1728,6 +1956,38 @@ function normalizePatternAssistResponse(response, request) {
       recommendations: [
         { priority:'IMMEDIATE', title:'Stabilize the highest-cost recurring issue', description:`Contain the pattern now because it represents ${fallbackCost} in estimated cost exposure.`, dynatraceFeature:'Dynatrace Assist', estimatedImpact:`Reduce exposure against ${fallbackCost}`, owner:request.ownerTeam || 'Operations leadership' },
       ],
+      generatedBy:'davis-copilot',
+      latencyMs:0,
+    };
+  }
+  if (persona === 'executive') {
+    const evidenceGate = buildExecutiveEvidenceGate(buildCompactExecutiveEvidence(request || {}));
+    const recs = Array.isArray(response.recommendations) ? response.recommendations.filter(Boolean).map((rec, idx) => ({
+      priority: ['IMMEDIATE', 'SHORT_TERM', 'STRATEGIC'].includes(String(rec.priority || '').toUpperCase()) ? String(rec.priority).toUpperCase() : (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC'),
+      title: rec.title || rec.action || `Executive recommendation ${idx + 1}`,
+      description: rec.description || rec.reason || 'Validate this recommendation against the selected pattern evidence.',
+      dynatraceFeature: executiveCapability(rec.dynatraceFeature || rec.dynatraceCapability),
+      estimatedImpact: rec.estimatedImpact || rec.description || rec.reason || 'Reduce recurring operational risk.',
+      owner: rec.owner || request?.ownerTeam || 'Operations leadership',
+    })) : [];
+    const responseConfidence = String(response.confidenceLevel || response.confidence || 'MEDIUM').toUpperCase();
+    const confidenceLevel = evidenceGate.confidenceLevel === 'LOW'
+      ? 'LOW'
+      : ['LOW', 'MEDIUM', 'HIGH'].includes(responseConfidence)
+        ? responseConfidence
+        : 'MEDIUM';
+    const missingEvidence = response.missingEvidence || response.missingEvidenceOrNextValidationSteps || [];
+    return {
+      summary: response.summary || `${request.patternName} has ${request.occurrenceCount} occurrences and ${fallbackCost} estimated cost exposure.`,
+      patterns: Array.isArray(response.patterns) ? response.patterns : [],
+      costNarrative: response.keyRisk || response.costNarrative || `${request.groupedProblemCount} grouped problems create ${fallbackCost} in recurring cost exposure.`,
+      recommendations: recs,
+      recommendedRemediationPath: response.nextAction || response.recommendedRemediationPath || 'Validate the recommended action against the selected pattern evidence.',
+      immediateRemediation: response.nextAction || null,
+      whySuggested: response.keyRisk || null,
+      supportingEvidence: Array.isArray(response.patterns) ? response.patterns : [],
+      missingEvidenceOrNextValidationSteps: Array.isArray(missingEvidence) ? missingEvidence : [missingEvidence].filter(Boolean),
+      confidenceLevel,
       generatedBy:'davis-copilot',
       latencyMs:0,
     };
@@ -1819,15 +2079,21 @@ async function getPatternRemediation(patternId, opts={}) {
   try {
     const prompt = buildPatternAssistPrompt(request);
     window.__OPINT_LAST_REMEDIATION_PROMPT__ = prompt;
+    window.__OPINT_LAST_REMEDIATION_PROMPT_LENGTH__ = prompt.length;
     window.__OPINT_LAST_REMEDIATION_REQUEST__ = request;
+    console.log('[OpInt Davis] remediation prompt length:', prompt.length);
     console.log('[OpInt Davis] full remediation prompt:', prompt);
     console.log('[OpInt Davis] remediation request:', request);
     const raw = await callDavisSkill(prompt);
     window.__OPINT_LAST_REMEDIATION_RESPONSE__ = raw;
     console.log('[OpInt Davis] raw remediation response:', raw);
     let parsed;
-    try { parsed = extractJSON(raw); }
-    catch { parsed = raw; }
+    if (persona === 'executive') {
+      parsed = safeParseExecutiveAssistResponse(raw);
+    } else {
+      try { parsed = extractJSON(raw); }
+      catch { parsed = raw; }
+    }
     const normalized = normalizePatternAssistResponse(parsed, request);
     remediationCache.set(cacheKey, normalized);
     if (remediationPatternId !== pat.id) return;
