@@ -482,6 +482,8 @@ let patternExplorerState = { selectedId:null, sort:'priority', dir:'desc', searc
 let execAnalyticalView='map';
 let sreAnalyticalView='matrix';
 let srePanelTab='details';
+let developerAnalyticalView='heatmap';
+let developerPanelTab='details';
 let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
 let patternSearchTimer=null;
@@ -2722,7 +2724,7 @@ function selectPatternRow(id, opts={}) {
   if (persona === 'executive') execPatternSelectionMade = true;
   renderTopPatternsSnapshot(getFiltered());
   rerenderPatternsView();
-  if (opts.remediate !== false && !['executive','sre'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
+  if (opts.remediate !== false && !['executive','sre','developer'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
 }
 
 function setExecAnalyticalView(view) {
@@ -2738,6 +2740,23 @@ function setSreAnalyticalView(view) {
 function setSrePanelTab(tab) {
   srePanelTab = ['details','analysis','remediation'].includes(tab) ? tab : 'details';
   rerenderPatternsView();
+}
+
+function setDeveloperAnalyticalView(view) {
+  developerAnalyticalView = view === 'explorer' ? 'explorer' : 'heatmap';
+  rerenderPatternsView();
+}
+
+function setDeveloperPanelTab(tab) {
+  developerPanelTab = ['details','analysis','remediation'].includes(tab) ? tab : 'details';
+  rerenderPatternsView();
+}
+
+function setDeveloperScopeValue(value) {
+  const select = document.getElementById('appFilter');
+  if (select) select.value = value || '';
+  patternExplorerState.selectedId = null;
+  render();
 }
 
 function selectExecMetric(metric) {
@@ -3577,7 +3596,7 @@ function renderPatternIntelligence() {
   const patternCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
   const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const fixable = patterns.filter(pat => ['FIX_ROOT_CAUSE','ADD_TIME_WINDOW'].includes(pat.recommendation.type)).length;
-  if (persona === 'executive' || persona === 'sre') {
+  if (persona === 'executive' || persona === 'sre' || persona === 'developer') {
     document.getElementById('intelSummary').innerHTML = '';
   } else {
   document.getElementById('intelSummary').innerHTML = `
@@ -3612,6 +3631,13 @@ function renderPatternIntelligence() {
 
   if (persona === 'sre') {
     renderSreWorkspace(patterns, ps);
+    renderOneOffs(oneOffs);
+    document.getElementById('explorerTabCount').textContent = ps.length;
+    return;
+  }
+
+  if (persona === 'developer') {
+    renderDeveloperWorkspace(patterns, ps);
     renderOneOffs(oneOffs);
     document.getElementById('explorerTabCount').textContent = ps.length;
     return;
@@ -4539,6 +4565,123 @@ function renderSreWorkspace(patterns, ps) {
         <div class="cx-selected-view">${selectedView}</div>
       </div>
       ${renderSreContextPanel(selected, patterns)}
+    </div>
+  </div>`;
+}
+
+function developerFailureType(pat) {
+  return (pat.problems?.[0]?.cat || pat.problems?.[0]?.eventType || pat.dimensions?.categories?.[0] || 'ERROR').toString().toUpperCase();
+}
+
+function developerPrimaryService(pat) {
+  return patternServices(pat)[0] || pat.dimensions?.services?.[0] || pat.problems?.[0]?.svcs?.[0] || 'Unresolved service';
+}
+
+function developerRootCauseStatus(pat) {
+  const rca = pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || pat.problems?.find(p => p.rca)?.rca;
+  return rca ? `Repeated RCA: ${rca}` : 'Needs investigation';
+}
+
+function renderDeveloperScopeControl() {
+  const current = document.getElementById('appFilter')?.value || '';
+  const groups = ['service','endpoint','team','owner','namespace','application','environment'];
+  const label = selectedDeveloperScope()?.label || 'All Developer Scope';
+  const options = groups.map(group => {
+    const items = developerScopeOptions.filter(scope => scope.type === group);
+    if (!items.length) return '';
+    const groupLabel = group[0].toUpperCase() + group.slice(1) + 's';
+    return `<optgroup label="${groupLabel}">${items.map(scope => {
+      const value = `${scope.type}|${scope.rawValue}`;
+      return `<option value="${attrText(value)}" ${current === value ? 'selected' : ''}>${scope.label} (${scope.count})</option>`;
+    }).join('')}</optgroup>`;
+  }).join('');
+  return `<section class="cx-view-controls">
+    <div><div class="cx-eyebrow">Developer Scope</div><span>${label}</span></div>
+    <select class="hsel" data-action="setDeveloperScope">${developerScopeOptions.length ? `<option value="">All Developer Scope</option>${options}` : '<option value="">No developer scopes found</option>'}</select>
+  </section>`;
+}
+
+function renderDeveloperFocus(patterns) {
+  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || patterns[0] || null;
+  if (!selected) return `<section class="cx-focus neutral"><div><div class="cx-eyebrow">Selected Focus</div><h2>Select a service or recurring issue</h2><p>Select a service or recurring issue to inspect root cause, affected endpoint, and recommended fix.</p></div></section>`;
+  return `<section class="cx-focus">
+    <div><div class="cx-eyebrow">Selected Focus</div><h2>${developerPrimaryService(selected)}</h2><p><strong>Investigate here:</strong> ${developerRootCauseStatus(selected)}</p></div>
+    <div class="cx-focus-actions">
+      <div class="cx-focus-stat"><span>Failure Type</span><strong>${developerFailureType(selected)}</strong></div>
+      <div class="cx-focus-stat"><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
+      <div class="cx-focus-stat"><span>Root Cause</span><strong>${developerRootCauseStatus(selected).slice(0, 26)}</strong></div>
+      <div class="cx-focus-stat"><span>Trend</span><strong>${selected.trend}</strong></div>
+    </div>
+  </section>`;
+}
+
+function renderDeveloperServiceHeatMap(patterns) {
+  const categories = ['AVAILABILITY','ERROR','PERFORMANCE','RESOURCE_CONTENTION','CUSTOM_ALERT'];
+  const services = [...new Set(patterns.map(developerPrimaryService))].slice(0, 10);
+  const maxOcc = Math.max(1, ...patterns.map(p => p.occurrences || 0));
+  const rows = services.map(service => {
+    const cells = categories.map(cat => {
+      const pat = patterns.find(p => developerPrimaryService(p) === service && developerFailureType(p) === cat);
+      if (!pat) return `<button class="heat-cell empty" aria-label="${service} ${cat} no recurring failures"></button>`;
+      const intensity = clamp((pat.occurrences || 1) / maxOcc, 0.25, 1);
+      const selected = pat.id === patternExplorerState.selectedId;
+      const trend = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'stable';
+      const tooltip = `${service} | ${cat} | ${pat.occurrences} occurrences | ${pat.trend}`;
+      return `<button class="heat-cell ${selected ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}"><strong>${pat.occurrences}</strong><small>${trend}</small></button>`;
+    }).join('');
+    return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}</div>`;
+  }).join('');
+  return `<section class="cx-map dev-heat">
+    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="cx-muted">Darker = recurring more often</div></div>
+    <div class="heat-grid"><div class="heat-head"><span>Service / Endpoint</span>${categories.map(c => `<span>${c.replace('_',' ')}</span>`).join('')}</div>${rows || '<div class="exec-empty">No recurring service patterns available.</div>'}</div>
+  </section>`;
+}
+
+function renderDeveloperContextPanel(pat, patterns) {
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a service or recurring issue to view root cause status, evidence, analysis, and remediation.</div></aside>`;
+  const selectedTab = developerPanelTab;
+  const service = developerPrimaryService(pat);
+  const failureType = developerFailureType(pat);
+  const rootCause = developerRootCauseStatus(pat);
+  const tabBody = selectedTab === 'analysis'
+    ? `<div class="cx-complexity-summary"><span>Dynatrace Intelligence Analysis</span><strong>Generate analysis when deeper reasoning is needed.</strong><p>Analysis should focus on likely root cause, affected service or runtime area, and next validation step.</p></div>`
+    : selectedTab === 'remediation'
+      ? `<div class="cx-complexity-summary"><span>Remediation Path</span><strong>Technical fix path</strong><p>Generate remediation when the developer is ready to evaluate a concrete fix and validation plan.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Generate Remediation Path</button></div>`
+      : `<div class="cx-detail-tiles"><div><strong>${service}</strong><span>Service / Endpoint</span></div><div><strong>${failureType}</strong><span>Failure Type</span></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div></div>
+        <div class="cx-complexity-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.occurrences} grouped occurrences | ${patternOpenCount(pat)} open incidents | confidence ${patternConfidenceScore(pat)}/100</p></div>
+        <div class="cx-complexity-summary"><span>Impact Summary</span><strong>${fmtC(patternCost(pat))} exposure</strong><p>${pat.problems?.length || 0} scoped problems | ${patternAffectedEntities(pat).length} affected entities</p></div>
+        ${renderExecDisclosure('Supporting evidence', `${pat.occurrences} grouped occurrences`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('')}</div>`)}
+        ${renderExecDisclosure('Impacted entities', `${patternAffectedEntities(pat).length} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
+  return `<aside class="cx-detail">
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Technical Context</div><h3>${service}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
+    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="details">Details</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="analysis">Dynatrace Intelligence Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="remediation">Remediation Path</button></div>
+    ${tabBody}
+  </aside>`;
+}
+
+function renderDeveloperWorkspace(patterns, ps) {
+  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
+  if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
+    patternExplorerState.selectedId = ranked[0]?.pat.id || null;
+  }
+  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
+  const selectedView = developerAnalyticalView === 'explorer' ? renderConcisePatternTable(patterns) : renderDeveloperServiceHeatMap(patterns);
+  document.getElementById('intelSummary').innerHTML = '';
+  document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
+    ${renderDeveloperScopeControl()}
+    ${renderDeveloperFocus(patterns)}
+    <div class="cx-decision-workspace">
+      <div class="cx-decision-main">
+        <section class="cx-view-controls">
+          <div><div class="cx-eyebrow">View Controls</div><span>Choose one technical triage view</span></div>
+          <div class="cx-view-switch">
+            <button class="${developerAnalyticalView === 'heatmap' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="heatmap">Service Heat Map</button>
+            <button class="${developerAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="explorer">Pattern Explorer</button>
+          </div>
+        </section>
+        <div class="cx-selected-view">${selectedView}</div>
+      </div>
+      ${renderDeveloperContextPanel(selected, patterns)}
     </div>
   </div>`;
 }
@@ -5727,6 +5870,8 @@ document.addEventListener('click', function(e) {
     case 'setExecAnalyticalView': e.stopPropagation(); setExecAnalyticalView(el.dataset.mode); break;
     case 'setSreAnalyticalView': e.stopPropagation(); setSreAnalyticalView(el.dataset.mode); break;
     case 'setSrePanelTab': e.stopPropagation(); setSrePanelTab(el.dataset.tab); break;
+    case 'setDeveloperAnalyticalView': e.stopPropagation(); setDeveloperAnalyticalView(el.dataset.mode); break;
+    case 'setDeveloperPanelTab': e.stopPropagation(); setDeveloperPanelTab(el.dataset.tab); break;
     case 'selectExecMetric': e.stopPropagation(); selectExecMetric(el.dataset.metric); break;
     case 'clearPatternSelection': e.stopPropagation(); patternExplorerState.selectedId = null; execPatternSelectionMade = false; rerenderPatternsView(); break;
     case 'openPatternAnalysis':
@@ -5757,6 +5902,11 @@ document.getElementById('psw').addEventListener('click', function(e) {
 document.querySelector('.view-tabs').addEventListener('click', function(e) {
   const tab = e.target.closest('.view-tab');
   if (tab) switchView(tab.dataset.view);
+});
+
+document.addEventListener('change', function(e) {
+  const scoped = e.target.closest('[data-action="setDeveloperScope"]');
+  if (scoped) setDeveloperScopeValue(scoped.value);
 });
 
 // AI source buttons use data-src (existing attribute)
