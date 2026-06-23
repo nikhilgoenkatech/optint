@@ -26,8 +26,11 @@ const MOCK_PROBLEMS = [
   {id:'P-020',title:'Disk I/O saturation: log-aggregator',biz:'Platform Logging Disruption',status:'RESOLVED',sev:'RESOURCE_CONTENTION',start:Date.now()-475200000,dur:60,users:0,mz:['Production'],tags:['team:platform'],hasRCA:true,rca:'log-aggregator',svcs:['log-aggregator'],rec:20,impact:25,noise:true,cloud:'aws',region:'ap-southeast-2'},
 ];
 
-let PROBLEMS = MOCK_PROBLEMS;
+const USE_DEMO_DATA = new URLSearchParams(window.location.search).get('demo') === '1';
+let PROBLEMS = USE_DEMO_DATA ? MOCK_PROBLEMS : [];
 let MTTR_SUMMARY = null;
+let DATA_SOURCE_STATE = USE_DEMO_DATA ? 'demo' : 'loading';
+let DATA_SOURCE_ERROR = '';
 
 // ============================================================
 // PERSONA CONFIG
@@ -345,9 +348,35 @@ function getTimeLabel() {
   return v === '7d' ? 'last 7 days' : v === '14d' ? 'last 14 days' : 'last 30 days';
 }
 
+function dataSourceLabel() {
+  if (DATA_SOURCE_STATE === 'live') return 'Live DQL';
+  if (DATA_SOURCE_STATE === 'loading') return 'Loading DQL';
+  if (DATA_SOURCE_STATE === 'empty') return 'No DQL records';
+  if (DATA_SOURCE_STATE === 'error') return 'DQL unavailable';
+  if (DATA_SOURCE_STATE === 'demo') return 'Demo data';
+  return 'DQL';
+}
+
+function refreshPatternRuntime() {
+  patternInsights.clear();
+  subBucketInsights.clear();
+  render();
+  if (typeof renderPatternIntelligence === 'function' && currentView === 'patterns') renderPatternIntelligence();
+}
+
 async function loadProblems() {
   const timeRange = document.getElementById('timeRange')?.value ?? '7d';
   MTTR_SUMMARY = null;
+  DATA_SOURCE_ERROR = '';
+
+  if (USE_DEMO_DATA) {
+    PROBLEMS = MOCK_PROBLEMS;
+    DATA_SOURCE_STATE = 'demo';
+    refreshPatternRuntime();
+    return;
+  }
+
+  DATA_SOURCE_STATE = 'loading';
   try {
     const result = await queryExecutionClient.queryExecute({
       body: {
@@ -365,7 +394,13 @@ async function loadProblems() {
     });
 
     const records = result?.result?.records;
-    if (!records || records.length === 0) return;
+    if (!records || records.length === 0) {
+      PROBLEMS = [];
+      DATA_SOURCE_STATE = 'empty';
+      await loadMttrSummary(timeRange);
+      refreshPatternRuntime();
+      return;
+    }
 
     // event.category values: ERROR, AVAILABILITY, SLOWDOWN, CUSTOM_ALERT
     // map to app's sev values: ERROR, AVAILABILITY, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT
@@ -419,14 +454,17 @@ async function loadProblems() {
     });
 
     await loadMttrSummary(timeRange);
-    patternInsights.clear();
-    subBucketInsights.clear();
-    render();
-    if (typeof renderPatternIntelligence === 'function' && currentView === 'patterns') renderPatternIntelligence();
+    DATA_SOURCE_STATE = 'live';
+    refreshPatternRuntime();
   } catch (err) {
     console.warn('[OpInt] DQL fetch failed:', err.message ?? err);
     console.warn('[OpInt] cause:', err.cause);
     console.warn('[OpInt] full error:', err);
+    PROBLEMS = [];
+    MTTR_SUMMARY = null;
+    DATA_SOURCE_STATE = 'error';
+    DATA_SOURCE_ERROR = err?.message ? String(err.message) : 'Unable to retrieve DQL data';
+    refreshPatternRuntime();
   }
 }
 
@@ -612,9 +650,10 @@ function render(){
   document.getElementById('pbarText').innerHTML=`<strong>${m.label} View</strong> - ${m.desc}`;
   if(persona==='executive'){
     const ep=detectPatterns(ps).patterns;
-    document.getElementById('pbarChip').textContent=`${ep.length} pattern${ep.length!==1?'s':''} | ${ps.length} problems`;
+    document.getElementById('pbarChip').textContent=`${ep.length} pattern${ep.length!==1?'s':''} | ${ps.length} problems | ${dataSourceLabel()}`;
   }
-  else document.getElementById('pbarChip').textContent=`${ps.length} of ${PROBLEMS.length} visible`;
+  else document.getElementById('pbarChip').textContent=`${ps.length} of ${PROBLEMS.length} visible | ${dataSourceLabel()}`;
+  document.getElementById('pbarChip').title = DATA_SOURCE_ERROR || dataSourceLabel();
   // cost banner
   const showCost=persona!=='developer' && !(persona === 'executive' && currentView === 'patterns');
   document.getElementById('costBanner').classList.toggle('hidden',!showCost);
@@ -5980,7 +6019,14 @@ document.querySelector('.ai-src-bar').addEventListener('click', function(e) {
 
 // Select change listeners
 document.getElementById('appFilter').addEventListener('change', render);
-document.getElementById('timeRange').addEventListener('change', () => { PROBLEMS = MOCK_PROBLEMS; MTTR_SUMMARY = null; render(); loadProblems(); });
+document.getElementById('timeRange').addEventListener('change', () => {
+  PROBLEMS = [];
+  MTTR_SUMMARY = null;
+  DATA_SOURCE_STATE = USE_DEMO_DATA ? 'demo' : 'loading';
+  DATA_SOURCE_ERROR = '';
+  render();
+  loadProblems();
+});
 document.getElementById('extProvider').addEventListener('change', onProviderChange);
 
 // Modal overlay: close only when clicking the overlay itself
@@ -6015,7 +6061,8 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// BOOT - render immediately with demo data, then replace with live Grail data
+// BOOT - render immediately in DQL loading state, then populate with live Grail data.
+// Add ?demo=1 only when intentionally validating the local sample dataset.
 document.addEventListener('keydown', function(e) {
   const bubble = e.target.closest('.act-map-bubble[data-act-map="1"]');
   if (!bubble) return;
