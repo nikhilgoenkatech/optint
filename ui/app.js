@@ -3890,15 +3890,19 @@ function renderDecisionFirstExecView(patterns, ps) {
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
     ${renderConciseKpiRow(ps, patterns)}
     ${renderMetricDrilldown(ps, patterns)}
-    <section class="cx-view-controls">
-      <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>
-      <div class="cx-view-switch">
-        <button class="${execAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="explorer">Pattern Explorer</button>
-        <button class="${execAnalyticalView === 'map' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="map">Act-First Map</button>
+    <div class="cx-decision-workspace">
+      <div class="cx-decision-main">
+        <section class="cx-view-controls">
+          <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>
+          <div class="cx-view-switch">
+            <button class="${execAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="explorer">Pattern Explorer</button>
+            <button class="${execAnalyticalView === 'map' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="map">Act-First Map</button>
+          </div>
+        </section>
+        <div class="cx-selected-view">${selectedView}</div>
       </div>
-    </section>
-    <div class="cx-selected-view">${selectedView}</div>
-    ${selected ? renderDecisionDetailPanel(selected, patterns) : '<div class="cx-selection-prompt">Select a pattern to reveal its executive summary, recommended action, and optional evidence.</div>'}
+      ${selected ? renderDecisionDetailPanel(selected, patterns) : renderDecisionDetailPanel(null, patterns)}
+    </div>
   </div>`;
 }
 
