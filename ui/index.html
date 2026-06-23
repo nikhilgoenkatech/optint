@@ -646,6 +646,9 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-focus p{margin:4px 0 0;color:var(--text-3);font-size:12px}
 .cx-focus-why{margin-top:6px;font-size:11px;line-height:1.4;color:var(--text-2)}
 .cx-focus-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.exec-persona .cx-focus-stat{min-width:104px;padding:8px 10px;background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:var(--r)}
+.exec-persona .cx-focus-stat span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+.exec-persona .cx-focus-stat strong{display:block;margin-top:3px;font-family:var(--mono);font-size:12px;color:var(--text-1)}
 .cx-metric-drilldown{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:14px;align-items:center;padding:13px 16px;background:var(--bg-1);border:1px solid rgba(77,184,255,.22);border-radius:var(--rl)}
 .cx-metric-drilldown.neutral{grid-template-columns:1fr;border-color:var(--border)}
 .cx-metric-drilldown h2{margin:3px 0 0;color:var(--text-1);font-size:16px}
@@ -674,6 +677,9 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-map-q.q3{left:62px;bottom:48px}
 .cx-map-q.q4{right:38px;bottom:48px;color:rgba(77,184,255,.72)}
 .cx-map-bubble{position:absolute;z-index:3;transform:translate(-50%,50%);border-radius:999px;border:1px solid rgba(77,184,255,.35);background:rgba(77,184,255,.16);color:var(--text-1);font-family:var(--mono);font-size:10px;font-weight:900;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.28)}
+.exec-persona .cx-map-bubble.age-fresh{border-color:rgba(77,184,255,.5);background:rgba(77,184,255,.20)}
+.exec-persona .cx-map-bubble.age-aging{border-color:rgba(245,197,24,.55);background:rgba(245,197,24,.20)}
+.exec-persona .cx-map-bubble.age-old{border-color:rgba(255,103,112,.60);background:rgba(255,103,112,.22)}
 .cx-map-bubble:hover,.cx-map-bubble.selected{border-color:var(--amber);background:rgba(245,197,24,.24);box-shadow:0 0 0 2px rgba(245,197,24,.20),0 10px 24px rgba(0,0,0,.34)}
 .cx-map-bubble:hover::after,.cx-map-bubble:focus-visible::after{content:attr(data-tooltip);position:absolute;z-index:8;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:260px;padding:8px 9px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 12px 28px rgba(0,0,0,.45);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:600;line-height:1.45;text-align:left;pointer-events:none}
 .cx-map-bubble:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
@@ -714,6 +720,11 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-remediation-summary{margin-top:10px;padding:11px;border:1px solid rgba(61,214,140,.2);background:rgba(61,214,140,.05);border-radius:var(--r)}
 .cx-remediation-summary strong{display:block;margin-top:5px;color:var(--text-1)}
 .cx-remediation-summary p{margin:5px 0 0;font-size:11px;line-height:1.45;color:var(--text-2)}
+.exec-rec-timeline{display:flex;align-items:flex-end;gap:6px;height:68px;margin-top:10px;padding:8px 4px 0}
+.exec-timeline-bucket{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px}
+.exec-timeline-bucket span{width:100%;max-width:20px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--amber),rgba(245,197,24,.35))}
+.exec-timeline-bucket b{font-family:var(--mono);font-size:10px;color:var(--text-1);line-height:1}
+.exec-timeline-bucket small{font-size:8px;color:var(--text-3);white-space:nowrap}
 .cx-evidence-list{margin:0;padding-left:17px;color:var(--text-2);font-size:11px;line-height:1.55}
 .cx-complexity-summary{margin-top:10px;padding:10px 11px;border:1px solid var(--border);background:rgba(77,184,255,.025);border-radius:var(--r)}
 .cx-complexity-summary span{display:block;font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)}
@@ -1128,7 +1139,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
   <select class="hsel" id="timeRange"><option value="7d" selected>Last 7 days</option><option value="14d">Last 14 days</option><option value="30d">Last 30 days</option></select>
   <select class="hsel" id="appFilter"><option value="">All Applications</option><option value="ShopApp">ShopApp</option><option value="MobileApp">MobileApp</option><option value="AdminPortal">AdminPortal</option></select>
   <div class="hdr-right">
-    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Decision workspace restored</span>
+    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Executive workspace reconstructed</span>
     <div class="live" title="Connected"></div>
     <button class="btn btn-ghost" id="dqlNotebookBtn" data-action="downloadDqlNotebook">DQL Validation</button>
     <button class="btn btn-ghost" id="refreshBtn" data-action="doRefresh">Refresh</button>
