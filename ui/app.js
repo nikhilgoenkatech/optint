@@ -5355,7 +5355,45 @@ function applyCfg(){
   document.getElementById('cfgPanel').classList.add('hidden');
   render();
 }
-function doRefresh(){const b=document.querySelector('.btn-ghost');b.textContent='Refreshing...';b.disabled=true;loadProblems().finally(()=>{render();b.textContent='Refresh';b.disabled=false;});}
+function doRefresh(){const b=document.querySelector('[data-action="doRefresh"]');if(b){b.textContent='Refreshing...';b.disabled=true;}loadProblems().finally(()=>{render();if(b){b.textContent='Refresh';b.disabled=false;}});}
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type:'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+async function downloadDqlNotebook() {
+  const fallback = `# OpInt DQL Validation Notebook
+
+The full validation notebook is maintained in the project at:
+
+docs/opint-dql-validation-notebook.md
+
+Use it to validate:
+- DQL query inventory and expected fields
+- Persona and KPI consumers
+- Client-side transformations
+- Pattern grouping assumptions
+- Median MTTR and empty-state handling
+- Edge cases for no/open/resolved/mixed problems
+
+This lightweight runtime export is intentionally additive and does not change app calculations.
+`;
+  try {
+    const res = await fetch('docs/opint-dql-validation-notebook.md', { cache:'no-store' });
+    if (!res.ok) throw new Error(`Notebook fetch failed: ${res.status}`);
+    const text = await res.text();
+    downloadTextFile('opint-dql-validation-notebook.md', text || fallback);
+  } catch (err) {
+    console.info('[OpInt] DQL validation notebook fetch unavailable; downloading access note instead.', err.message || err);
+    downloadTextFile('opint-dql-validation-notebook-access.md', fallback);
+  }
+}
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
 
@@ -5378,6 +5416,7 @@ document.addEventListener('click', function(e) {
   switch (action) {
     // Header / persona
     case 'doRefresh': doRefresh(); break;
+    case 'downloadDqlNotebook': downloadDqlNotebook(); break;
     case 'toggleCfg': toggleCfg(); break;
     case 'applyCfg': applyCfg(); break;
     case 'analyzeMulti': analyzeMulti(); break;
