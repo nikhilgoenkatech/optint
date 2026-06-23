@@ -1,0 +1,39 @@
+
+> opint@1.0.0 start
+> dt-app run
+
+════════
+
+Dynatrace App Toolkit - Command line tool to develop Dynatrace Apps
+
+Options:
+  -h, --help                        Show help page for the command.
+  --no-color                        Terminal output renders without color.
+  --non-interactive                 Run in non-interactive mode. Throws error
+                                    when a required command option or argument
+                                    is missing.
+
+Commands:
+  action|a                          Dynatrace Workflows actions
+  analyze|an [options]              Analyze app to check for valid app
+                                    configurations, security issues and bundle
+                                    statistics.
+  build|b [options]                 Build the app and analyze the bundle.
+  create|c [options] [name]         Create a new Dynatrace App.
+  deploy|de [options]               Build and deploy your app to a configured
+                                    Dynatrace environment.
+  dev|d [options]                   Start the development server.
+  function|f                        Dynatrace App functions
+  help [command]                    display help for command
+  info|i [options]                  Output detailed information about the App
+                                    Toolkit and the environment.
+  migration|m                       Package update migrations
+  uninstall|un [options]            Uninstall the app from the specified
+                                    environment.
+  update|u [options] [packages...]  Update @dynatrace-scoped packages and the
+                                    App Toolkit to the latest version and apply
+                                    automatic migrations.
+  version|v [options]               Print the version of the App Toolkit.
+
+════════
+

@@ -1,0 +1,12 @@
+════════
+
+Deploying app...
+
+
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+ Open this url to authenticate: https://sso.dynatrace.com/oauth2/authorize?client_id=dt0s08.dt-app-local&redirect_uri=http%3A%2F%2Flocalhost%3A5346%2Fauth%2Flogin&state=395d8b75dc83e22d430001f6a72cdd6e7b829bf8&response_type=code&code_challenge_method=S256&code_challenge=AZEXkskLwAtIbdgoOx3bVcH_GSDbie46hoXudCiJlOg

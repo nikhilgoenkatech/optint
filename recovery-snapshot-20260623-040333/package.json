@@ -1,0 +1,24 @@
+{
+  "name": "opint",
+  "version": "1.0.0",
+  "description": "OpInt — Operational Intelligence for Dynatrace",
+  "private": true,
+  "scripts": {
+    "start": "dt-app run",
+    "build": "dt-app build",
+    "deploy": "dt-app deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dynatrace-sdk/app-environment": "^1.0.0",
+    "@dynatrace-sdk/client-query": "^1.0.0",
+    "@dynatrace-sdk/client-classic-environment-v2": "^5.2.3",
+    "@dynatrace-sdk/client-davis-copilot": "^1.0.0",
+    "@dynatrace-sdk/client-iam": "^1.0.0"
+  },
+  "devDependencies": {
+    "dt-app": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

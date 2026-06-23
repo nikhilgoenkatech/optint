@@ -1,0 +1,12 @@
+════════
+
+Deploying app...
+
+
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+Error: Authentication failed! Please check if the scopes you specified are valid and if the user has permissions for all of those scopes.

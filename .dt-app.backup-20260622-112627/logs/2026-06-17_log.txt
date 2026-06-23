@@ -1,0 +1,633 @@
+2026-06-17T11:40:35.533Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T11:40:35.535Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T11:40:35.537Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T11:40:35.762Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T11:40:35.762Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T11:40:36.500Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T11:40:36.501Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T11:40:36.501Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "266660776087859420"
+2026-06-17T11:40:36.504Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T11:40:40.309Z DEBUG [BUILD_TIME] Built UI in 77.16579999999976ms.
+2026-06-17T11:40:40.317Z DEBUG [BUILD_TIME] Built in 2459.1813ms.
+2026-06-17T11:40:40.320Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (245.12 KB)
+2026-06-17T11:40:40.320Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T11:40:40.320Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T11:40:40.343Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T11:40:40.345Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T11:40:40.345Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T11:40:42.411Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Dacb75780-de46-43d0-ad17-c2aeafd4ed12&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T11:40:42.411Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T11:40:42.412Z DEBUG [AUTH] Authenticate with Dynatrace SSO
+2026-06-17T11:40:42.948Z DEBUG [AUTH] SSO-link https://sso-sprint.dynatracelabs.com/oauth2/authorize?client_id=dt0s08.dt-app-local&redirect_uri=http%3A%2F%2Flocalhost%3A5343%2Fauth%2Flogin&state=bec575b1b8cf4ec53ba453c456140a1d3f2b1db4&response_type=code&code_challenge_method=S256&code_challenge=s83Q5nZjCqDa1sv5EWipyPRBrNK2_RUL-zB1uuj8bKE
+2026-06-17T11:40:48.171Z DEBUG [AUTH] Received authorized code for oAuth
+2026-06-17T11:40:49.660Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T11:40:49.661Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Dacb75780-de46-43d0-ad17-c2aeafd4ed12&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T11:40:49.661Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T11:40:49.663Z DEBUG [DEPLOY] Installing the app
+2026-06-17T11:40:50.678Z DEBUG [DEPLOY] App installed
+2026-06-17T11:40:51.325Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T11:40:51.533Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:24:48.641Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:24:48.643Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:24:48.647Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:24:49.149Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:24:49.150Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:24:49.893Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:24:49.894Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:24:49.894Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "412307060506267970"
+2026-06-17T13:24:49.899Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:24:56.047Z DEBUG [BUILD_TIME] Built UI in 74.38550000000032ms.
+2026-06-17T13:24:56.087Z DEBUG [BUILD_TIME] Built in 2762.373099999999ms.
+2026-06-17T13:24:56.091Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (249.89 KB)
+2026-06-17T13:24:56.091Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:24:56.092Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:24:56.099Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:24:56.719Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:25:14.592Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:25:14.594Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:25:14.597Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:25:14.900Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:25:14.900Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:25:15.616Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:25:15.617Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:25:15.617Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "894461083135261300"
+2026-06-17T13:25:15.620Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:25:20.171Z DEBUG [BUILD_TIME] Built UI in 75.84889999999905ms.
+2026-06-17T13:25:20.209Z DEBUG [BUILD_TIME] Built in 3011.0124000000005ms.
+2026-06-17T13:25:20.214Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (249.89 KB)
+2026-06-17T13:25:20.214Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:25:20.214Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:25:20.267Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T13:25:20.273Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:25:20.273Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T13:25:22.219Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D556a4624-e60a-4d1f-b390-7ec670c06cb0&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:25:22.219Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:25:22.220Z DEBUG [AUTH] OAuth2 token expired with a value of: -5974.22 seconds
+2026-06-17T13:25:22.438Z DEBUG [AUTH] Refresh process for token toolkit has failed with: Error: Invalid OAuth2 request. UNSUCCESSFUL_OAUTH_REFRESH_TOKEN_MISSING_SESSION | User session is no longer active. (traceId: ZDTL2FWG5L2TTJCA). Proceeding with SSO flow instead.
+2026-06-17T13:25:22.439Z DEBUG [AUTH] Authenticate with Dynatrace SSO
+2026-06-17T13:25:22.978Z DEBUG [AUTH] SSO-link https://sso-sprint.dynatracelabs.com/oauth2/authorize?client_id=dt0s08.dt-app-local&redirect_uri=http%3A%2F%2Flocalhost%3A5343%2Fauth%2Flogin&state=4d39da7aaf9c19287ab94757bd3175e1ae26e260&response_type=code&code_challenge_method=S256&code_challenge=F-IVSTaE6gSQXE8c_Ia7CYY_4GWmtmVbHrNg0z0IJLA
+2026-06-17T13:29:18.776Z DEBUG [AUTH] Received authorized code for oAuth
+2026-06-17T13:29:20.415Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:29:20.415Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D556a4624-e60a-4d1f-b390-7ec670c06cb0&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:29:20.415Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:29:20.416Z DEBUG [DEPLOY] Installing the app
+2026-06-17T13:29:21.111Z DEBUG [APP-REGISTRY] Failed to install the app
+HTTP 400 Bad Request
+
+Cannot install app with version 1.2.7 because the same version is already installed with a different checksum.
+{
+  "code": 400,
+  "message": "Cannot install app with version 1.2.7 because the same version is already installed with a different checksum."
+}
+2026-06-17T13:29:21.112Z ERROR Error: Failed to install the app
+HTTP 400 Bad Request
+
+Cannot install app with version 1.2.7 because the same version is already installed with a different checksum.
+
+2026-06-17T13:29:21.113Z DEBUG [TELEMETRY] Reporting error cause
+2026-06-17T13:29:21.114Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:29:21.726Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:29:53.664Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:29:53.666Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:29:53.670Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:29:54.289Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:29:54.289Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:29:55.080Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:29:55.081Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:29:55.081Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "79655292475493400"
+2026-06-17T13:29:55.085Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:30:01.613Z DEBUG [BUILD_TIME] Built UI in 87.07719999999972ms.
+2026-06-17T13:30:01.621Z DEBUG [BUILD_TIME] Built in 2846.4905ms.
+2026-06-17T13:30:01.623Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (249.89 KB)
+2026-06-17T13:30:01.624Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:30:01.624Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:30:01.632Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:30:02.257Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:30:19.417Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:30:19.419Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:30:19.421Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:30:19.627Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:30:19.628Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:30:20.341Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:30:20.342Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:30:20.342Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "506829893731374000"
+2026-06-17T13:30:20.346Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:30:24.213Z DEBUG [BUILD_TIME] Built UI in 103.67960000000039ms.
+2026-06-17T13:30:24.223Z DEBUG [BUILD_TIME] Built in 2470.6479ms.
+2026-06-17T13:30:24.226Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (249.89 KB)
+2026-06-17T13:30:24.226Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:30:24.226Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:30:24.246Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T13:30:24.247Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:30:24.247Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T13:30:26.337Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D097abfea-0419-42cd-b89a-345d0ff0bd72&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:30:26.338Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:30:26.689Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:30:26.690Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D097abfea-0419-42cd-b89a-345d0ff0bd72&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:30:26.690Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:30:26.691Z DEBUG [DEPLOY] Installing the app
+2026-06-17T13:30:27.736Z DEBUG [DEPLOY] App installed
+2026-06-17T13:30:29.104Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:30:29.315Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:33:32.074Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:33:32.077Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:33:32.081Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:33:32.467Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:33:32.467Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:33:33.455Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:33:33.456Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:33:33.456Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "815075938997870600"
+2026-06-17T13:33:33.460Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:33:39.570Z DEBUG [BUILD_TIME] Built UI in 74.23960000000079ms.
+2026-06-17T13:33:39.613Z DEBUG [BUILD_TIME] Built in 2898.132099999999ms.
+2026-06-17T13:33:39.618Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (250.83 KB)
+2026-06-17T13:33:39.619Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:33:39.619Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:33:39.627Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:33:40.231Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:33:58.613Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:33:58.614Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:33:58.617Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:33:58.860Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:33:58.860Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:33:59.510Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:33:59.511Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:33:59.511Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "772452795075039100"
+2026-06-17T13:33:59.514Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:34:03.157Z DEBUG [BUILD_TIME] Built UI in 84.45919999999933ms.
+2026-06-17T13:34:03.165Z DEBUG [BUILD_TIME] Built in 2324.8085ms.
+2026-06-17T13:34:03.168Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (250.83 KB)
+2026-06-17T13:34:03.168Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:34:03.169Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:34:03.187Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T13:34:03.189Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:34:03.189Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T13:34:05.075Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Ded52dae1-475f-45cb-b999-9cf8880395f2&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:34:05.075Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:34:05.077Z DEBUG [AUTH] OAuth2 token expired with a value of: 13.923 seconds
+2026-06-17T13:34:05.784Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:34:05.784Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Ded52dae1-475f-45cb-b999-9cf8880395f2&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:34:05.785Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:34:05.786Z DEBUG [DEPLOY] Installing the app
+2026-06-17T13:34:06.777Z DEBUG [DEPLOY] App installed
+2026-06-17T13:34:07.425Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:34:07.626Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:55:14.245Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:55:14.247Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:55:14.250Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:55:14.723Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:55:14.723Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:55:15.562Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:55:15.562Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:55:15.562Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "669296387186161800"
+2026-06-17T13:55:15.569Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:55:21.779Z DEBUG [BUILD_TIME] Built UI in 81.60180000000037ms.
+2026-06-17T13:55:21.788Z DEBUG [BUILD_TIME] Built in 2827.267099999999ms.
+2026-06-17T13:55:21.792Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (251.30 KB)
+2026-06-17T13:55:21.792Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:55:21.792Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:55:21.801Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:55:22.407Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T13:55:51.155Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T13:55:51.157Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T13:55:51.160Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T13:55:51.375Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T13:55:51.375Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T13:55:52.068Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T13:55:52.069Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T13:55:52.069Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "127345693083804940"
+2026-06-17T13:55:52.072Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T13:55:55.840Z DEBUG [BUILD_TIME] Built UI in 85.77670000000035ms.
+2026-06-17T13:55:55.847Z DEBUG [BUILD_TIME] Built in 2367.2226999999993ms.
+2026-06-17T13:55:55.850Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (251.30 KB)
+2026-06-17T13:55:55.851Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T13:55:55.851Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T13:55:55.869Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T13:55:55.870Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:55:55.870Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T13:55:57.932Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D36ffba1f-9995-4643-ac3e-07b684219470&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:55:57.932Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:55:57.934Z DEBUG [AUTH] OAuth2 token expired with a value of: -1012.934 seconds
+2026-06-17T13:55:58.605Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T13:55:58.606Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D36ffba1f-9995-4643-ac3e-07b684219470&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T13:55:58.606Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T13:55:58.607Z DEBUG [DEPLOY] Installing the app
+2026-06-17T13:55:59.586Z DEBUG [DEPLOY] App installed
+2026-06-17T13:56:01.006Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T13:56:01.215Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:15:03.727Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:15:03.730Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:15:03.733Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:15:04.133Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:15:04.133Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:15:05.010Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:15:05.010Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:15:05.010Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "981842587503024100"
+2026-06-17T14:15:05.016Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:15:11.245Z DEBUG [BUILD_TIME] Built UI in 77.03119999999944ms.
+2026-06-17T14:15:11.253Z DEBUG [BUILD_TIME] Built in 2941.2099000000007ms.
+2026-06-17T14:15:11.256Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (251.30 KB)
+2026-06-17T14:15:11.257Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:15:11.257Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T14:15:11.265Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:15:11.873Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:15:37.587Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:15:37.589Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:15:37.592Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:15:37.794Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:15:37.794Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:15:38.454Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:15:38.455Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:15:38.455Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "724056100200795500"
+2026-06-17T14:15:38.458Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:15:42.373Z DEBUG [BUILD_TIME] Built UI in 85.55340000000069ms.
+2026-06-17T14:15:42.380Z DEBUG [BUILD_TIME] Built in 2450.0652ms.
+2026-06-17T14:15:42.383Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (251.30 KB)
+2026-06-17T14:15:42.384Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:15:42.384Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (127.23 KB)
+2026-06-17T14:15:42.402Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T14:15:42.403Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:15:42.403Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T14:15:44.536Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Debe88c22-4f87-4147-b999-4003783c65f4&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:15:44.536Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:15:44.537Z DEBUG [AUTH] OAuth2 token expired with a value of: -886.537 seconds
+2026-06-17T14:15:45.193Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:15:45.193Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Debe88c22-4f87-4147-b999-4003783c65f4&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:15:45.193Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:15:45.195Z DEBUG [DEPLOY] Installing the app
+2026-06-17T14:15:46.375Z DEBUG [DEPLOY] App installed
+2026-06-17T14:15:47.019Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:15:47.222Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:31:58.727Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:31:58.729Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:31:58.734Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:31:59.104Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:31:59.105Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:31:59.900Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:31:59.900Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:31:59.900Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "177738168427468160"
+2026-06-17T14:31:59.904Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:32:06.814Z DEBUG [BUILD_TIME] Built UI in 130.59330000000045ms.
+2026-06-17T14:32:06.854Z DEBUG [BUILD_TIME] Built in 3524.414999999999ms.
+2026-06-17T14:32:06.857Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (252.29 KB)
+2026-06-17T14:32:06.858Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:32:06.858Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:32:06.868Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:32:07.483Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:32:35.250Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:32:35.252Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:32:35.254Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:32:35.469Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:32:35.469Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:32:36.171Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:32:36.172Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:32:36.172Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "905299287762072200"
+2026-06-17T14:32:36.175Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:32:39.930Z DEBUG [BUILD_TIME] Built UI in 91.76479999999992ms.
+2026-06-17T14:32:39.938Z DEBUG [BUILD_TIME] Built in 2387.5748999999996ms.
+2026-06-17T14:32:39.941Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (252.29 KB)
+2026-06-17T14:32:39.942Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:32:39.942Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:32:39.962Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T14:32:39.964Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:32:39.964Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T14:32:42.060Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Ddfcd46a3-710e-4f0c-93ee-c1c95440393e&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:32:42.060Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:32:42.062Z DEBUG [AUTH] OAuth2 token expired with a value of: -718.062 seconds
+2026-06-17T14:32:42.706Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:32:42.706Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Ddfcd46a3-710e-4f0c-93ee-c1c95440393e&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:32:42.706Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:32:42.708Z DEBUG [DEPLOY] Installing the app
+2026-06-17T14:32:43.779Z DEBUG [DEPLOY] App installed
+2026-06-17T14:32:45.159Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:32:45.368Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:41:35.318Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:41:35.320Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:41:35.323Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:41:35.743Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:41:35.743Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:41:36.538Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:41:36.539Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:41:36.539Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "954564693926858900"
+2026-06-17T14:41:36.544Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:41:42.502Z DEBUG [BUILD_TIME] Built UI in 71.0601999999999ms.
+2026-06-17T14:41:42.509Z DEBUG [BUILD_TIME] Built in 2726.4754999999986ms.
+2026-06-17T14:41:42.551Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (253.40 KB)
+2026-06-17T14:41:42.552Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:41:42.552Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:41:42.560Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:41:42.764Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:42:14.942Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:42:14.944Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:42:14.956Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:42:15.189Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:42:15.189Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:42:15.861Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:42:15.861Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:42:15.861Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "700565685344136000"
+2026-06-17T14:42:15.865Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:42:19.473Z DEBUG [BUILD_TIME] Built UI in 98.16449999999986ms.
+2026-06-17T14:42:19.480Z DEBUG [BUILD_TIME] Built in 2325.3055999999997ms.
+2026-06-17T14:42:19.482Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (253.40 KB)
+2026-06-17T14:42:19.482Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:42:19.483Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:42:19.500Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T14:42:19.501Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:42:19.501Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T14:42:21.593Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Dbbb33e35-89ea-4a14-9d84-a88c51467c3d&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:42:21.593Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:42:21.595Z DEBUG [AUTH] OAuth2 token expired with a value of: -279.595 seconds
+2026-06-17T14:42:22.229Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:42:22.230Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Dbbb33e35-89ea-4a14-9d84-a88c51467c3d&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:42:22.230Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:42:22.231Z DEBUG [DEPLOY] Installing the app
+2026-06-17T14:42:23.251Z DEBUG [DEPLOY] App installed
+2026-06-17T14:42:23.894Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:42:24.098Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:44:52.392Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:44:52.395Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:44:52.398Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:44:52.739Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:44:52.739Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:44:53.579Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:44:53.580Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:44:53.580Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "118905459181076530"
+2026-06-17T14:44:53.586Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:44:59.838Z DEBUG [BUILD_TIME] Built UI in 80.4393999999993ms.
+2026-06-17T14:44:59.847Z DEBUG [BUILD_TIME] Built in 2774.8485999999994ms.
+2026-06-17T14:44:59.851Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (253.44 KB)
+2026-06-17T14:44:59.851Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:44:59.852Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:44:59.860Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:45:00.469Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:45:33.387Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:45:33.388Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:45:33.392Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:45:33.594Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:45:33.595Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:45:34.277Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:45:34.277Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:45:34.277Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "771949037714119600"
+2026-06-17T14:45:34.280Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:45:37.710Z DEBUG [BUILD_TIME] Built UI in 87.8117999999995ms.
+2026-06-17T14:45:37.719Z DEBUG [BUILD_TIME] Built in 2231.2901ms.
+2026-06-17T14:45:37.722Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (253.44 KB)
+2026-06-17T14:45:37.723Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:45:37.723Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:45:37.740Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T14:45:37.741Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:45:37.742Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T14:45:39.641Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Ddf835700-9959-4ccd-b495-a8515a0fda88&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:45:39.641Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:45:40.106Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:45:40.106Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Ddf835700-9959-4ccd-b495-a8515a0fda88&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:45:40.106Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:45:40.108Z DEBUG [DEPLOY] Installing the app
+2026-06-17T14:45:41.172Z DEBUG [DEPLOY] App installed
+2026-06-17T14:45:42.549Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:45:42.757Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:54:49.103Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:54:49.105Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:54:49.109Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:54:49.444Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:54:49.444Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:54:50.287Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:54:50.288Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:54:50.288Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "702942986512422100"
+2026-06-17T14:54:50.294Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:54:56.258Z DEBUG [BUILD_TIME] Built UI in 71.34580000000096ms.
+2026-06-17T14:54:56.298Z DEBUG [BUILD_TIME] Built in 2755.9482000000007ms.
+2026-06-17T14:54:56.301Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (253.90 KB)
+2026-06-17T14:54:56.302Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:54:56.302Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:54:56.310Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:54:56.931Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T14:55:30.621Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T14:55:30.623Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T14:55:30.625Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T14:55:30.857Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T14:55:30.857Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T14:55:31.526Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T14:55:31.527Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T14:55:31.527Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "320994275569802900"
+2026-06-17T14:55:31.530Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T14:55:35.070Z DEBUG [BUILD_TIME] Built UI in 82.27289999999994ms.
+2026-06-17T14:55:35.077Z DEBUG [BUILD_TIME] Built in 2217.7128000000002ms.
+2026-06-17T14:55:35.079Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (253.90 KB)
+2026-06-17T14:55:35.080Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T14:55:35.080Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T14:55:35.098Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T14:55:35.099Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:55:35.100Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T14:55:36.968Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D816fc0a4-ee9c-4ec2-bf06-60bbf226bc35&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:55:36.968Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:55:36.969Z DEBUG [AUTH] OAuth2 token expired with a value of: -495.969 seconds
+2026-06-17T14:55:37.622Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T14:55:37.622Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D816fc0a4-ee9c-4ec2-bf06-60bbf226bc35&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T14:55:37.622Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T14:55:37.623Z DEBUG [DEPLOY] Installing the app
+2026-06-17T14:55:38.645Z DEBUG [DEPLOY] App installed
+2026-06-17T14:55:39.280Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T14:55:39.479Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T15:11:02.554Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T15:11:02.557Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T15:11:02.560Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T15:11:02.927Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T15:11:02.927Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T15:11:03.650Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T15:11:03.651Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T15:11:03.651Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "237392449296412450"
+2026-06-17T15:11:03.659Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T15:11:09.110Z DEBUG [BUILD_TIME] Built UI in 75.99519999999939ms.
+2026-06-17T15:11:09.118Z DEBUG [BUILD_TIME] Built in 2798.9681999999993ms.
+2026-06-17T15:11:09.120Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (259.00 KB)
+2026-06-17T15:11:09.120Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T15:11:09.120Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.34 KB)
+2026-06-17T15:11:09.128Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T15:11:09.334Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-06-17T15:11:55.208Z DEBUG [PLUGIN] Searching for configuration file
+2026-06-17T15:11:55.210Z DEBUG [PLUGIN] Found C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\app.config.json
+2026-06-17T15:11:55.213Z WARNING 
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+2026-06-17T15:11:55.408Z DEBUG [TELEMETRY] Initializing telemetry
+2026-06-17T15:11:55.408Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-06-17T15:11:56.099Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-06-17T15:11:56.100Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-06-17T15:11:56.100Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "988389223499049500"
+2026-06-17T15:11:56.103Z DEBUG [TELEMETRY] Identification successful
+2026-06-17T15:11:59.473Z DEBUG [BUILD_TIME] Built UI in 98.95280000000002ms.
+2026-06-17T15:11:59.480Z DEBUG [BUILD_TIME] Built in 2309.2302ms.
+2026-06-17T15:11:59.482Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.js (259.00 KB)
+2026-06-17T15:11:59.483Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\main.css (0.00 KB)
+2026-06-17T15:11:59.483Z DEBUG [FILES] CREATED: C:\Users\nikhilgoenka\Downloads\optint-main\optint-main\dist\ui\index.html (128.22 KB)
+2026-06-17T15:11:59.505Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk\client-query\ /platform/storage/query/v1
+
+2026-06-17T15:11:59.506Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T15:11:59.506Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-06-17T15:12:01.485Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Db98fb3db-127d-49c5-9e0a-a755fc914730&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T15:12:01.485Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T15:12:01.487Z DEBUG [AUTH] OAuth2 token expired with a value of: -684.487 seconds
+2026-06-17T15:12:02.144Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-06-17T15:12:02.144Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3Db98fb3db-127d-49c5-9e0a-a755fc914730&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-06-17T15:12:02.144Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-06-17T15:12:02.146Z DEBUG [DEPLOY] Installing the app
+2026-06-17T15:12:03.547Z DEBUG [DEPLOY] App installed
+2026-06-17T15:12:04.907Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-06-17T15:12:05.110Z DEBUG [TELEMETRY] Successfully closed OpenKit connection

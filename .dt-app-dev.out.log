@@ -1,0 +1,12 @@
+════════
+
+Starting development server...
+
+
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+ Open this url to authenticate: https://sso-sprint.dynatracelabs.com/oauth2/authorize?client_id=dt0s08.dt-app-local&redirect_uri=http%3A%2F%2Flocalhost%3A5343%2Fauth%2Flogin&state=30fae73f7b804b6ae2e4d67787a8f39a7e2353fb&response_type=code&code_challenge_method=S256&code_challenge=wi44qCoXVbP_n_cZgik6p0fIX2lxtF_kpgXxehJr3dU&scope=app-engine%3Aapps%3Arun%20storage%3Aevents%3Aread%20storage%3Abuckets%3Aread%20davis-copilot%3Aconversations%3Aexecute

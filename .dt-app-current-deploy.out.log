@@ -1,0 +1,18 @@
+════════
+
+Deploying app...
+
+
+Warning ──────────────────────────────────────────────────────────────────────────────────
+
+  The env variable "DEBUG" has been removed in dt-app v1.0. Please user --verbose flag instead.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+ Open this url to authenticate: https://sso-sprint.dynatracelabs.com/oauth2/authorize?client_id=dt0s08.dt-app-local&redirect_uri=http%3A%2F%2Flocalhost%3A5344%2Fauth%2Flogin&state=e59671a0ba2047cee12fbaf0e97e34be0328b3df&response_type=code&code_challenge_method=S256&code_challenge=TQvd2IXw77dWLVXWvv2I5cEULrz1VIjygDXsnZ85eBY
+
+Open your deployed app: 'https://ykd61701.sprint.apps.dynatracelabs.com/ui/apps/my.dynatrace.opint'
+Done.
+
+════════
+
