@@ -79,6 +79,7 @@ const COST_MODEL_PROFILES = {
     recoveryRate: 0.5,
   },
 };
+const COST_MODEL_SEVERITIES = ['AVAILABILITY','ERROR','PERFORMANCE','RESOURCE_CONTENTION','CUSTOM_ALERT'];
 let activeCostProfile = 'Standard';
 let costModel = {...COST_MODEL_PROFILES.Standard, severityMultipliers:{...COST_MODEL_PROFILES.Standard.severityMultipliers}};
 let CC = {rev:costModel.affectedUserCostPerHour/60,eng:costModel.engineerHourlyRate,resp:costModel.defaultResponders};
@@ -92,10 +93,24 @@ function syncLegacyCostConfig() {
 }
 
 function applyCostModelProfile(profileName) {
+  if (profileName === 'Custom') {
+    activeCostProfile = 'Custom';
+    costModel = {...costModel, severityMultipliers:{...costModel.severityMultipliers}};
+    syncLegacyCostConfig();
+    return;
+  }
   const profile = COST_MODEL_PROFILES[profileName] || COST_MODEL_PROFILES.Standard;
   activeCostProfile = COST_MODEL_PROFILES[profileName] ? profileName : 'Standard';
   costModel = {...profile, severityMultipliers:{...profile.severityMultipliers}};
   syncLegacyCostConfig();
+}
+
+function costModelDiffersFromProfile(profileName, model=costModel) {
+  const profile = COST_MODEL_PROFILES[profileName];
+  if (!profile) return true;
+  const fields = ['engineerHourlyRate','defaultResponders','affectedUserCostPerHour','fallbackAffectedEntityCost','recoveryRate'];
+  if (fields.some(field => Number(model[field]) !== Number(profile[field]))) return true;
+  return COST_MODEL_SEVERITIES.some(sev => Number(model.severityMultipliers?.[sev]) !== Number(profile.severityMultipliers?.[sev]));
 }
 
 function recoveryRate() {
@@ -116,7 +131,18 @@ function calcCost(p){
     ? Math.round((costModel.fallbackAffectedEntityCost || 0) * m)
     : 0;
   const eng = Math.round((d/60) * (costModel.engineerHourlyRate || 0) * (costModel.defaultResponders || 0));
-  return {rev:rev + fallback,eng,total:rev+fallback+eng};
+  return {
+    rev:rev + fallback,
+    eng,
+    total:rev+fallback+eng,
+    userImpact:rev,
+    fallbackImpact:fallback,
+    durationMinutes:d,
+    affectedUsers:userCount,
+    severityMultiplier:m,
+    engineerHourlyRate:costModel.engineerHourlyRate || 0,
+    responders:costModel.defaultResponders || 0,
+  };
 }
 
 function costLineageText(p, cost = calcCost(p)) {
@@ -1520,6 +1546,9 @@ function renderAssistRemediationResponse(response, evidence=null) {
     const count = Array.isArray(value) ? `${value.length} items` : 'View details';
     return `<details class="rem-disclosure"><summary><span><strong>${title}</strong><small>${count}</small></span><b>+</b></summary><div class="rem-disclosure-body">${renderValue(value)}</div></details>`;
   };
+  const executivePromptDisclosure = persona === 'executive' && evidence?.executivePrompt
+    ? `<details class="rem-disclosure"><summary><span><strong>Prompt Used</strong><small>${evidence.executivePrompt.length} characters</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="prompt-block"><div class="cx-eyebrow">Executive Prompt</div><pre>${attrText(evidence.executivePrompt)}</pre><div class="cx-eyebrow">Compact Evidence Payload</div><pre>${attrText(JSON.stringify(evidence.executiveEvidence || {}, null, 2))}</pre></div></div></details>`
+    : '';
   const expectedReduction = response.expectedOperationalCostReduction || response.expected_operational_cost_reduction || (evidence?.potentialSavings ? fmtC(evidence.potentialSavings) : 'Not yet estimated');
   const effort = response.estimatedImplementationEffort || response.estimated_implementation_effort || 'Confirm with the accountable team';
   const recommendedNext = response.immediateRemediation || response.immediate_remediation || phaseRecs[0]?.title || response.recommendedRemediationPath || response.recommended_remediation_path || 'Validate the recommended path';
@@ -1547,6 +1576,7 @@ function renderAssistRemediationResponse(response, evidence=null) {
     ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
     ${disclosure('Supporting evidence', response.supportingEvidence || response.supporting_evidence_used)}
     ${disclosure('Missing evidence / next validation steps', response.missingEvidenceOrNextValidationSteps || response.missing_evidence_or_next_validation_steps)}
+    ${executivePromptDisclosure}
   `;
 }
 
@@ -2081,6 +2111,10 @@ async function getPatternRemediation(patternId, opts={}) {
     window.__OPINT_LAST_REMEDIATION_PROMPT__ = prompt;
     window.__OPINT_LAST_REMEDIATION_PROMPT_LENGTH__ = prompt.length;
     window.__OPINT_LAST_REMEDIATION_REQUEST__ = request;
+    if (persona === 'executive') {
+      request.executivePrompt = prompt;
+      request.executiveEvidence = window.__OPINT_LAST_EXECUTIVE_EVIDENCE__ || null;
+    }
     console.log('[OpInt Davis] remediation prompt length:', prompt.length);
     console.log('[OpInt Davis] full remediation prompt:', prompt);
     console.log('[OpInt Davis] remediation request:', request);
@@ -3298,6 +3332,40 @@ function patternRecoverableValue(pat) {
   return recoverableFromCost(patternCost(pat));
 }
 
+function patternCostCalculation(pat) {
+  const problems = Array.isArray(pat?.problems) ? pat.problems : [];
+  const breakdowns = problems.map(p => ({ problem:p, cost:calcCost(p) }));
+  const exposure = breakdowns.reduce((sum, item) => sum + (item.cost.total || 0), 0);
+  const userImpact = breakdowns.reduce((sum, item) => sum + (item.cost.userImpact || 0), 0);
+  const fallbackImpact = breakdowns.reduce((sum, item) => sum + (item.cost.fallbackImpact || 0), 0);
+  const engineeringImpact = breakdowns.reduce((sum, item) => sum + (item.cost.eng || 0), 0);
+  const affectedUsers = breakdowns.reduce((sum, item) => sum + (item.cost.affectedUsers || 0), 0);
+  const durations = breakdowns.map(item => item.cost.durationMinutes).filter(Number.isFinite);
+  const severityMultipliers = uniqVals(breakdowns.map(item => `${item.problem?.sev || 'UNKNOWN'} ${item.cost.severityMultiplier}`));
+  const occurrenceMap = new Map(problems.map(problem => [problem.id, pat.occurrences || problems.length || 1]));
+  const valueDelivered = problems.reduce((acc, problem) => {
+    const value = calculateValueBreakdown(problem, occurrenceMap.get(problem.id) || 1);
+    acc.rcaSavings += value.mttrSavings;
+    acc.groupingSavings += value.aiCorrelationSavings;
+    acc.noiseReductionSavings += value.noiseReductionSavings;
+    acc.total += value.total;
+    return acc;
+  }, { rcaSavings:0, groupingSavings:0, noiseReductionSavings:0, total:0 });
+  const recoverableBase = recoverableFromCost(exposure);
+  return {
+    affectedUsers,
+    duration: durations.length ? Math.round(arrMean(durations)) : 0,
+    severityMultipliers,
+    engineeringImpact,
+    userImpact,
+    fallbackImpact,
+    exposure,
+    recoverableBase,
+    valueDelivered,
+    recoverableValue: recoverableBase,
+  };
+}
+
 function attrText(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -4503,8 +4571,8 @@ function renderConciseKpiRow(ps, patterns) {
   const recoveryPct = m.totalPatternCost ? Math.round((m.recoverable / m.totalPatternCost) * 100) : 0;
   const modelPct = Math.round(recoveryRate() * 100);
   const cards = [
-    { key:'risk', label:'Open Risk Exposure', info:'Estimated operational impact from active recurring patterns in the selected time range.', value:fmtC(m.totalPatternCost), sub:`Active recurring pattern impact`, cls:'risk' },
-    { key:'recoverable', label:'Recoverable Now', info:'Modeled value that may be recovered by addressing recurring patterns using the current recovery model.', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure ${highlightText('Recovery model', `${modelPct}%`, 'low')}`, cls:'recover' },
+    { key:'risk', label:'Open Risk Exposure', info:'Estimated operational impact from active recurring patterns in the selected time range.', value:fmtC(m.totalPatternCost), sub:`Active recurring pattern impact ${highlightText('Cost model', activeCostProfile, 'neutral')}`, cfg:true, cls:'risk' },
+    { key:'recoverable', label:'Recoverable Now', info:'Modeled value that may be recovered by addressing recurring patterns using the current recovery model.', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure ${highlightText('Recovery model', `${modelPct}%`, 'low')} ${highlightText('Profile', activeCostProfile, 'neutral')}`, cfg:true, cls:'recover' },
     { key:'patterns', label:'Active Patterns', info:'Recurring operational patterns that require leadership attention, not raw problem count.', value:patterns.length, sub:`Recurring patterns requiring attention`, cls:'patterns' },
     { key:'resolution', label:'Median MTTR', info:'Median resolution time for resolved problems. Shows a dash when there is insufficient duration data.', value:fmtM(m.mttr.median), sub:`${m.mttr.count || 0} resolved problems`, cls:'time' },
   ];
@@ -4512,7 +4580,7 @@ function renderConciseKpiRow(ps, patterns) {
     <button class="cx-kpi ${c.cls} ${execMetricDrilldown === c.key ? 'selected' : ''}" data-action="selectExecMetric" data-metric="${c.key}" aria-pressed="${execMetricDrilldown === c.key}">
       <div class="cx-kpi-label">${c.label}${infoPill(c.info, `kpi-${c.key}`)}</div>
       <div class="cx-kpi-value">${c.value}</div>
-      <div class="cx-kpi-sub">${c.sub}</div>
+      <div class="cx-kpi-sub">${c.sub}${c.cfg ? `<span class="cx-cost-link" role="button" tabindex="0" data-action="toggleCfg">Cost assumptions</span>` : ''}</div>
     </button>`).join('')}</section>`;
 }
 
@@ -4640,6 +4708,7 @@ function renderConciseDetailPanel(pat, patterns) {
   const openCount = patternOpenCount(pat);
   const exposure = patternCost(pat);
   const recoverable = patternRecoverableValue(pat);
+  const costCalc = patternCostCalculation(pat);
   const services = patternServices(pat);
   const entities = patternAffectedEntities(pat);
   const rcaList = pat.dimensions?.rootCauseEntities || [];
@@ -4791,6 +4860,11 @@ function executiveTimelineShortLabel(startMs, endMs) {
   return start === end ? start : `${start}-${end}`;
 }
 
+function executiveTimelineRelativeLabel(bucketIndex, bucketCount) {
+  if (bucketIndex >= bucketCount - 1) return 'now';
+  return `${bucketCount - bucketIndex}d`;
+}
+
 function selectedRangeDays() {
   const value = document.getElementById('timeRange')?.value || '7d';
   const match = /(\d+)/.exec(value);
@@ -4809,7 +4883,7 @@ function renderExecutiveRecurrenceTimeline(pat) {
     start:start + i * bucketMs,
     end:start + (i + 1) * bucketMs,
     label: executiveTimelineLabel(start + i * bucketMs, start + (i + 1) * bucketMs),
-    shortLabel: executiveTimelineShortLabel(start + i * bucketMs, start + (i + 1) * bucketMs),
+    shortLabel: executiveTimelineRelativeLabel(i, bucketCount),
   }));
   const problems = Array.isArray(pat.problems) ? pat.problems : [];
   const timestamps = problems
@@ -4918,10 +4992,27 @@ function renderDecisionDetailPanel(pat, patterns) {
   const remediationPanel = renderWorkspaceRemediationBlock(pat);
   const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
+  const costTransparency = `<div class="cx-cost-transparency">
+    <div class="cx-cost-head"><span>Pattern Cost Calculation</span><button class="cx-cost-link" data-action="toggleCfg">Cost assumptions</button></div>
+    <div class="cx-cost-grid">
+      <div><span>Affected users</span><strong>${costCalc.affectedUsers.toLocaleString()}</strong></div>
+      <div><span>Avg duration</span><strong>${costCalc.duration ? fmtM(costCalc.duration) : '-'}</strong></div>
+      <div><span>Severity multiplier</span><strong>${costCalc.severityMultipliers.slice(0,2).join(', ') || '-'}</strong></div>
+      <div><span>Engineering impact</span><strong>${fmtC(costCalc.engineeringImpact)}</strong></div>
+      <div><span>User impact</span><strong>${fmtC(costCalc.userImpact)}</strong></div>
+      <div><span>Fallback impact</span><strong>${fmtC(costCalc.fallbackImpact)}</strong></div>
+      <div><span>Calculated exposure</span><strong>${fmtC(costCalc.exposure)}</strong></div>
+      <div><span>Recoverable value</span><strong>${fmtC(costCalc.recoverableValue)}</strong></div>
+    </div>
+    <div class="cx-cost-formula">Recovery Model: ${fmtC(costCalc.exposure)} x ${Math.round(recoveryRate()*100)}% = ${fmtC(costCalc.recoverableBase)}</div>
+    <div class="cx-cost-formula">Recoverable Now can also include modeled value-delivered savings: RCA ${fmtC(costCalc.valueDelivered.rcaSavings)}, grouping ${fmtC(costCalc.valueDelivered.groupingSavings)}, noise reduction ${fmtC(costCalc.valueDelivered.noiseReductionSavings)}.</div>
+    <div class="cx-cost-disclaimer">These values are modeled estimates based on configured assumptions and available Davis problem data.</div>
+  </div>`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection">Clear Selection</button></div></div>
     <div class="cx-detail-label">Business Impact${infoPill('Exposure, recoverable value, and currently open incidents for the selected recurring pattern.', 'business-impact')}</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
+    ${costTransparency}
     <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.', 'technical-actionability')}</div>
     <div class="cx-detail-tiles actionability"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidenceLabel(confidence)}</strong><span>Confidence</span></div><div><strong>${priority}</strong><span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
@@ -6267,31 +6358,62 @@ function renderCostAssumptionsText() {
   if (!el) return;
   el.textContent = `${activeCostProfile} profile: severity factors are ${Object.entries(costModel.severityMultipliers || {}).map(([k,v]) => `${k} ${v}`).join(', ')}; engineer rate ${fmtC(costModel.engineerHourlyRate || 0)}/hr; responders ${costModel.defaultResponders || 0}; affected user cost ${fmtC(costModel.affectedUserCostPerHour || 0)}/hr; recovery rate ${Math.round(recoveryRate()*100)}%.`;
 }
+function setCostInputValue(id, value) {
+  const input = document.getElementById(id);
+  if (input) input.value = String(value ?? 0);
+}
+function populateCostConfigInputs(model) {
+  setCostInputValue('cfgRev', model.affectedUserCostPerHour || 0);
+  setCostInputValue('cfgFallback', model.fallbackAffectedEntityCost || 0);
+  setCostInputValue('cfgEng', model.engineerHourlyRate || 0);
+  setCostInputValue('cfgResp', model.defaultResponders || 0);
+  setCostInputValue('cfgRecovery', Math.round((model.recoveryRate ?? 0.35) * 100));
+  setCostInputValue('cfgSevAvailability', model.severityMultipliers?.AVAILABILITY ?? 0);
+  setCostInputValue('cfgSevError', model.severityMultipliers?.ERROR ?? 0);
+  setCostInputValue('cfgSevPerformance', model.severityMultipliers?.PERFORMANCE ?? 0);
+  setCostInputValue('cfgSevResource', model.severityMultipliers?.RESOURCE_CONTENTION ?? 0);
+  setCostInputValue('cfgSevCustom', model.severityMultipliers?.CUSTOM_ALERT ?? 0);
+}
 function syncCostConfigPanel() {
   const profile = document.getElementById('cfgProfile');
-  const rev = document.getElementById('cfgRev');
-  const eng = document.getElementById('cfgEng');
-  const resp = document.getElementById('cfgResp');
-  const recovery = document.getElementById('cfgRecovery');
   if (profile) profile.value = activeCostProfile;
-  if (rev) rev.value = ((costModel.affectedUserCostPerHour || 0) / 60).toFixed(2);
-  if (eng) eng.value = String(costModel.engineerHourlyRate || 0);
-  if (resp) resp.value = String(costModel.defaultResponders || 0);
-  if (recovery) recovery.value = String(Math.round(recoveryRate()*100));
+  populateCostConfigInputs(costModel);
   renderCostAssumptionsText();
+}
+function selectCostProfileDraft(profileName) {
+  const profile = COST_MODEL_PROFILES[profileName];
+  if (profile) populateCostConfigInputs(profile);
+  else populateCostConfigInputs(costModel);
+  const el = document.getElementById('cfgAssumptions');
+  if (el) el.textContent = profile
+    ? `${profileName} profile selected. Apply to recalculate Executive exposure and recoverable value.`
+    : 'Custom profile selected. Edit assumptions and apply to recalculate Executive exposure and recoverable value.';
 }
 function toggleCfg(){syncCostConfigPanel();document.getElementById('cfgPanel').classList.toggle('hidden')}
 function applyCfg(){
   const profileName = document.getElementById('cfgProfile')?.value || 'Standard';
   applyCostModelProfile(profileName);
-  const revPerMinute = parseFloat(document.getElementById('cfgRev').value);
+  const revPerHour = parseFloat(document.getElementById('cfgRev').value);
+  const fallbackEntityCost = parseFloat(document.getElementById('cfgFallback')?.value);
   const engRate = parseFloat(document.getElementById('cfgEng').value);
   const responders = parseInt(document.getElementById('cfgResp').value);
   const recoveryPct = parseFloat(document.getElementById('cfgRecovery')?.value);
-  costModel.affectedUserCostPerHour = Number.isFinite(revPerMinute) ? Math.max(0, revPerMinute) * 60 : costModel.affectedUserCostPerHour;
+  const severityInputs = {
+    AVAILABILITY: parseFloat(document.getElementById('cfgSevAvailability')?.value),
+    ERROR: parseFloat(document.getElementById('cfgSevError')?.value),
+    PERFORMANCE: parseFloat(document.getElementById('cfgSevPerformance')?.value),
+    RESOURCE_CONTENTION: parseFloat(document.getElementById('cfgSevResource')?.value),
+    CUSTOM_ALERT: parseFloat(document.getElementById('cfgSevCustom')?.value),
+  };
+  costModel.affectedUserCostPerHour = Number.isFinite(revPerHour) ? Math.max(0, revPerHour) : costModel.affectedUserCostPerHour;
+  costModel.fallbackAffectedEntityCost = Number.isFinite(fallbackEntityCost) ? Math.max(0, fallbackEntityCost) : costModel.fallbackAffectedEntityCost;
   costModel.engineerHourlyRate = Number.isFinite(engRate) ? Math.max(0, engRate) : costModel.engineerHourlyRate;
   costModel.defaultResponders = Number.isFinite(responders) ? Math.max(1, responders) : costModel.defaultResponders;
   costModel.recoveryRate = Number.isFinite(recoveryPct) ? clamp(recoveryPct / 100, 0, 1) : costModel.recoveryRate;
+  COST_MODEL_SEVERITIES.forEach(sev => {
+    if (Number.isFinite(severityInputs[sev])) costModel.severityMultipliers[sev] = Math.max(0, severityInputs[sev]);
+  });
+  if (profileName === 'Custom' || costModelDiffersFromProfile(profileName)) activeCostProfile = 'Custom';
   syncLegacyCostConfig();
   document.getElementById('cfgPanel').classList.add('hidden');
   render();
@@ -6337,6 +6459,9 @@ This lightweight runtime export is intentionally additive and does not change ap
 }
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
+document.addEventListener('change', function(e) {
+  if (e.target?.id === 'cfgProfile') selectCostProfileDraft(e.target.value);
+});
 
 // ============================================================
 // EVENT DELEGATION - replaces all inline onclick handlers

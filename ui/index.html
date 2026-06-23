@@ -79,13 +79,18 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .hidden{display:none!important}
 
 /* cost config popup */
-.cfg-panel{position:fixed;top:56px;right:24px;z-index:300;background:var(--bg-2);border:1px solid var(--border-hi);border-radius:var(--rl);padding:18px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.cfg-panel{position:fixed;top:56px;right:24px;z-index:300;background:var(--bg-2);border:1px solid var(--border-hi);border-radius:var(--rl);padding:18px;width:390px;max-height:calc(100vh - 86px);overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,.6)}
 .cfg-title{font-size:13px;font-weight:600;margin-bottom:12px}
 .cfg-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .cfg-lbl{font-size:11px;color:var(--text-3);flex:1}
-.cfg-inp{width:80px;padding:4px 8px;background:var(--bg-3);border:1px solid var(--border-hi);border-radius:var(--r);color:var(--text-1);font-size:12px;font-family:var(--mono);text-align:right;outline:none}
+.cfg-inp{width:96px;padding:4px 8px;background:var(--bg-3);border:1px solid var(--border-hi);border-radius:var(--r);color:var(--text-1);font-size:12px;font-family:var(--mono);text-align:right;outline:none}
 .cfg-inp:focus{border-color:rgba(77,184,255,.4)}
 .cfg-apply{width:100%;padding:7px;background:linear-gradient(135deg,var(--blue),#2196f3);border:none;border-radius:var(--r);color:#fff;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;margin-top:6px}
+.cfg-help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--border-hi);color:var(--blue);font-size:10px;font-weight:900;cursor:help;flex-shrink:0}
+.cfg-help:hover::after{content:attr(data-tip);position:absolute;right:18px;max-width:300px;padding:8px 10px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-3);box-shadow:0 8px 24px rgba(0,0,0,.45);color:var(--text-2);font-size:11px;line-height:1.4;text-transform:none;letter-spacing:0;z-index:1}
+.cfg-section{margin:11px 0 7px;padding-top:9px;border-top:1px solid var(--border);font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+.cfg-note{line-height:1.45;margin:8px 0 4px;font-size:11px;color:var(--text-3)}
+.prompt-block pre{max-height:260px;overflow:auto;margin:6px 0 12px;padding:9px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg-3);white-space:pre-wrap;word-break:break-word;font-size:10px;line-height:1.45;color:var(--text-2)}
 
 /* ── MAIN ── */
 .main{padding:18px 24px 40px;max-width:1800px;margin:0 auto}
@@ -652,6 +657,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .cx-kpi-value{font-size:22px;margin-top:4px}
 .cx-kpi-sub,.cx-muted{font-size:11px;color:var(--text-3);margin-top:6px}
 .exec-persona .cx-kpi-sub{font-size:10px;margin-top:4px}
+.cx-cost-link{display:inline-flex;align-items:center;margin-left:6px;border:0;background:transparent;color:var(--green);font-size:10px;font-weight:850;font-family:var(--font);cursor:pointer;text-decoration:none}
+.cx-cost-link:hover{color:var(--text-1)}
 .cx-focus{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,rgba(245,197,24,.10),rgba(77,184,255,.035));border:1px solid rgba(245,197,24,.22);border-radius:var(--rl);padding:13px 16px}
 .exec-persona .cx-focus{padding:10px 12px}
 .cx-focus.neutral{background:var(--bg-1);border-color:var(--border)}
@@ -742,11 +749,19 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-detail-section{border-top:1px solid var(--border);padding-top:11px;margin-top:11px}
 .cx-action-block{margin-top:12px;padding:11px;border:1px solid rgba(61,214,140,.18);background:rgba(61,214,140,.06);border-radius:var(--r)}
 .exec-persona .cx-action-block{margin-top:8px;padding:9px}
+.cx-cost-transparency{margin:8px 0;padding:9px;border:1px solid rgba(61,214,140,.18);border-radius:var(--r);background:rgba(61,214,140,.035)}
+.cx-cost-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+.cx-cost-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.cx-cost-grid div{padding:6px;border:1px solid var(--border);border-radius:var(--r);background:rgba(255,255,255,.025);min-width:0}
+.cx-cost-grid span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3)}
+.cx-cost-grid strong{display:block;margin-top:3px;font-family:var(--mono);font-size:11px;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cx-cost-formula{margin-top:7px;font-size:10px;line-height:1.4;color:var(--text-2)}
+.cx-cost-disclaimer{margin-top:7px;font-size:10px;line-height:1.4;color:var(--text-3);font-style:italic}
 .cx-action-block.low{border-color:rgba(245,197,24,.22);background:rgba(245,197,24,.06)}
 .cx-action-block strong{display:block;color:var(--text-1);margin-top:7px}
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
-.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,76fr) minmax(320px,24fr);height:100%;align-items:stretch}
+.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,73fr) minmax(360px,27fr);height:100%;align-items:stretch}
 .exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(240px,35fr) minmax(620px,65fr)}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
 .exec-persona .cx-decision-main{gap:8px;min-height:0;overflow:hidden}
@@ -1255,13 +1270,23 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 
 <!-- COST CONFIG -->
 <div class="cfg-panel hidden" id="cfgPanel">
-  <div class="cfg-title">Cost Model</div>
-  <div class="cfg-row"><span class="cfg-lbl">Profile</span><select class="cfg-inp" id="cfgProfile"><option>Conservative</option><option selected>Standard</option><option>Aggressive</option></select></div>
-  <div class="cfg-row"><span class="cfg-lbl">Revenue / user / min</span><input class="cfg-inp" id="cfgRev" value="0.08" type="number" step="0.01" min="0"></div>
-  <div class="cfg-row"><span class="cfg-lbl">Eng hourly rate ($)</span><input class="cfg-inp" id="cfgEng" value="150" type="number" step="10" min="0"></div>
-  <div class="cfg-row"><span class="cfg-lbl">Avg responders</span><input class="cfg-inp" id="cfgResp" value="3" type="number" step="1" min="1"></div>
-  <div class="cfg-row"><span class="cfg-lbl">Recovery rate (%)</span><input class="cfg-inp" id="cfgRecovery" value="35" type="number" step="1" min="0" max="100"></div>
-  <div class="cfg-lbl" id="cfgAssumptions" style="line-height:1.45;margin:8px 0 4px">Standard profile uses current OpInt assumptions. Values are temporary runtime assumptions and are not persisted yet.</div>
+  <div class="cfg-title">Cost Assumptions</div>
+  <div class="cfg-row"><span class="cfg-lbl">Profile</span><select class="cfg-inp" id="cfgProfile"><option>Conservative</option><option selected>Standard</option><option>Aggressive</option><option>Custom</option></select><span class="cfg-help" data-tip="Profiles are pre-set assumption bundles. Custom keeps runtime edits and can later be loaded from configuration storage.">i</span></div>
+  <div class="cfg-section">Business impact assumptions</div>
+  <div class="cfg-row"><span class="cfg-lbl">Affected user cost / hr</span><input class="cfg-inp" id="cfgRev" value="4.8" type="number" step="0.1" min="0"><span class="cfg-help" data-tip="Estimated business impact per affected user per hour. Use lower values for internal tools and higher values for revenue-facing journeys.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Fallback entity cost</span><input class="cfg-inp" id="cfgFallback" value="0" type="number" step="1" min="0"><span class="cfg-help" data-tip="Used when affected user count is missing. Keep conservative so infrastructure-only events do not overstate impact.">i</span></div>
+  <div class="cfg-section">Engineering assumptions</div>
+  <div class="cfg-row"><span class="cfg-lbl">Engineer hourly rate ($)</span><input class="cfg-inp" id="cfgEng" value="150" type="number" step="10" min="0"><span class="cfg-help" data-tip="Blended fully loaded responder cost per hour across SRE, support, developer, or incident manager time.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Default responders</span><input class="cfg-inp" id="cfgResp" value="3" type="number" step="1" min="1"><span class="cfg-help" data-tip="Typical number of people engaged when explicit responder data is unavailable.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Recovery rate (%)</span><input class="cfg-inp" id="cfgRecovery" value="35" type="number" step="1" min="0" max="100"><span class="cfg-help" data-tip="Modeled percentage of exposure that may be recovered if recurring patterns are addressed. It is an assumption, not a guarantee.">i</span></div>
+  <div class="cfg-section">Severity multipliers</div>
+  <div class="cfg-row"><span class="cfg-lbl">Availability</span><input class="cfg-inp" id="cfgSevAvailability" value="1.0" type="number" step="0.01" min="0"><span class="cfg-help" data-tip="Multiplier for availability problems. Usually highest because customers may be blocked entirely.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Error</span><input class="cfg-inp" id="cfgSevError" value="0.7" type="number" step="0.01" min="0"><span class="cfg-help" data-tip="Multiplier for failed transactions or elevated failure rates. Tune based on customer and revenue sensitivity.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Performance</span><input class="cfg-inp" id="cfgSevPerformance" value="0.3" type="number" step="0.01" min="0"><span class="cfg-help" data-tip="Multiplier for slowdowns or degraded experience. Typically lower than full outage but still material.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Resource contention</span><input class="cfg-inp" id="cfgSevResource" value="0.15" type="number" step="0.01" min="0"><span class="cfg-help" data-tip="Multiplier for CPU, memory, disk, or capacity contention. Keep conservative when customer impact is indirect.">i</span></div>
+  <div class="cfg-row"><span class="cfg-lbl">Custom alert</span><input class="cfg-inp" id="cfgSevCustom" value="0.05" type="number" step="0.01" min="0"><span class="cfg-help" data-tip="Multiplier for custom alerts where business impact depends heavily on how the alert was defined.">i</span></div>
+  <div class="cfg-note" id="cfgAssumptions">Standard profile uses current OpInt assumptions. Values are temporary runtime assumptions and are not persisted yet.</div>
+  <div class="cfg-note">These values are modeled estimates based on configured assumptions and available Davis problem data.</div>
   <button class="cfg-apply" data-action="applyCfg">Apply & Recalculate</button>
 </div>
 
