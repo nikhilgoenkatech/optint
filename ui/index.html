@@ -623,6 +623,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .concise-exec .layout{display:block}
 .concise-exec .layout>.analysis-drawer:not([open]){display:none}
 .concise-exec .layout>.analysis-drawer{margin-top:12px}
+.workspace-persona .layout>.analysis-drawer:not([open]){display:none}
+.workspace-persona .layout>.analysis-drawer{margin-top:12px}
 .exec-persona .analysis-ai-drawer{display:none!important}
 .exec-persona .view-tabs,.exec-persona .oneoffs-section{display:none!important}
 .cx-view{display:flex;flex-direction:column;gap:12px;grid-column:1/-1}
@@ -1126,6 +1128,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
   <select class="hsel" id="timeRange"><option value="7d" selected>Last 7 days</option><option value="14d">Last 14 days</option><option value="30d">Last 30 days</option></select>
   <select class="hsel" id="appFilter"><option value="">All Applications</option><option value="ShopApp">ShopApp</option><option value="MobileApp">MobileApp</option><option value="AdminPortal">AdminPortal</option></select>
   <div class="hdr-right">
+    <span id="workspaceMarker" style="font-size:10px;color:var(--text-3);font-family:var(--mono);white-space:nowrap">Decision workspace restored</span>
     <div class="live" title="Connected"></div>
     <button class="btn btn-ghost" id="dqlNotebookBtn" data-action="downloadDqlNotebook">DQL Validation</button>
     <button class="btn btn-ghost" id="refreshBtn" data-action="doRefresh">Refresh</button>

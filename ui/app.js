@@ -37,14 +37,14 @@ const PMETA = {
     filter:()=>true,
     rank:(a,b)=>((b.users||0)*(b.dur||30))-((a.users||0)*(a.dur||30)),
     cols:['exp','check','biz','cost','users','dur','rec','status']},
-  developer:{label:'Developer',icon:'D',color:'#3dd68c',desc:'Service errors | root causes | traces',
-    filter:p=>!['Disk I/O'].some(n=>p.title.includes(n)),
-    rank:(a,b)=>{const w={AVAILABILITY:5,ERROR:4,PERFORMANCE:3,RESOURCE_CONTENTION:2,CUSTOM_ALERT:1};return (w[b.sev]||0)-(w[a.sev]||0)},
-    cols:['exp','check','sev','title','svc','rca','mttr','rec','users','open']},
   sre:{label:'SRE / Platform',icon:'S',color:'#9b8fe4',desc:'Full operational view | all signals | noise analysis',
     filter:()=>true,
     rank:(a,b)=>(b.impact||0)-(a.impact||0),
     cols:['exp','check','sev','title','impact','cost','rec','mttr','users','rca','noise','cloud','open']},
+  developer:{label:'Developer',icon:'D',color:'#3dd68c',desc:'Service errors | root causes | traces',
+    filter:p=>!['Disk I/O'].some(n=>p.title.includes(n)),
+    rank:(a,b)=>{const w={AVAILABILITY:5,ERROR:4,PERFORMANCE:3,RESOURCE_CONTENTION:2,CUSTOM_ALERT:1};return (w[b.sev]||0)-(w[a.sev]||0)},
+    cols:['exp','check','sev','title','svc','rca','mttr','rec','users','open']},
 };
 
 // ============================================================
@@ -606,6 +606,7 @@ function render(){
   const m=PMETA[persona];
   document.body.classList.toggle('concise-exec', isConciseExecView());
   document.body.classList.toggle('exec-persona', persona === 'executive');
+  document.body.classList.toggle('workspace-persona', currentView === 'patterns');
   document.documentElement.style.setProperty('--persona',m.color);
   document.getElementById('pbarIcon').textContent=m.icon;
   document.getElementById('pbarText').innerHTML=`<strong>${m.label} View</strong> - ${m.desc}`;
