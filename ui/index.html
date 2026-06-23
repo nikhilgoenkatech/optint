@@ -1144,9 +1144,12 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 <!-- COST CONFIG -->
 <div class="cfg-panel hidden" id="cfgPanel">
   <div class="cfg-title">Cost Model</div>
+  <div class="cfg-row"><span class="cfg-lbl">Profile</span><select class="cfg-inp" id="cfgProfile"><option>Conservative</option><option selected>Standard</option><option>Aggressive</option></select></div>
   <div class="cfg-row"><span class="cfg-lbl">Revenue / user / min</span><input class="cfg-inp" id="cfgRev" value="0.08" type="number" step="0.01" min="0"></div>
   <div class="cfg-row"><span class="cfg-lbl">Eng hourly rate ($)</span><input class="cfg-inp" id="cfgEng" value="150" type="number" step="10" min="0"></div>
   <div class="cfg-row"><span class="cfg-lbl">Avg responders</span><input class="cfg-inp" id="cfgResp" value="3" type="number" step="1" min="1"></div>
+  <div class="cfg-row"><span class="cfg-lbl">Recovery rate (%)</span><input class="cfg-inp" id="cfgRecovery" value="35" type="number" step="1" min="0" max="100"></div>
+  <div class="cfg-lbl" id="cfgAssumptions" style="line-height:1.45;margin:8px 0 4px">Standard profile uses current OpInt assumptions. Values are temporary runtime assumptions and are not persisted yet.</div>
   <button class="cfg-apply" data-action="applyCfg">Apply & Recalculate</button>
 </div>
 

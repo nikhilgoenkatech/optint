@@ -50,14 +50,84 @@ const PMETA = {
 // ============================================================
 // COST MODEL
 // ============================================================
-let CC = {rev:0.08,eng:150,resp:3};
-const SEV_MULT = {AVAILABILITY:1.0,ERROR:0.7,PERFORMANCE:0.3,RESOURCE_CONTENTION:0.15,CUSTOM_ALERT:0.05};
+const COST_MODEL_PROFILES = {
+  Conservative: {
+    severityMultipliers: {AVAILABILITY:0.8,ERROR:0.55,PERFORMANCE:0.22,RESOURCE_CONTENTION:0.1,CUSTOM_ALERT:0.03},
+    engineerHourlyRate: 125,
+    defaultResponders: 2,
+    affectedUserCostPerHour: 2.4,
+    fallbackAffectedEntityCost: 0,
+    recoveryRate: 0.25,
+  },
+  Standard: {
+    severityMultipliers: {AVAILABILITY:1.0,ERROR:0.7,PERFORMANCE:0.3,RESOURCE_CONTENTION:0.15,CUSTOM_ALERT:0.05},
+    engineerHourlyRate: 150,
+    defaultResponders: 3,
+    affectedUserCostPerHour: 4.8,
+    fallbackAffectedEntityCost: 0,
+    recoveryRate: 0.35,
+  },
+  Aggressive: {
+    severityMultipliers: {AVAILABILITY:1.25,ERROR:0.9,PERFORMANCE:0.45,RESOURCE_CONTENTION:0.25,CUSTOM_ALERT:0.08},
+    engineerHourlyRate: 200,
+    defaultResponders: 4,
+    affectedUserCostPerHour: 7.2,
+    fallbackAffectedEntityCost: 25,
+    recoveryRate: 0.5,
+  },
+};
+let activeCostProfile = 'Standard';
+let costModel = {...COST_MODEL_PROFILES.Standard, severityMultipliers:{...COST_MODEL_PROFILES.Standard.severityMultipliers}};
+let CC = {rev:costModel.affectedUserCostPerHour/60,eng:costModel.engineerHourlyRate,resp:costModel.defaultResponders};
+
+function syncLegacyCostConfig() {
+  CC = {
+    rev: costModel.affectedUserCostPerHour / 60,
+    eng: costModel.engineerHourlyRate,
+    resp: costModel.defaultResponders,
+  };
+}
+
+function applyCostModelProfile(profileName) {
+  const profile = COST_MODEL_PROFILES[profileName] || COST_MODEL_PROFILES.Standard;
+  activeCostProfile = COST_MODEL_PROFILES[profileName] ? profileName : 'Standard';
+  costModel = {...profile, severityMultipliers:{...profile.severityMultipliers}};
+  syncLegacyCostConfig();
+}
+
+function recoveryRate() {
+  return Number.isFinite(costModel.recoveryRate) ? costModel.recoveryRate : 0.35;
+}
+
+function recoverableFromCost(cost) {
+  return Number.isFinite(cost) && cost > 0 ? Math.round(cost * recoveryRate()) : 0;
+}
 
 function calcCost(p){
-  const d=p.dur??30,m=SEV_MULT[p.sev]??0.3;
-  const rev=Math.round((p.users||0)*CC.rev*d*m);
-  const eng=Math.round((d/60)*CC.eng*CC.resp);
-  return {rev,eng,total:rev+eng};
+  const d = Number.isFinite(p?.dur) && p.dur > 0 ? p.dur : 30;
+  const m = costModel.severityMultipliers?.[p?.sev] ?? costModel.severityMultipliers?.PERFORMANCE ?? 0.3;
+  const userCostPerMinute = (costModel.affectedUserCostPerHour || 0) / 60;
+  const userCount = Number.isFinite(p?.users) ? p.users : 0;
+  const rev = Math.round(userCount * userCostPerMinute * d * m);
+  const fallback = !userCount && costModel.fallbackAffectedEntityCost
+    ? Math.round((costModel.fallbackAffectedEntityCost || 0) * m)
+    : 0;
+  const eng = Math.round((d/60) * (costModel.engineerHourlyRate || 0) * (costModel.defaultResponders || 0));
+  return {rev:rev + fallback,eng,total:rev+fallback+eng};
+}
+
+function costLineageText(p, cost = calcCost(p)) {
+  const duration = Number.isFinite(p?.dur) && p.dur > 0 ? p.dur : 30;
+  const severityMultiplier = costModel.severityMultipliers?.[p?.sev] ?? costModel.severityMultipliers?.PERFORMANCE ?? 0.3;
+  return [
+    `Cost model: ${activeCostProfile}`,
+    `affected users: ${Number.isFinite(p?.users) ? p.users : 0}`,
+    `duration: ${duration}m`,
+    `severity multiplier: ${severityMultiplier}`,
+    `responders: ${costModel.defaultResponders || 0}`,
+    `engineer rate: ${fmtC(costModel.engineerHourlyRate || 0)}/hr`,
+    `calculated impact: ${fmtC(cost.total || 0)}`,
+  ].join(' | ');
 }
 
 function calcRecurringWaste(ps){
@@ -584,7 +654,7 @@ function renderKPIs(ps){
   const highImpactPatterns=patterns.filter(pat=>isHighImpactPattern(pat, patterns));
   const totalPatternCost=patterns.reduce((s, pat)=>s+patternCost(pat),0);
   const session=calcSessionMetrics(ps, patterns);
-  const potentialSavings=patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+  const potentialSavings=patterns.length ? recoverableFromCost(totalPatternCost) + session.valueDeliveredTotal : 0;
   const highImpactOccurrences=highImpactPatterns.reduce((s, pat)=>s+pat.occurrences,0);
   const KPIS={
     executive:[
@@ -670,12 +740,12 @@ function renderTopPatternsSnapshot(ps) {
       .sort((a, b) => b.score - a.score);
     const session = calcSessionMetrics(ps, patterns);
     const totalPatternCost = patterns.reduce((s, pat) => s + patternCost(pat), 0);
-    const potentialSavings = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+    const potentialSavings = patterns.length ? recoverableFromCost(totalPatternCost) + session.valueDeliveredTotal : 0;
     const riskBacklog = ranked.filter(x => patternOpenCount(x.pat) > 0).length;
     const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
     const selectedPattern = patterns.find(p => p.id === patternExplorerState.selectedId) || ranked[0]?.pat;
     const focusPattern = ranked[0]?.pat;
-    const focusRecoverable = focusPattern ? Math.round(patternCost(focusPattern) * 0.35) : 0;
+    const focusRecoverable = focusPattern ? patternRecoverableValue(focusPattern) : 0;
     el.innerHTML = `
       <div class="snap-head narrative">
         <div>
@@ -713,7 +783,7 @@ function renderTopPatternsSnapshot(ps) {
   const top = ranked.slice(0, 3);
   const session = calcSessionMetrics(ps, patterns);
   const totalPatternCost = patterns.reduce((s, pat) => s + patternCost(pat), 0);
-  const potentialSavings = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+  const potentialSavings = patterns.length ? recoverableFromCost(totalPatternCost) + session.valueDeliveredTotal : 0;
   const riskBacklog = ranked.filter(x => patternOpenCount(x.pat) > 0).length;
   const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const topPattern = top[0]?.pat;
@@ -767,7 +837,7 @@ function renderCostBanner(ps){
       ? safeMttrSummary(MTTR_SUMMARY, ps)
       : mttrSummaryFromProblems(ps);
     document.getElementById('cbHead').textContent=`${patterns.length} distinct incident pattern${patterns.length!==1?'s':''} across ${patternOccurrences} grouped problems in the ${getTimeLabel()}`;
-    document.getElementById('cbSub').textContent=`${ps.length} total problems | ${oneOffCount} one-off | ${openPatterns.length} active patterns | ${hiImpact.length} high-impact patterns`;
+    document.getElementById('cbSub').textContent=`${ps.length} total problems | ${oneOffCount} one-off | ${openPatterns.length} active patterns | ${hiImpact.length} high-impact patterns | Cost model: ${activeCostProfile}, recovery ${Math.round(recoveryRate()*100)}%`;
     document.getElementById('cbStats').innerHTML=`
       <div class="cb-stat"><div class="cb-stat-val">${patterns.length}</div><div class="cb-stat-lbl">Incident Patterns</div></div>
       <div class="cb-stat"><div class="cb-stat-val" style="color:var(--amber)">${openPatterns.length}</div><div class="cb-stat-lbl">Active Now</div></div>
@@ -781,7 +851,7 @@ function renderCostBanner(ps){
   const waste=calcRecurringWaste(ps);
   const total=rev+eng;
   document.getElementById('cbHead').textContent=`Estimated ${fmtC(total)} operational losses this period`;
-  document.getElementById('cbSub').textContent=`${ps.filter(p=>p.rec>=60).length} recurring issues | ${ps.filter(p=>p.status==='OPEN').length} still open`;
+  document.getElementById('cbSub').textContent=`${ps.filter(p=>p.rec>=60).length} recurring issues | ${ps.filter(p=>p.status==='OPEN').length} still open | Cost model: ${activeCostProfile}, recovery ${Math.round(recoveryRate()*100)}%`;
   document.getElementById('cbStats').innerHTML=`
     <div class="cb-stat" title="Direct revenue loss from affected users x duration x severity"><div class="cb-stat-val">${fmtC(rev)}</div><div class="cb-stat-lbl">Revenue Loss</div></div>
     <div class="cb-stat" title="Engineering time: MTTR x rate x responders"><div class="cb-stat-val">${fmtC(eng)}</div><div class="cb-stat-lbl">Eng Cost</div></div>
@@ -906,7 +976,7 @@ function renderTable(ps){
       biz:`<td class="tdp" style="max-width:260px"><span class="sdot ${p.status}"></span>${p.biz}</td>`,
       title:`<td class="tdp" style="max-width:250px;font-size:12px"><span class="sdot ${p.status}"></span>${p.title}</td>`,
       sev:`<td><span class="sev ${p.sev}">${SEV_LBL[p.sev]}</span></td>`,
-      cost:`<td class="ccell">${fmtC(cost.total)}</td>`,
+      cost:`<td class="ccell" title="${attrText(costLineageText(p, cost))}">${fmtC(cost.total)}</td>`,
       users:`<td class="tdm">${p.users>0?p.users.toLocaleString():'-'}</td>`,
       dur:`<td class="tdm">${p.dur?fmtM(p.dur):`<span style="color:var(--amber)">Ongoing</span>`}</td>`,
       mttr:`<td class="tdm">${p.dur?fmtM(p.dur):'-'}</td>`,
@@ -2851,7 +2921,7 @@ function patternFixabilityScore(pat) {
 }
 
 function patternRecoverableValue(pat) {
-  return Math.round(patternCost(pat) * 0.35);
+  return recoverableFromCost(patternCost(pat));
 }
 
 function attrText(value) {
@@ -2942,7 +3012,7 @@ function buildRemediationRequest(pat, allPatterns=[]) {
     openProblemCount: patternOpenCount(pat),
     groupedProblemCount: problems.length,
     operationalCost,
-    potentialSavings: Math.round(operationalCost * 0.35),
+    potentialSavings: recoverableFromCost(operationalCost),
     affectedServices: services,
     affectedEntities: patternAffectedEntities(pat),
     environment: envs.join(', ') || 'unknown',
@@ -4035,7 +4105,7 @@ function conciseExecMetrics(ps, patterns) {
   const highImpact = patterns.filter(pat => isHighImpactPattern(pat, patterns)).length;
   const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
   const session = calcSessionMetrics(ps, patterns);
-  const recoverable = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
+  const recoverable = patterns.length ? recoverableFromCost(totalPatternCost) + session.valueDeliveredTotal : 0;
   const mttr = MTTR_SUMMARY ? safeMttrSummary(MTTR_SUMMARY, ps) : mttrSummaryFromProblems(ps);
   return { totalPatternCost, groupedProblems, highImpact, riskBacklog, recoverable, mttr };
 }
@@ -4098,11 +4168,15 @@ function renderMetricDrilldown(ps, patterns) {
       <div><div class="cx-eyebrow">Metric Drilldown</div><h2>${ps.length} problems reduced to ${patterns.length} recurring operational patterns</h2><p>Select a metric or pattern to inspect impact and recommended action.</p></div>
     </section>`;
   }
+  const costAction = ['risk','recoverable'].includes(execMetricDrilldown)
+    ? `<button class="snap-cta" data-action="toggleCfg">Cost assumptions</button>`
+    : '';
   return `<section class="cx-metric-drilldown">
     <div class="cx-metric-main"><div class="cx-eyebrow">Metric Drilldown</div><h2>${detail.label}: ${detail.value}</h2><p>${detail.why}</p></div>
     <div class="cx-metric-context">
       ${detail.related ? `<div><span>Related top pattern</span><strong>${detail.related.title}</strong></div>` : ''}
       <div><span>Recommended next action</span><strong>${detail.action}</strong></div>
+      ${costAction}
     </div>
   </section>`;
 }
@@ -5347,11 +5421,37 @@ function switchPersona(p){
   document.documentElement.style.setProperty('--persona',PMETA[p].color);
   render();renderAIPanel(null);renderRemPanel();
 }
-function toggleCfg(){document.getElementById('cfgPanel').classList.toggle('hidden')}
+function renderCostAssumptionsText() {
+  const el = document.getElementById('cfgAssumptions');
+  if (!el) return;
+  el.textContent = `${activeCostProfile} profile: severity factors are ${Object.entries(costModel.severityMultipliers || {}).map(([k,v]) => `${k} ${v}`).join(', ')}; engineer rate ${fmtC(costModel.engineerHourlyRate || 0)}/hr; responders ${costModel.defaultResponders || 0}; affected user cost ${fmtC(costModel.affectedUserCostPerHour || 0)}/hr; recovery rate ${Math.round(recoveryRate()*100)}%.`;
+}
+function syncCostConfigPanel() {
+  const profile = document.getElementById('cfgProfile');
+  const rev = document.getElementById('cfgRev');
+  const eng = document.getElementById('cfgEng');
+  const resp = document.getElementById('cfgResp');
+  const recovery = document.getElementById('cfgRecovery');
+  if (profile) profile.value = activeCostProfile;
+  if (rev) rev.value = ((costModel.affectedUserCostPerHour || 0) / 60).toFixed(2);
+  if (eng) eng.value = String(costModel.engineerHourlyRate || 0);
+  if (resp) resp.value = String(costModel.defaultResponders || 0);
+  if (recovery) recovery.value = String(Math.round(recoveryRate()*100));
+  renderCostAssumptionsText();
+}
+function toggleCfg(){syncCostConfigPanel();document.getElementById('cfgPanel').classList.toggle('hidden')}
 function applyCfg(){
-  CC.rev=parseFloat(document.getElementById('cfgRev').value)||0.08;
-  CC.eng=parseFloat(document.getElementById('cfgEng').value)||150;
-  CC.resp=parseInt(document.getElementById('cfgResp').value)||3;
+  const profileName = document.getElementById('cfgProfile')?.value || 'Standard';
+  applyCostModelProfile(profileName);
+  const revPerMinute = parseFloat(document.getElementById('cfgRev').value);
+  const engRate = parseFloat(document.getElementById('cfgEng').value);
+  const responders = parseInt(document.getElementById('cfgResp').value);
+  const recoveryPct = parseFloat(document.getElementById('cfgRecovery')?.value);
+  costModel.affectedUserCostPerHour = Number.isFinite(revPerMinute) ? Math.max(0, revPerMinute) * 60 : costModel.affectedUserCostPerHour;
+  costModel.engineerHourlyRate = Number.isFinite(engRate) ? Math.max(0, engRate) : costModel.engineerHourlyRate;
+  costModel.defaultResponders = Number.isFinite(responders) ? Math.max(1, responders) : costModel.defaultResponders;
+  costModel.recoveryRate = Number.isFinite(recoveryPct) ? clamp(recoveryPct / 100, 0, 1) : costModel.recoveryRate;
+  syncLegacyCostConfig();
   document.getElementById('cfgPanel').classList.add('hidden');
   render();
 }
