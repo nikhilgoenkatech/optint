@@ -655,7 +655,9 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-focus p{margin:4px 0 0;color:var(--text-3);font-size:12px}
 .cx-focus-why{margin-top:6px;font-size:11px;line-height:1.4;color:var(--text-2)}
 .cx-focus-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.exec-persona .cx-focus-actions{gap:6px;flex-wrap:nowrap;min-width:0}
 .exec-persona .cx-focus-stat{min-width:104px;padding:8px 10px;background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:var(--r)}
+.exec-persona .cx-focus-stat{min-width:0;flex:1 1 0;padding:7px 8px}
 .exec-persona .cx-focus-stat.badge-stat{min-width:104px}
 .exec-persona .cx-focus-stat span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
 .exec-persona .cx-focus-stat strong{display:block;margin-top:3px;font-family:var(--mono);font-size:12px;color:var(--text-1)}
@@ -695,8 +697,14 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-map-bubble:hover,.cx-map-bubble.selected{border-color:var(--amber);background:rgba(245,197,24,.24);box-shadow:0 0 0 2px rgba(245,197,24,.20),0 10px 24px rgba(0,0,0,.34)}
 .cx-map-bubble:hover::after,.cx-map-bubble:focus-visible::after{content:attr(data-tooltip);position:absolute;z-index:8;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:260px;padding:8px 9px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 12px 28px rgba(0,0,0,.45);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:600;line-height:1.45;text-align:left;pointer-events:none}
 .exec-persona .cx-map-bubble:hover::after,.exec-persona .cx-map-bubble:focus-visible::after{display:none}
-.cx-bubble-popover{display:none;position:absolute;z-index:12;left:50%;top:calc(100% + 10px);transform:translateX(-50%);width:280px;padding:10px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 16px 36px rgba(0,0,0,.55);font-family:var(--font);font-weight:600;color:var(--text-2);text-align:left;pointer-events:none}
+.cx-bubble-popover{display:none;position:absolute;z-index:12;left:50%;top:calc(100% + 10px);transform:translateX(-50%);width:280px;padding:10px;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-0);box-shadow:0 16px 36px rgba(0,0,0,.55);font-family:var(--font);font-weight:600;color:var(--text-2);text-align:left;pointer-events:auto}
+.cx-map-bubble.pop-above .cx-bubble-popover{top:auto;bottom:calc(100% + 10px)}
+.cx-map-bubble.pop-shift-left .cx-bubble-popover{left:auto;right:0;transform:none}
+.cx-map-bubble.pop-shift-right .cx-bubble-popover{left:0;transform:none}
+.cx-map-bubble.popup-hidden .cx-bubble-popover{display:none!important}
 .cx-map-bubble:hover .cx-bubble-popover,.cx-map-bubble:focus-visible .cx-bubble-popover,.cx-map-bubble.selected .cx-bubble-popover{display:block}
+.cx-pop-close{position:absolute;right:7px;top:6px;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.04);color:var(--text-3);font-family:var(--mono);font-size:11px;font-weight:900;cursor:pointer;pointer-events:auto}
+.cx-pop-close:hover{border-color:var(--coral);color:var(--text-1);background:rgba(255,103,112,.12)}
 .cx-pop-title{font-size:12px;font-weight:900;color:var(--text-1);line-height:1.25;margin-bottom:8px}
 .cx-pop-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 .cx-pop-row>span{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)}
@@ -734,7 +742,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-action-block strong{display:block;color:var(--text-1);margin-top:7px}
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
-.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,72fr) minmax(360px,28fr);height:100%;align-items:stretch}
+.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,76fr) minmax(320px,24fr);height:100%;align-items:stretch}
 .exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(240px,35fr) minmax(620px,65fr)}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
 .exec-persona .cx-decision-main{gap:8px;min-height:0;overflow:hidden}

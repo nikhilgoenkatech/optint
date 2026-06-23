@@ -528,6 +528,7 @@ let developerPanelTab='details';
 let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
 let execPanelMaximized=false;
+let execClosedBubblePopupId=null;
 let patternSearchTimer=null;
 let remediationPatternId=null;
 let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
@@ -2769,9 +2770,15 @@ function rerenderPatternsView() {
 function selectPatternRow(id, opts={}) {
   patternExplorerState.selectedId = id;
   if (persona === 'executive') execPatternSelectionMade = true;
+  if (persona === 'executive') execClosedBubblePopupId = null;
   renderTopPatternsSnapshot(getFiltered());
   rerenderPatternsView();
   if (opts.remediate !== false && !['executive','sre','developer'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
+}
+
+function closeBubblePopup(id) {
+  execClosedBubblePopupId = id || patternExplorerState.selectedId || null;
+  rerenderPatternsView();
 }
 
 function setExecAnalyticalView(view) {
@@ -4526,10 +4533,12 @@ function renderExecutiveRecurrenceTimeline(pat) {
   const timestamps = problems
     .map(occurrenceTimestamp)
     .filter(ts => Number.isFinite(ts) && ts >= start && ts <= now);
-  if (timestamps.length < 2) {
-    return `<div class="exec-timeline-empty">Insufficient recurrence data</div>`;
-  }
-  timestamps.forEach(ts => {
+  const useEstimated = timestamps.length < 2 && (pat.occurrences || problems.length || 0) >= 2;
+  const timelinePoints = useEstimated
+    ? estimatedPatternTimelinePoints(pat, start, now, bucketCount)
+    : timestamps;
+  if (timelinePoints.length < 2) return `<div class="exec-timeline-empty">Insufficient recurrence data</div>`;
+  timelinePoints.forEach(ts => {
     const bucketIdx = Math.min(bucketCount - 1, Math.max(0, Math.floor((ts - start) / bucketMs)));
     buckets[bucketIdx].count += 1;
   });
@@ -4539,8 +4548,37 @@ function renderExecutiveRecurrenceTimeline(pat) {
   }
   const max = Math.max(1, ...buckets.map(b => b.count));
   const bars = buckets.map(b => `<div class="exec-timeline-bucket" title="${b.count} occurrence${b.count === 1 ? '' : 's'}"><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><b>${b.count}</b><small>${b.label}</small></div>`).join('');
-  const note = timestamps.length < (pat.occurrences || 0) ? '<div class="exec-timeline-note">Timeline estimated from available occurrence data.</div>' : '';
+  const note = useEstimated || timelinePoints.length < (pat.occurrences || 0)
+    ? '<div class="exec-timeline-note">Best-effort distribution from selected pattern recurrence data. Confidence is limited because exact timestamps are incomplete.</div>'
+    : '';
   return `<div class="exec-rec-timeline ${note ? 'estimated' : ''}">${bars}</div>${note}`;
+}
+
+function estimatedPatternTimelinePoints(pat, start, now, bucketCount) {
+  const count = Math.max(0, Math.round(Number(pat.occurrences || pat.problems?.length || 0)));
+  if (count < 2) return [];
+  const bucketMs = Math.max(1, (now - start) / bucketCount);
+  const weights = Array.from({ length:bucketCount }, (_, i) => {
+    const position = i + 1;
+    if (pat.trend === 'INCREASING') return position;
+    if (pat.trend === 'DECREASING') return bucketCount - i;
+    if (pat.hasTimeCluster && Number.isFinite(Number(pat.dominantHour))) {
+      const center = Math.max(1, Math.min(bucketCount, Math.round(bucketCount * 0.72)));
+      return Math.max(1, bucketCount - Math.abs(position - center) * 2);
+    }
+    return 1;
+  });
+  const allocations = Array(bucketCount).fill(0);
+  let remaining = count;
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
+  weights.forEach((weight, idx) => {
+    const allocated = Math.floor(count * weight / totalWeight);
+    allocations[idx] = allocated;
+    remaining -= allocated;
+  });
+  const order = weights.map((weight, idx) => ({ weight, idx })).sort((a, b) => b.weight - a.weight || a.idx - b.idx);
+  for (let i = 0; i < remaining; i += 1) allocations[order[i % order.length].idx] += 1;
+  return allocations.flatMap((bucketCountValue, idx) => Array.from({ length:bucketCountValue }, (_, n) => start + idx * bucketMs + ((n + 1) / (bucketCountValue + 1)) * bucketMs));
 }
 
 function executiveBubbleAgeClass(pat) {
@@ -4614,9 +4652,16 @@ function renderConciseActFirstMap(patterns) {
     const priority = executivePriorityLevel(pat, patterns);
     const confidence = patternConfidenceScore(pat);
     const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Occurrences ${pat.occurrences} | Open incidents ${patternOpenCount(pat)} | Confidence ${confidenceLabel(patternConfidenceScore(pat))} | Action ${primaryAction}`;
-    return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
+    const selected = execPatternSelectionMade && pat.id === patternExplorerState.selectedId;
+    const popupClass = [
+      bottom < 36 ? 'pop-above' : 'pop-below',
+      left > 76 ? 'pop-shift-left' : left < 24 ? 'pop-shift-right' : '',
+      selected && execClosedBubblePopupId === pat.id ? 'popup-hidden' : '',
+    ].filter(Boolean).join(' ');
+    return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
       <span>#${idx + 1}</span>
       <div class="cx-bubble-popover" role="tooltip">
+        <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
         <div class="cx-pop-title">${pat.title}</div>
         <div class="cx-pop-row"><span>Priority</span>${highlightText('', priority, priority)}</div>
         <div class="cx-pop-grid">
@@ -6056,6 +6101,7 @@ document.addEventListener('click', function(e) {
     case 'toggleExecPatterns': e.stopPropagation(); toggleExecPatterns(); break;
     case 'toggleExecKpiDetail': e.stopPropagation(); toggleExecKpiDetail(el.dataset.mode); break;
     case 'selectPatternRow': e.stopPropagation(); selectPatternRow(pid); break;
+    case 'closeBubblePopup': e.stopPropagation(); closeBubblePopup(pid); break;
     case 'focusPatternExplorer': e.stopPropagation(); focusPatternExplorer(); break;
     case 'getPatternRemediation':
       e.stopPropagation();
