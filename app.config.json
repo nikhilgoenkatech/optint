@@ -6,7 +6,7 @@
   "app": {
     "id": "my.dynatrace.opint",
     "name": "OpInt - Operational Intelligence",
-    "version": "1.2.39",
+    "version": "1.2.40",
     "description": "Pattern intelligence, remediation analytics, and team progress tracking",
     "scopes": [
       { "name": "storage:events:read", "comment": "Read Davis problem events via DQL from Grail" },
