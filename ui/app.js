@@ -1462,6 +1462,142 @@ RemediationRequest:
 ${JSON.stringify(request, null, 2)}`;
 }
 
+function buildDeveloperRemediationPrompt(request) {
+  return `You are a software developer using Dynatrace.
+
+Based on these Dynatrace problem IDs:
+${(request.problemIds || []).join(', ')}
+
+Event type:
+${request.eventType || request.severity || 'UNKNOWN'}
+
+Event name:
+${request.eventName || request.patternName}
+
+Affected services/entities:
+${(request.affectedServices || request.affectedEntities || []).join(', ') || 'not available'}
+
+Please recommend the best remediation path.
+
+Focus on:
+- the most likely technical fix
+- what to validate before changing code/config
+- what Dynatrace Observability feature helps
+- what should be escalated if ownership or RCA is unclear
+
+Return valid JSON only matching this schema:
+{
+  "recommendedNextAction": {
+    "title": "",
+    "reason": "",
+    "confidence": "high|medium|low",
+    "dynatraceCapability": ""
+  },
+  "technicalFixes": [],
+  "validationSteps": [],
+  "escalationNeeded": false,
+  "escalationReason": ""
+}`;
+}
+
+function buildSreRemediationPrompt(request) {
+  return `You are a Site Reliability Engineer.
+
+Recommend prevention and automation actions for the recurring operational pattern represented by these Dynatrace problem IDs:
+${(request.problemIds || []).join(', ')}
+
+Event type:
+${request.eventType || request.severity || 'UNKNOWN'}
+
+Affected services:
+${(request.affectedServices || request.affectedEntities || []).join(', ') || 'not available'}
+
+Pattern metadata:
+${JSON.stringify({
+  occurrenceCount: request.occurrenceCount,
+  openProblemCount: request.openProblemCount,
+  rcaConfidence: request.rcaConfidence,
+  trend: request.trend,
+  timeClustering: request.timeClustering,
+  deploymentCorrelation: request.deploymentCorrelation,
+}, null, 2)}
+
+Focus on:
+- why this keeps recurring
+- what should be automated
+- what operational weakness should be corrected
+- how to prevent future recurrence
+
+Do not focus on code-level fixes.
+Do not summarize individual incidents.
+
+Return valid JSON only matching this schema:
+{
+  "recommendedNextAction": {
+    "title": "",
+    "reason": "",
+    "confidence": "high|medium|low",
+    "dynatraceCapability": ""
+  },
+  "automationActions": [],
+  "preventionActions": [],
+  "validationSteps": [],
+  "missingEvidence": []
+}`;
+}
+
+function buildPatternAssistPrompt(request) {
+  if (persona === 'developer') return buildDeveloperRemediationPrompt(request);
+  if (persona === 'sre') return buildSreRemediationPrompt(request);
+  return buildExecutivePatternPrompt(request);
+}
+
+function normalizeActionList(items, priority, owner, capabilityFallback) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(Boolean).map((item, idx) => {
+    if (typeof item === 'string') {
+      return {
+        priority,
+        title: item,
+        description: item,
+        dynatraceFeature: capabilityFallback,
+        estimatedImpact: 'Validate and reduce recurrence for the selected pattern',
+        owner,
+      };
+    }
+    return {
+      priority: item.priority || priority,
+      title: item.title || item.action || `Recommended action ${idx + 1}`,
+      description: item.description || item.reason || item.action || 'Validate this action against the selected problem evidence.',
+      dynatraceFeature: item.dynatraceFeature || item.dynatraceCapability || capabilityFallback,
+      estimatedImpact: item.estimatedImpact || item.expectedBenefit || 'Reduce recurrence and improve resolution confidence',
+      owner: item.owner || owner,
+    };
+  });
+}
+
+function personaRemediationRecommendations(response, request) {
+  if (!response || typeof response !== 'object') return [];
+  const owner = persona === 'developer' ? (request.ownerTeam || 'Service owner') : persona === 'sre' ? 'SRE team' : (request.ownerTeam || 'Operations leadership');
+  const defaultCapability = persona === 'developer' ? 'Application Observability' : persona === 'sre' ? 'Workflows' : 'Davis AI';
+  const next = response.recommendedNextAction;
+  const recommendations = [];
+  if (next && typeof next === 'object') {
+    recommendations.push({
+      priority: 'IMMEDIATE',
+      title: next.title || 'Recommended next action',
+      description: next.reason || 'Use the selected pattern evidence to validate the next action.',
+      dynatraceFeature: next.dynatraceCapability || defaultCapability,
+      estimatedImpact: response.expectedOutcome || `Reduce recurrence across ${request.occurrenceCount} occurrences`,
+      owner,
+    });
+  }
+  recommendations.push(...normalizeActionList(response.technicalFixes, 'SHORT_TERM', owner, defaultCapability));
+  recommendations.push(...normalizeActionList(response.automationActions, 'SHORT_TERM', owner, 'Workflows'));
+  recommendations.push(...normalizeActionList(response.preventionActions, 'STRATEGIC', owner, 'Site Reliability Guardian'));
+  return recommendations;
+}
+
 function normalizePatternAssistResponse(response, request) {
   const fallbackCost = fmtC(request?.operationalCost || 0);
   if (!response || typeof response === 'string') {
@@ -1476,15 +1612,24 @@ function normalizePatternAssistResponse(response, request) {
       latencyMs:0,
     };
   }
+  const personaRecommendations = personaRemediationRecommendations(response, request);
+  const missingEvidence = response.missingEvidenceOrNextValidationSteps || response.missingEvidence || response.validationSteps || [];
+  const next = response.recommendedNextAction || {};
   return {
     summary: response.summary || `${request.patternName} has ${request.occurrenceCount} occurrences and ${fallbackCost} estimated cost exposure.`,
     patterns: Array.isArray(response.patterns) && response.patterns.length ? response.patterns : [`${request.patternName} appears ${request.occurrenceCount} times with ${fallbackCost} estimated cost exposure.`],
-    costNarrative: response.costNarrative || response.expectedOperationalCostReduction || `${request.groupedProblemCount} grouped problems create ${fallbackCost} in recurring cost exposure.`,
-    recommendations: Array.isArray(response.recommendations) && response.recommendations.length ? response.recommendations : [
+    costNarrative: response.costNarrative || response.expectedOperationalCostReduction || response.expectedOutcome || `${request.groupedProblemCount} grouped problems create ${fallbackCost} in recurring cost exposure.`,
+    recommendations: Array.isArray(response.recommendations) && response.recommendations.length ? response.recommendations : personaRecommendations.length ? personaRecommendations : [
       { priority:'IMMEDIATE', title:'Stabilize the recurring issue', description:`Prioritize this pattern because it represents ${fallbackCost} in estimated cost exposure.`, dynatraceFeature:'Dynatrace Assist', estimatedImpact:`Reduce exposure against ${fallbackCost}`, owner:request.ownerTeam || 'Operations leadership' },
       { priority:'SHORT_TERM', title:'Assign an accountable owner', description:`Assign ownership for ${request.occurrenceCount} recurring occurrences and track reduction against ${fallbackCost}.`, dynatraceFeature:'Ownership and Routing', estimatedImpact:`Lower recurrence from ${request.occurrenceCount} occurrences`, owner:request.ownerTeam || 'Service owner' },
       { priority:'STRATEGIC', title:'Fund recurrence prevention', description:`Create a prevention plan for the ${fallbackCost} recurring cost exposure before it becomes repeat revenue risk.`, dynatraceFeature:'Business Analytics', estimatedImpact:`Reduce modeled exposure of ${fallbackCost}`, owner:'Executive sponsor' },
     ],
+    recommendedRemediationPath: response.recommendedRemediationPath || next.title || response.expectedOutcome || 'Validate the recommended action against the selected pattern evidence.',
+    immediateRemediation: response.immediateRemediation || next.title || null,
+    whySuggested: response.whySuggested || next.reason || null,
+    supportingEvidence: response.supportingEvidence || response.recurrenceDrivers || response.operationalWeaknesses || [],
+    missingEvidenceOrNextValidationSteps: missingEvidence,
+    confidenceLevel: response.confidenceLevel || String(next.confidence || response.confidence || 'MEDIUM').toUpperCase(),
     generatedBy:'davis-copilot',
     latencyMs:0,
   };
@@ -1529,7 +1674,7 @@ async function getPatternRemediation(patternId, opts={}) {
   remediationPatternId = pat.id;
   const patterns = detectPatterns(getFiltered()).patterns;
   const { request, evidenceHash } = buildRemediationRequest(pat, patterns);
-  const cacheKey = `${pat.id}:${evidenceHash}`;
+  const cacheKey = `${persona}:${pat.id}:${evidenceHash}`;
   const drawer = document.getElementById('remPanel')?.closest('details');
   if (openDrawers && drawer) drawer.open = true;
   if (openDrawers) openAnalysisDrawer();
@@ -1538,7 +1683,7 @@ async function getPatternRemediation(patternId, opts={}) {
   if (remediationCache.has(cacheKey)) {
     const cached = remediationCache.get(cacheKey);
     remediationState = { status:'done', patternId:pat.id, evidence:request, response:cached, error:null };
-    lastAIResult = normalizePatternAssistResponse(cached, request);
+    lastAIResult = cached;
     aiState = 'result';
     renderPatternRemediationPanel();
     renderAIPanel(pat.problems || []);
@@ -1551,7 +1696,7 @@ async function getPatternRemediation(patternId, opts={}) {
   renderPatternRemediationPanel();
   renderAIPanel(pat.problems || []);
   try {
-    const prompt = buildExecutivePatternPrompt(request);
+    const prompt = buildPatternAssistPrompt(request);
     window.__OPINT_LAST_REMEDIATION_PROMPT__ = prompt;
     window.__OPINT_LAST_REMEDIATION_REQUEST__ = request;
     console.log('[OpInt Davis] full remediation prompt:', prompt);
@@ -1562,10 +1707,11 @@ async function getPatternRemediation(patternId, opts={}) {
     let parsed;
     try { parsed = extractJSON(raw); }
     catch { parsed = raw; }
-    remediationCache.set(cacheKey, parsed);
+    const normalized = normalizePatternAssistResponse(parsed, request);
+    remediationCache.set(cacheKey, normalized);
     if (remediationPatternId !== pat.id) return;
-    remediationState = { status:'done', patternId:pat.id, evidence:request, response:parsed, error:null };
-    lastAIResult = normalizePatternAssistResponse(parsed, request);
+    remediationState = { status:'done', patternId:pat.id, evidence:request, response:normalized, error:null };
+    lastAIResult = normalized;
     aiState = 'result';
   } catch (err) {
     console.warn('[OpInt Davis] pattern remediation failed:', err.message || err);
@@ -1828,6 +1974,19 @@ async function analyzeMulti(){
   if(selectedIds.size===0)return;
   openAnalysisDrawer();
   const ps=getFiltered().filter(p=>selectedIds.has(p.id));
+  if (!ps.length) {
+    lastAIResult = {
+      summary:'Pattern evidence is not available for this selection.',
+      patterns:[],
+      costNarrative:'',
+      recommendations:[],
+      generatedBy:'local',
+      latencyMs:0,
+    };
+    aiState='result';
+    renderAIPanel(ps);
+    return;
+  }
   aiState='loading';
   renderAIPanel(ps);
   try{
@@ -2170,7 +2329,186 @@ function calculateAIMetrics(ps, costs, totalCost) {
   };
 }
 
+function compactAssistContext(ps) {
+  const problemIds = (ps || []).map(p => p.displayId || p.id).filter(Boolean);
+  const eventTypes = uniqVals((ps || []).map(p => p.sev).filter(Boolean));
+  const eventNames = uniqVals((ps || []).map(p => p.title).filter(Boolean)).slice(0, 5);
+  const affected = uniqVals((ps || []).flatMap(p => [...(p.svcs || []), p.rca].filter(Boolean))).slice(0, 10);
+  const starts = (ps || []).map(p => p.start).filter(Number.isFinite).sort((a, b) => a - b);
+  const selectedScope = persona === 'developer' ? selectedDeveloperScope() : null;
+  return {
+    problemIds,
+    eventType: eventTypes.join(', ') || 'UNKNOWN',
+    eventName: eventNames.join(' | ') || 'Unknown problem',
+    affectedServicesOrEntities: affected.join(', ') || 'not available',
+    timeRange: starts.length ? `${new Date(starts[0]).toISOString()} to ${new Date(starts[starts.length - 1]).toISOString()}` : getTimeLabel(),
+    selectedScope: selectedScope ? {
+      type:selectedScope.type,
+      label:selectedScope.label,
+      source:selectedScope.source,
+      rawValue:selectedScope.rawValue,
+    } : null,
+  };
+}
+
+function buildDeveloperAnalysisPrompt(ps) {
+  const c = compactAssistContext(ps);
+  return `You are a software developer using Dynatrace.
+
+Please analyze these Dynatrace problem IDs:
+${c.problemIds.join(', ')}
+
+Event type:
+${c.eventType}
+
+Event name:
+${c.eventName}
+
+Affected services/entities:
+${c.affectedServicesOrEntities}
+
+Time range:
+${c.timeRange}
+
+Developer scope:
+${c.selectedScope ? `${c.selectedScope.type}: ${c.selectedScope.label}` : 'All Developer Scope'}
+
+Please explain:
+- what the signals are suggesting
+- what service, endpoint, or entity should be investigated first
+- whether the pattern suggests recurrence, deployment correlation, or time clustering
+- what recommendations you have
+- which Dynatrace Observability capability would help most
+
+Return valid JSON only matching this schema:
+{
+  "summary": "",
+  "signals": [],
+  "investigateFirst": {
+    "target": "",
+    "reason": "",
+    "confidence": "high|medium|low"
+  },
+  "recommendations": [
+    {
+      "action": "",
+      "dynatraceCapability": "",
+      "reason": ""
+    }
+  ],
+  "validationSteps": []
+}`;
+}
+
+function buildSreAnalysisPrompt(ps, costs, totalCost) {
+  const c = compactAssistContext(ps);
+  const patterns = detectPatterns(ps).patterns;
+  const metadata = {
+    problemCount: ps.length,
+    openProblems: ps.filter(p => p.status === 'OPEN').length,
+    recurringPatterns: patterns.length,
+    estimatedCost: totalCost,
+    noisyAlerts: ps.filter(p => p.noise).length,
+    missingRca: ps.filter(p => !p.hasRCA).length,
+  };
+  return `You are a Site Reliability Engineer.
+
+Analyze the recurring operational pattern represented by the supplied Dynatrace problem IDs.
+
+Focus on reliability engineering rather than incident debugging.
+
+Problem IDs:
+${c.problemIds.join(', ')}
+
+Event type:
+${c.eventType}
+
+Affected services:
+${c.affectedServicesOrEntities}
+
+Pattern metadata:
+${JSON.stringify(metadata, null, 2)}
+
+Identify:
+- recurring reliability signals
+- recurrence drivers
+- operational weaknesses
+- automation opportunities
+- prevention recommendations
+
+Do not focus on code-level fixes.
+Do not summarize individual incidents.
+Prioritize recommendations that reduce future recurrence.
+
+Return valid JSON only matching this schema:
+{
+  "reliabilitySignals": [
+    {
+      "signal": "string",
+      "confidence": "high|medium|low",
+      "evidence": ["string"]
+    }
+  ],
+  "recurrenceDrivers": ["string"],
+  "operationalWeaknesses": ["string"],
+  "automationOpportunities": ["string"],
+  "preventionRecommendations": ["string"],
+  "confidence": "high|medium|low"
+}`;
+}
+
+function normalizePersonaAnalysisResponse(parsed, currentPersona, ps, costs, totalCost, source, latencyMs) {
+  if (currentPersona === 'developer') {
+    const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+    return {
+      summary: parsed.summary || `Dynatrace Assist analyzed ${ps.length} selected problems.`,
+      patterns: [
+        ...(Array.isArray(parsed.signals) ? parsed.signals.map(s => typeof s === 'string' ? s : `${s.signal || 'Signal'}${s.confidence ? ` (${s.confidence})` : ''}`) : []),
+        parsed.investigateFirst?.target ? `Investigate first: ${parsed.investigateFirst.target} - ${parsed.investigateFirst.reason || 'selected by Assist'}` : '',
+      ].filter(Boolean),
+      costNarrative: '',
+      recommendations: recs.map((r, idx) => ({
+        priority: idx === 0 ? 'IMMEDIATE' : 'SHORT_TERM',
+        title: r.action || r.title || 'Investigate scoped evidence',
+        description: r.reason || r.description || 'Use the selected problem IDs as the investigation scope.',
+        dynatraceFeature: r.dynatraceCapability || r.dynatraceFeature || 'Davis AI',
+        estimatedImpact: 'Faster scoped troubleshooting',
+        owner: 'Service owner',
+      })),
+      validationSteps: parsed.validationSteps || [],
+      generatedBy: source,
+      latencyMs,
+    };
+  }
+  if (currentPersona === 'sre') {
+    const signals = Array.isArray(parsed.reliabilitySignals) ? parsed.reliabilitySignals : [];
+    return {
+      summary: `Reliability analysis for ${ps.length} selected problems identified ${signals.length} reliability signals and ${(parsed.automationOpportunities || []).length} automation opportunities.`,
+      patterns: [
+        ...signals.map(s => `${s.signal || 'Reliability signal'}${s.confidence ? ` (${s.confidence})` : ''}`),
+        ...(parsed.recurrenceDrivers || []),
+      ],
+      costNarrative: totalCost ? `Selected problems represent ${fmtC(totalCost)} estimated operational exposure.` : '',
+      recommendations: (parsed.preventionRecommendations || []).map((r, idx) => ({
+        priority: idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC',
+        title: r,
+        description: (parsed.automationOpportunities || [])[idx] || 'Reduce recurrence through reliability workflow improvements.',
+        dynatraceFeature: 'Site Reliability Guardian',
+        estimatedImpact: 'Reduced future recurrence',
+        owner: 'SRE team',
+      })),
+      reliabilitySignals: signals,
+      operationalWeaknesses: parsed.operationalWeaknesses || [],
+      automationOpportunities: parsed.automationOpportunities || [],
+      generatedBy: source,
+      latencyMs,
+    };
+  }
+  return {...parsed, generatedBy:source, latencyMs};
+}
+
 async function callAIWithPrompt(ps,persona,costs,totalCost,source){
+  if (!ps || !ps.length) throw new Error('Select a pattern before generating Dynatrace Assist output.');
   const t0=Date.now();
   const PINSTR={
     executive:`Brief a C-level executive. Plain English only - no pods, JVM, heap, GC, DQL. Focus on business impact, customer experience, revenue risk. CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number (cost, %, count, or duration) from the data. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure.`,
@@ -2184,7 +2522,7 @@ async function callAIWithPrompt(ps,persona,costs,totalCost,source){
   const noiseCount = ps.filter(p=>p.noise).length;
   const openCount  = ps.filter(p=>p.status==='OPEN').length;
   const metrics = calculateAIMetrics(ps, costs, totalCost);
-  const prompt=`${PINSTR[persona]}
+  const legacyPrompt=`${PINSTR[persona]}
 TOTAL COST: $${totalCost.toLocaleString()}
 KEY METRICS: ${rcaPct}% auto-correlated (${rcaCount}/${ps.length} problems have RCA), ${noiseCount} noise-suppressed events, ${openCount} currently open, ${metrics.patternCount} recurring patterns, ${metrics.recurringCostPct}% of cost from recurring issues, avg MTTR ${metrics.avgMttr} minutes, MTTR delta ${metrics.mttrDeltaPct}%, ${metrics.newPatterns} new patterns, ${metrics.resolvedPatterns} resolved patterns, ${metrics.topTech} accounts for ${metrics.topTechCostPct}% of operational cost.
 PROBLEMS: ${JSON.stringify(ctx)}
@@ -2192,6 +2530,11 @@ BROAD DYNATRACE FEATURES AND ACTION CAPABILITIES:
 ${DYNATRACE_OBSERVABILITY_FEATURES}
 IMPORTANT: Every insight in "summary" and "patterns" MUST reference at least one specific metric (cost %, count, duration, or percentage) from the data above. Do not make generic statements without metric backing.
 Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrative":"string","recommendations":[{"priority":"IMMEDIATE|SHORT_TERM|STRATEGIC","title":"string","description":"string","dynatraceFeature":"one broad Dynatrace feature or action capability from the list","estimatedImpact":"string","owner":"string"}]}`;
+  const prompt = persona === 'developer'
+    ? buildDeveloperAnalysisPrompt(ps)
+    : persona === 'sre'
+      ? buildSreAnalysisPrompt(ps, costs, totalCost)
+      : legacyPrompt;
   let text='';
   if(source==='davis-copilot'){
     text = await callDavisSkill(prompt);
@@ -2217,7 +2560,7 @@ Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrat
   console.log('[OpInt Davis] callAIWithPrompt raw text:', text);
   const parsed = extractJSON(text);
   console.log('[OpInt Davis] callAIWithPrompt parsed:', parsed);
-  return{...parsed,generatedBy:source,latencyMs:Date.now()-t0};
+  return normalizePersonaAnalysisResponse(parsed, persona, ps, costs, totalCost, source, Date.now()-t0);
 }
 
 function getFallbackMulti(ps,persona,costs){
@@ -2588,9 +2931,12 @@ function buildRemediationRequest(pat, allPatterns=[]) {
   const clouds = uniqVals(problems.map(p => p.cloud).filter(Boolean).filter(c => c !== 'unknown'));
   const users = problems.reduce((s, p) => s + (p.users || 0), 0);
   const rcaList = pat.dimensions?.rootCauseEntities || problems.map(p => p.rca).filter(Boolean);
+  const scope = persona === 'developer' ? selectedDeveloperScope() : null;
   const req = {
     patternId: pat.id,
     patternName: pat.title,
+    eventType: pat.severity || problems[0]?.sev || 'UNKNOWN',
+    eventName: pat.title || problems[0]?.title || 'Unknown problem',
     problemIds: problems.map(p => p.displayId || p.id),
     occurrenceCount: pat.occurrences,
     openProblemCount: patternOpenCount(pat),
@@ -2612,6 +2958,12 @@ function buildRemediationRequest(pat, allPatterns=[]) {
     tracesEvidenceSummary: 'not available in current pattern evidence package',
     metricsEvidenceSummary: `severity ${pat.severity}; max Davis impact ${patternMaxImpact(pat)}; recurrence score ${pat.recurrenceScore}`,
     relevantTags: tags,
+    selectedScope: scope ? {
+      type: scope.type,
+      label: scope.label,
+      source: scope.source,
+      rawValue: scope.rawValue,
+    } : null,
     ownerTeam: primaryTeamFromPattern(pat),
     confidenceScore: patternConfidenceScore(pat),
     fixabilityScore: Math.round((pat.fixabilityRaw || 0) * 100),
