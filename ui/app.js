@@ -4223,7 +4223,7 @@ function renderConciseKpiRow(ps, patterns) {
   const modelPct = Math.round(recoveryRate() * 100);
   const cards = [
     { key:'risk', label:'Open Risk Exposure', value:fmtC(m.totalPatternCost), sub:`Active recurring pattern impact`, cls:'risk' },
-    { key:'recoverable', label:'Recoverable Now', value:fmtC(m.recoverable), sub:`Recovery model ${modelPct}% | ${recoveryPct}% of exposure`, cls:'recover' },
+    { key:'recoverable', label:'Recoverable Now', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure ${highlightText('Recovery model', `${modelPct}%`, 'low')}`, cls:'recover' },
     { key:'patterns', label:'Active Patterns', value:patterns.length, sub:`Recurring patterns requiring attention`, cls:'patterns' },
     { key:'resolution', label:'Median MTTR', value:fmtM(m.mttr.median), sub:`${m.mttr.count || 0} resolved problems`, cls:'time' },
   ];
@@ -4303,10 +4303,10 @@ function renderConciseFocusBanner(patterns) {
     <div>
       <div class="cx-eyebrow">Selected Focus</div>
       <h2>${selected.title}</h2>
-      <p><strong>Primary Action:</strong> ${primaryAction}</p>
+      <p>${highlightText('Primary Action', primaryAction, 'low')}</p>
     </div>
     <div class="cx-focus-actions">
-      <div class="cx-focus-stat badge-stat"><span>Priority</span>${trafficBadge('Priority', priority)}</div>
+      <div class="cx-focus-stat badge-stat"><span>Priority</span>${highlightText('', priority, priority)}</div>
       <div class="cx-focus-stat"><span>Exposure</span><strong>${fmtC(exposure)}</strong></div>
       <div class="cx-focus-stat"><span>Occurrences</span><strong>${selected.occurrences}</strong></div>
       <div class="cx-focus-stat"><span>Open Incidents</span><strong>${patternOpenCount(selected)}</strong></div>
@@ -4454,11 +4454,26 @@ function trafficBadge(label, value) {
   return `<span class="exec-traffic-badge ${cls}"><span>${label}</span><strong>${value}</strong></span>`;
 }
 
+function highlightText(label, value, tone='low') {
+  const normalized = String(tone || value || '').toLowerCase();
+  const cls = normalized.includes('high') ? 'high'
+    : normalized.includes('medium') ? 'medium'
+    : normalized.includes('low') ? 'low'
+    : 'neutral';
+  const prefix = label ? `<span>${label}:</span> ` : '';
+  return `<span class="exec-inline-highlight ${cls}">${prefix}${value}</span>`;
+}
+
 function confidenceBadge(score) {
   const value = Number(score) || 0;
-  const label = value >= 70 ? 'High' : value >= 40 ? 'Medium' : 'Low';
+  const label = confidenceLabel(value);
   const cls = value >= 70 ? 'low' : value >= 40 ? 'medium' : 'high';
-  return `<span class="exec-traffic-badge ${cls}"><span>Confidence</span><strong>${label} ${value}/100</strong></span>`;
+  return highlightText('Confidence', label, cls);
+}
+
+function confidenceLabel(score) {
+  const value = Number(score) || 0;
+  return value >= 70 ? 'High' : value >= 40 ? 'Medium' : 'Low';
 }
 
 function remediationEffortLabel(fixability) {
@@ -4538,7 +4553,7 @@ function executiveBubbleAgeClass(pat) {
 
 function renderDecisionDetailPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty">
-    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button></div>
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection" disabled>Clear Selection</button></div></div>
     <div class="exec-empty"><strong>Select a pattern to understand business impact, recurrence, and remediation opportunity.</strong></div>
   </aside>`;
   const openCount = patternOpenCount(pat);
@@ -4561,19 +4576,19 @@ function renderDecisionDetailPanel(pat, patterns) {
   const recommendedAction = hasActionableRca
     ? pat.recommendation?.text || 'Validate the identified root cause and initiate the remediation path.'
     : 'Continue investigation until the root cause is consistently identified.';
-  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources | RCA confidence ${complexity.rcaConfidence}%`;
-  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 | concentration ${pat.concentration}</strong></div></div>`;
+  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources | RCA confidence ${confidenceLabel(complexity.rcaConfidence)}`;
+  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${confidenceLabel(rcaConfidence)}</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidenceLabel(confidence)} | concentration ${pat.concentration}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
   const remediationPanel = renderWorkspaceRemediationBlock(pat);
   const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
   return `<aside class="cx-detail">
-    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button></div>
-    <div class="cx-badge-row">${trafficBadge('Priority', priority)}${confidenceBadge(confidence)}${trafficBadge('Effort', effort)}</div>
+    <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection">Clear Selection</button></div></div>
+    <div class="cx-highlight-row">${highlightText('Priority', priority, priority)}${confidenceBadge(confidence)}${highlightText('Effort', effort, effort)}</div>
     <div class="cx-detail-label">Business Impact</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
     <div class="cx-detail-label">Technical Actionability</div>
-    <div class="cx-detail-tiles actionability"><div>${trafficBadge('Priority', priority)}<span>Priority</span></div><div>${trafficBadge('Effort', effort)}<span>Remediation Effort</span></div><div>${confidenceBadge(confidence)}<span>Confidence</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
+    <div class="cx-detail-tiles actionability"><div>${highlightText('Effort', effort, effort)}<span>Remediation Effort</span></div><div>${confidenceBadge(confidence)}<span>Confidence</span></div><div>${highlightText('Priority', priority, priority)}<span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
@@ -4599,18 +4614,18 @@ function renderConciseActFirstMap(patterns) {
     const primaryAction = pat.recommendation?.text || model.reason;
     const priority = executivePriorityLevel(pat, patterns);
     const confidence = patternConfidenceScore(pat);
-    const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Occurrences ${pat.occurrences} | Open incidents ${patternOpenCount(pat)} | Confidence ${patternConfidenceScore(pat)}/100 | Action ${primaryAction}`;
+    const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Occurrences ${pat.occurrences} | Open incidents ${patternOpenCount(pat)} | Confidence ${confidenceLabel(patternConfidenceScore(pat))} | Action ${primaryAction}`;
     return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
       <span>#${idx + 1}</span>
       <div class="cx-bubble-popover" role="tooltip">
         <div class="cx-pop-title">${pat.title}</div>
-        <div class="cx-pop-row"><span>Priority</span>${trafficBadge('Priority', priority)}</div>
+        <div class="cx-pop-row"><span>Priority</span>${highlightText('', priority, priority)}</div>
         <div class="cx-pop-grid">
           <div><small>Exposure</small><strong>${fmtC(cost)}</strong></div>
           <div><small>Recoverable</small><strong>${fmtC(recoverable)}</strong></div>
           <div><small>Occurrences</small><strong>${pat.occurrences}</strong></div>
           <div><small>Open</small><strong>${patternOpenCount(pat)}</strong></div>
-          <div><small>Confidence</small><strong>${confidence}/100</strong></div>
+          <div><small>Confidence</small><strong>${confidenceLabel(confidence)}</strong></div>
         </div>
         <p>${primaryAction}</p>
       </div>
@@ -4894,7 +4909,6 @@ function renderDecisionFirstExecView(patterns, ps) {
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
         ${renderConciseKpiRow(ps, patterns)}
-        ${renderMetricDrilldown(ps, patterns)}
         ${renderConciseFocusBanner(patterns)}
         <section class="cx-view-controls">
           <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>

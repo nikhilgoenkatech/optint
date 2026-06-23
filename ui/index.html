@@ -656,10 +656,10 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-focus-why{margin-top:6px;font-size:11px;line-height:1.4;color:var(--text-2)}
 .cx-focus-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .exec-persona .cx-focus-stat{min-width:104px;padding:8px 10px;background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:var(--r)}
-.exec-persona .cx-focus-stat.badge-stat{min-width:128px}
+.exec-persona .cx-focus-stat.badge-stat{min-width:104px}
 .exec-persona .cx-focus-stat span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
 .exec-persona .cx-focus-stat strong{display:block;margin-top:3px;font-family:var(--mono);font-size:12px;color:var(--text-1)}
-.exec-persona .cx-focus-stat .exec-traffic-badge{margin-top:4px}
+.exec-persona .cx-focus-stat .exec-inline-highlight{margin-top:4px}
 .cx-metric-drilldown{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:14px;align-items:center;padding:13px 16px;background:var(--bg-1);border:1px solid rgba(77,184,255,.22);border-radius:var(--rl)}
 .cx-metric-drilldown.neutral{grid-template-columns:1fr;border-color:var(--border)}
 .cx-metric-drilldown h2{margin:3px 0 0;color:var(--text-1);font-size:16px}
@@ -721,7 +721,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-detail-tiles div{background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);padding:8px}
 .cx-detail-tiles strong{display:block;font-size:15px;font-family:var(--mono);color:var(--text-1);white-space:nowrap}
 .cx-detail-tiles span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-top:3px}
-.cx-detail-tiles.actionability .exec-traffic-badge{margin-bottom:4px}
+.cx-detail-tiles.actionability .exec-inline-highlight{margin-bottom:4px}
 .cx-detail-section{border-top:1px solid var(--border);padding-top:11px;margin-top:11px}
 .cx-action-block{margin-top:12px;padding:11px;border:1px solid rgba(61,214,140,.18);background:rgba(61,214,140,.06);border-radius:var(--r)}
 .cx-action-block.low{border-color:rgba(245,197,24,.22);background:rgba(245,197,24,.06)}
@@ -778,9 +778,18 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-disclosure[open] summary b{transform:rotate(45deg);color:var(--blue)}
 .cx-disclosure-body{padding:11px;border-top:1px solid var(--border);background:rgba(255,255,255,.01)}
 .cx-disclosure-body .investigation-complexity{margin-top:0}
+.cx-panel-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .cx-panel-toggle{appearance:none;border:1px solid var(--border-hi);border-radius:var(--r);background:var(--bg-2);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:800;padding:6px 8px;cursor:pointer;white-space:nowrap}
 .cx-panel-toggle:hover{border-color:var(--blue);color:var(--text-1)}
+.cx-panel-toggle:disabled{opacity:.45;cursor:not-allowed}
 .cx-badge-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 10px}
+.cx-highlight-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 10px}
+.exec-inline-highlight{display:inline-flex;align-items:center;gap:4px;border-radius:5px;padding:3px 6px;background:rgba(77,184,255,.08);color:var(--text-1);font-size:10px;font-weight:850;line-height:1.25}
+.exec-inline-highlight span{color:var(--text-3);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.exec-inline-highlight.high{background:rgba(255,103,112,.14);color:var(--coral)}
+.exec-inline-highlight.medium{background:rgba(245,197,24,.13);color:var(--amber)}
+.exec-inline-highlight.low{background:rgba(61,214,140,.11);color:var(--green)}
+.exec-inline-highlight.neutral{background:rgba(77,184,255,.08);color:var(--text-1)}
 .exec-traffic-badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;border:1px solid var(--border);padding:4px 7px;background:var(--bg-2);font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
 .exec-traffic-badge span{color:var(--text-3)}
 .exec-traffic-badge strong{color:var(--text-1);font-family:var(--mono);font-size:10px}
