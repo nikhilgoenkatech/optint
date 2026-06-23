@@ -4393,7 +4393,7 @@ function renderWorkspaceRemediationBlock(pat) {
 }
 
 function renderDecisionDetailPanel(pat, patterns) {
-  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a pattern to see why it matters and what should be done next.</div></aside>`;
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty"><strong>Select a pattern to investigate</strong><p>Details, analysis, and remediation guidance will appear here after selecting a bubble or Pattern Explorer row.</p></div></aside>`;
   const openCount = patternOpenCount(pat);
   const exposure = patternCost(pat);
   const recoverable = patternRecoverableValue(pat);
