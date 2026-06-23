@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpInt v3 — Operational Intelligence</title>
+<title>OpInt v3 - Operational Intelligence</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1102,37 +1102,37 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 <!-- HEADER -->
 <header class="hdr">
   <div class="brand">
-    <div class="brand-icon">⚡</div>
+    <div class="brand-icon">Lightning</div>
     <div><div class="brand-name">OpInt</div><div class="brand-sub">Operational Intelligence</div></div>
   </div>
   <div class="hsep"></div>
   <div class="psw" id="psw">
-    <button class="pbtn active" data-p="executive" ><span class="pdot"></span>👔 Executive</button>
-    <button class="pbtn" data-p="developer" ><span class="pdot"></span>💻 Developer</button>
-    <button class="pbtn" data-p="sre" ><span class="pdot"></span>🔧 SRE</button>
+    <button class="pbtn active" data-p="executive" ><span class="pdot"></span>Executive</button>
+    <button class="pbtn" data-p="sre" ><span class="pdot"></span>SRE</button>
+    <button class="pbtn" data-p="developer" ><span class="pdot"></span>Developer</button>
   </div>
   <div class="hsep"></div>
   <select class="hsel" id="timeRange"><option value="7d" selected>Last 7 days</option><option value="14d">Last 14 days</option><option value="30d">Last 30 days</option></select>
   <select class="hsel" id="appFilter"><option value="">All Applications</option><option value="ShopApp">ShopApp</option><option value="MobileApp">MobileApp</option><option value="AdminPortal">AdminPortal</option></select>
   <div class="hdr-right">
     <div class="live" title="Connected"></div>
-    <button class="btn btn-ghost" data-action="doRefresh">↻ Refresh</button>
+    <button class="btn btn-ghost" data-action="doRefresh">Refresh</button>
   </div>
 </header>
 
 <!-- PERSONA BAR -->
 <div class="pbar">
-  <span id="pbarIcon" style="font-size:15px">👔</span>
-  <span class="pbar-text" id="pbarText"><strong>Executive View</strong> — Business impact · customer-facing incidents only</span>
-  <span class="pbar-chip" id="pbarChip">— of 20 visible</span>
+  <span id="pbarIcon" style="font-size:15px">E</span>
+  <span class="pbar-text" id="pbarText"><strong>Executive View</strong> - Business impact | customer-facing incidents only</span>
+  <span class="pbar-chip" id="pbarChip">- of 20 visible</span>
 </div>
 
 <!-- COST BANNER -->
 <div class="cost-banner" id="costBanner">
-  <div class="cb-icon">💰</div>
+  <div class="cb-icon">$</div>
   <div class="cb-main">
     <div class="cb-headline" id="cbHead">Calculating...</div>
-    <div class="cb-sub" id="cbSub">Revenue loss · engineering cost · recurring waste</div>
+    <div class="cb-sub" id="cbSub">Revenue loss | engineering cost | recurring waste</div>
   </div>
   <div class="cb-stats" id="cbStats"></div>
   <button class="cb-cfg" data-action="toggleCfg">⚙ Configure</button>
@@ -1140,7 +1140,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 
 <!-- COST CONFIG -->
 <div class="cfg-panel hidden" id="cfgPanel">
-  <div class="cfg-title">💰 Cost Model</div>
+  <div class="cfg-title">Cost Model</div>
   <div class="cfg-row"><span class="cfg-lbl">Revenue / user / min</span><input class="cfg-inp" id="cfgRev" value="0.08" type="number" step="0.01" min="0"></div>
   <div class="cfg-row"><span class="cfg-lbl">Eng hourly rate ($)</span><input class="cfg-inp" id="cfgEng" value="150" type="number" step="10" min="0"></div>
   <div class="cfg-row"><span class="cfg-lbl">Avg responders</span><input class="cfg-inp" id="cfgResp" value="3" type="number" step="1" min="1"></div>
@@ -1160,13 +1160,13 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
         <div class="view-tabs">
           <button class="view-tab" data-view="patterns">
-            Pattern Discovery <span class="tab-count" id="patternTabCount">—</span>
+            Pattern Discovery <span class="tab-count" id="patternTabCount">-</span>
           </button>
           <button class="view-tab active" data-view="explorer">
-            📋 Problem Explorer <span class="tab-count" id="explorerTabCount">—</span>
+            Problem Explorer <span class="tab-count" id="explorerTabCount">-</span>
           </button>
           <button class="view-tab" data-view="progress">
-            📈 Team Progress <span class="tab-count" id="progressTabCount">—</span>
+            Team Progress <span class="tab-count" id="progressTabCount">-</span>
           </button>
         </div>
       </div>
@@ -1188,7 +1188,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
         <div class="card fade-in">
           <div class="cp" style="padding-bottom:12px">
             <div class="tbl-header">
-              <div class="tbl-title">📋 Problems <span style="font-size:11px;color:var(--text-3);font-weight:400" id="tblSubtitle">— click ▶ for inline summary</span></div>
+              <div class="tbl-title">Problems <span style="font-size:11px;color:var(--text-3);font-weight:400" id="tblSubtitle">- click > for inline summary</span></div>
               <span class="sel-count" id="selCount">0 selected</span>
               <div class="tbl-actions">
                 <button class="btn btn-ai" id="analyzeBtnMulti" disabled data-action="analyzeMulti">Analyze Selected</button>
@@ -1232,13 +1232,13 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
             <span class="ext-lbl">Endpoint / Key</span>
             <input class="ext-inp" id="extKey" placeholder="API key or MCP server URL" type="password">
           </div>
-          <div class="ext-note" id="extNote">⚠ Problem data sent to external provider. Customer controls which fields are shared.</div>
+          <div class="ext-note" id="extNote">Warning: problem data sent to external provider. Customer controls which fields are shared.</div>
         </div>
 
         <div id="aiContent">
           <div class="ai-idle">
             <div style="font-size:12px;color:var(--text-3)">Expand a problem row for inline summary, or select multiple for cross-problem analysis</div>
-            <div class="ai-idle-hint">Pattern context · ranked recommendations</div>
+            <div class="ai-idle-hint">Pattern context | ranked recommendations</div>
           </div>
         </div>
       </div>

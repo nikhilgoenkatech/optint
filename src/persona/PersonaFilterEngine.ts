@@ -8,7 +8,7 @@ import { DynatraceProblem, Severity } from '../models';
 import { PersonaType } from './PersonaResolver';
 
 // ------------------------------------
-// Noise rules — what executives should NOT see
+// Noise rules - what executives should NOT see
 // ------------------------------------
 const EXEC_NOISE_TITLES = [
   'cpu spike', 'gc pause', 'garbage collection', 'disk i/o',
@@ -60,13 +60,13 @@ export function rankByPersona(
   const sorted = [...problems];
   switch (persona) {
     case 'executive':
-      // Rank by: affected users × duration (business impact first)
+      // Rank by: affected users x duration (business impact first)
       return sorted.sort((a, b) =>
         ((b.affectedUsers ?? 0) * (b.duration ?? 1)) -
         ((a.affectedUsers ?? 0) * (a.duration ?? 1))
       );
     case 'developer':
-      // Rank by: severity weight → recurrence score
+      // Rank by: severity weight -> recurrence score
       const sevW: Record<string, number> = { AVAILABILITY:5, ERROR:4, PERFORMANCE:3, RESOURCE_CONTENTION:2, CUSTOM_ALERT:1 };
       return sorted.sort((a, b) =>
         ((sevW[b.severity] ?? 0) + (b.recurrenceScore ?? 0) / 20) -
@@ -168,41 +168,41 @@ export interface PersonaMeta {
 export const PERSONA_META: Record<PersonaType, PersonaMeta> = {
   executive: {
     label: 'Executive',
-    icon: '👔',
+    icon: 'E',
     color: '#4db8ff',
     accentColor: 'rgba(77,184,255,0.15)',
-    description: 'Business impact view — customer-facing incidents only',
+    description: 'Business impact view - customer-facing incidents only',
     kpiLabels: {
       total:   'Revenue at Risk',
       metric1: 'Customers Affected',
-      metric2: 'Avg Resolution Time',
+      metric2: 'Median MTTR',
       metric3: 'Recurring Issues',
     },
   },
   developer: {
     label: 'Developer',
-    icon: '💻',
+    icon: 'D',
     color: '#3dd68c',
     accentColor: 'rgba(61,214,140,0.15)',
-    description: 'Engineering view — service errors, root causes, traces',
+    description: 'Engineering view - service errors, root causes, traces',
     kpiLabels: {
       total:   'Active Problems',
       metric1: 'Services Affected',
       metric2: 'Missing Root Cause',
-      metric3: 'Avg MTTR',
+      metric3: 'Median MTTR',
     },
   },
   sre: {
     label: 'SRE / Platform',
-    icon: '🔧',
+    icon: 'S',
     color: '#9b8fe4',
     accentColor: 'rgba(155,143,228,0.15)',
-    description: 'Full operational view — all signals, noise analysis, SLO impact',
+    description: 'Full operational view - all signals, noise analysis, SLO impact',
     kpiLabels: {
       total:   'Total Problems',
       metric1: 'Open Now',
       metric2: 'Noisy Alerts',
-      metric3: 'P95 MTTR',
+      metric3: 'Median MTTR',
     },
   },
 };

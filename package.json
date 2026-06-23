@@ -1,7 +1,7 @@
 {
   "name": "opint",
   "version": "1.0.0",
-  "description": "OpInt — Operational Intelligence for Dynatrace",
+  "description": "OpInt - Operational Intelligence for Dynatrace",
   "private": true,
   "scripts": {
     "start": "dt-app run",

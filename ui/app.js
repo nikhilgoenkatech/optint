@@ -33,15 +33,15 @@ let MTTR_SUMMARY = null;
 // PERSONA CONFIG
 // ============================================================
 const PMETA = {
-  executive:{label:'Executive',icon:'👔',color:'#4db8ff',desc:'All non-duplicate incidents · pattern-led view',
+  executive:{label:'Executive',icon:'E',color:'#4db8ff',desc:'All non-duplicate incidents | pattern-led view',
     filter:()=>true,
     rank:(a,b)=>((b.users||0)*(b.dur||30))-((a.users||0)*(a.dur||30)),
     cols:['exp','check','biz','cost','users','dur','rec','status']},
-  developer:{label:'Developer',icon:'💻',color:'#3dd68c',desc:'Service errors · root causes · traces',
+  developer:{label:'Developer',icon:'D',color:'#3dd68c',desc:'Service errors | root causes | traces',
     filter:p=>!['Disk I/O'].some(n=>p.title.includes(n)),
     rank:(a,b)=>{const w={AVAILABILITY:5,ERROR:4,PERFORMANCE:3,RESOURCE_CONTENTION:2,CUSTOM_ALERT:1};return (w[b.sev]||0)-(w[a.sev]||0)},
     cols:['exp','check','sev','title','svc','rca','mttr','rec','users','open']},
-  sre:{label:'SRE / Platform',icon:'🔧',color:'#9b8fe4',desc:'Full operational view · all signals · noise analysis',
+  sre:{label:'SRE / Platform',icon:'S',color:'#9b8fe4',desc:'Full operational view | all signals | noise analysis',
     filter:()=>true,
     rank:(a,b)=>(b.impact||0)-(a.impact||0),
     cols:['exp','check','sev','title','impact','cost','rec','mttr','users','rca','noise','cloud','open']},
@@ -169,13 +169,43 @@ function confClass(score) {
   return score>=0.75?'conf-high':score>=0.50?'conf-med':score>=0.25?'conf-low':'conf-vlow';
 }
 function confLabel(score) {
-  return score>=0.75?'':score>=0.50?'~':score>=0.25?'⚠ ~':'⚠';
+  return score>=0.75?'':score>=0.50?'~':score>=0.25?'Warning ~':'Warning';
 }
 
 function fmtC(n){if(n>=1e6)return`$${(n/1e6).toFixed(1)}M`;if(n>=1e3)return`$${(n/1e3).toFixed(1)}K`;return`$${Math.round(n)}`}
-function fmtM(m){if(!m||m===0)return'—';if(m>=1440)return`${(m/1440).toFixed(m>=14400?0:2)}d`;if(m<60)return Math.round(m)+'m';const h=Math.floor(m/60),r=Math.round(m%60);return r>0?`${h}h ${r}m`:`${h}h`}
+function fmtM(m){if(!Number.isFinite(m)||m<=0)return'-';if(m>=1440)return`${(m/1440).toFixed(m>=14400?0:2)}d`;if(m<60)return Math.round(m)+'m';const h=Math.floor(m/60),r=Math.round(m%60);return r>0?`${h}h ${r}m`:`${h}h`}
 function fmtR(ms){const d=Date.now()-ms,m=Math.floor(d/60000);if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;return`${Math.floor(h/24)}d ago`}
 const SEV_LBL={AVAILABILITY:'Avail',ERROR:'Error',PERFORMANCE:'Perf',RESOURCE_CONTENTION:'Rsrc',CUSTOM_ALERT:'Custom'};
+
+function validResolvedDurations(ps) {
+  return (ps || [])
+    .filter(p => p && p.status === 'RESOLVED' && Number.isFinite(p.dur) && p.dur > 0)
+    .map(p => p.dur);
+}
+
+function mttrSummaryFromProblems(ps) {
+  const durs = validResolvedDurations(ps);
+  return {
+    avg: durs.length ? arrMean(durs) : null,
+    median: durs.length ? arrPercentile(durs, .5) : null,
+    p85: durs.length ? arrPercentile(durs, .85) : null,
+    p95: durs.length ? arrPercentile(durs, .95) : null,
+    count: durs.length,
+  };
+}
+
+function safeMttrSummary(summary, fallbackPs) {
+  const fallback = mttrSummaryFromProblems(fallbackPs);
+  if (!summary || !Number(summary.count)) return fallback;
+  const clean = value => Number.isFinite(value) && value > 0 ? value : null;
+  return {
+    avg: clean(summary.avg),
+    median: clean(summary.median),
+    p85: clean(summary.p85),
+    p95: clean(summary.p95),
+    count: Number(summary.count) || 0,
+  };
+}
 
 // ============================================================
 // DQL DATA LOADER
@@ -270,7 +300,7 @@ async function loadProblems() {
     // event.category values: ERROR, AVAILABILITY, SLOWDOWN, CUSTOM_ALERT
     // map to app's sev values: ERROR, AVAILABILITY, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT
     const SEV_MAP = { ERROR: 'ERROR', AVAILABILITY: 'AVAILABILITY', SLOWDOWN: 'PERFORMANCE', CUSTOM_ALERT: 'CUSTOM_ALERT' };
-    // event.status: OPEN, ACTIVE → 'OPEN'; CLOSED → 'RESOLVED'
+    // event.status: OPEN, ACTIVE -> 'OPEN'; CLOSED -> 'RESOLVED'
     const STATUS_MAP = { OPEN: 'OPEN', ACTIVE: 'OPEN', CLOSED: 'RESOLVED', RESOLVED: 'RESOLVED' };
     // dt.davis.impact_level is documented as a string, but some tenants may return an array.
     const IMPACT_RANK = { ENVIRONMENT: 95, APPLICATION: 75, SERVICE: 55, SERVICES: 55, INFRASTRUCTURE: 35, SYNTHETIC: 20 };
@@ -411,10 +441,10 @@ function render(){
   document.body.classList.toggle('exec-persona', persona === 'executive');
   document.documentElement.style.setProperty('--persona',m.color);
   document.getElementById('pbarIcon').textContent=m.icon;
-  document.getElementById('pbarText').innerHTML=`<strong>${m.label} View</strong> — ${m.desc}`;
+  document.getElementById('pbarText').innerHTML=`<strong>${m.label} View</strong> - ${m.desc}`;
   if(persona==='executive'){
     const ep=detectPatterns(ps).patterns;
-    document.getElementById('pbarChip').textContent=`${ep.length} pattern${ep.length!==1?'s':''} · ${ps.length} problems`;
+    document.getElementById('pbarChip').textContent=`${ep.length} pattern${ep.length!==1?'s':''} | ${ps.length} problems`;
   }
   else document.getElementById('pbarChip').textContent=`${ps.length} of ${PROBLEMS.length} visible`;
   // cost banner
@@ -442,16 +472,11 @@ function renderKPIs(ps){
     if (kpiDetails) kpiDetails.innerHTML = '';
     return;
   }
-  const res=ps.filter(p=>p.status==='RESOLVED'&&p.dur);
-  const durs=res.map(p=>p.dur);
-  const avg=durs.length?durs.reduce((a,b)=>a+b,0)/durs.length:0;
-  const p95=durs.length?[...durs].sort((a,b)=>a-b)[Math.floor(durs.length*.95)]??0:0;
-  const median=arrPercentile(durs, .5);
-  const p85=arrPercentile(durs, .85);
+  const mttr = mttrSummaryFromProblems(ps);
   const appFilter = document.getElementById('appFilter').value;
   const execMttr = persona === 'executive' && !appFilter && MTTR_SUMMARY
-    ? MTTR_SUMMARY
-    : { avg, median, p85, p95, count: res.length };
+    ? safeMttrSummary(MTTR_SUMMARY, ps)
+    : mttr;
   const costs=ps.map(calcCost),total=costs.reduce((a,c)=>a+c.total,0);
   const waste=calcRecurringWaste(ps);
   const open=ps.filter(p=>p.status==='OPEN').length;
@@ -472,52 +497,52 @@ function renderKPIs(ps){
     executive:[
       {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${openPatterns.length} active now`,c:'kc-amber',mode:'patterns',actionText:execKpiDetail==='patterns'?'Hide patterns':'View patterns'},
       {lbl:'High-Impact Patterns',val:highImpactPatterns.length,sub:`${highImpactOccurrences} pattern occurrences`,c:'kc-coral',mode:'impact',actionText:execKpiDetail==='impact'?'Hide impact':'View high impact'},
-      {lbl:'Total Problems',val:ps.length,sub:`${patternOccurrences} grouped · ${oneOffCount} one-off`,c:'kc-blue',mode:'occurrences',actionText:execKpiDetail==='occurrences'?'Hide problems':'View problems'},
-      {lbl:'Avg Resolution Time',val:fmtM(execMttr.avg),sub:`p95: ${fmtM(execMttr.p95)} · ${execMttr.count} resolved`,c:'kc-teal',mode:'mttr',actionText:execKpiDetail==='mttr'?'Hide MTTR':'View MTTR drivers'},
+      {lbl:'Total Problems',val:ps.length,sub:`${patternOccurrences} grouped | ${oneOffCount} one-off`,c:'kc-blue',mode:'occurrences',actionText:execKpiDetail==='occurrences'?'Hide problems':'View problems'},
+      {lbl:'Median MTTR',val:fmtM(execMttr.median),sub:`p85: ${fmtM(execMttr.p85)} | ${execMttr.count} resolved`,c:'kc-teal',mode:'mttr',actionText:execKpiDetail==='mttr'?'Hide MTTR':'View MTTR drivers'},
     ],
     developer:[
       {lbl:'Active Problems',val:ps.length,sub:`${open} open`,c:'kc-blue'},
       {lbl:'Services Affected',val:svcs,sub:'unique entities',c:'kc-coral'},
       {lbl:'Missing Root Cause',val:miss,sub:`${Math.round(miss/ps.length*100)||0}% of total`,c:'kc-amber'},
-      {lbl:'Avg MTTR',val:fmtM(avg),sub:`p95: ${fmtM(p95)}`,c:'kc-green'},
+      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-green'},
     ],
     sre:[
       {lbl:'Total Problems',val:ps.length,sub:`${open} open now`,c:'kc-blue'},
       {lbl:'Recurring Waste',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'}},
       {lbl:'Noisy Alerts',val:noisy,sub:'noise candidates',c:'kc-amber'},
-      {lbl:'P95 MTTR',val:fmtM(p95),sub:`avg: ${fmtM(avg)}`,c:'kc-violet'},
+      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-violet'},
     ],
   };
   if (persona === 'executive') {
     KPIS.executive = [
-      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${patternOccurrences} grouped · ${openPatterns.length} active`,c:'kc-amber'},
+      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${patternOccurrences} grouped | ${openPatterns.length} active`,c:'kc-amber'},
       {lbl:'Cost Exposure',val:fmtC(totalPatternCost),sub:`${highImpactPatterns.length} high-impact pattern${highImpactPatterns.length!==1?'s':''}`,c:'kc-coral'},
       {lbl:'Potential Savings',val:fmtC(potentialSavings),sub:'Modeled recurring reduction',c:'kc-green'},
-      {lbl:'Avg Resolution Time',val:fmtM(execMttr.avg),sub:`p95: ${fmtM(execMttr.p95)} · ${execMttr.count} resolved`,c:'kc-teal'},
+      {lbl:'Median MTTR',val:fmtM(execMttr.median),sub:`p85: ${fmtM(execMttr.p85)} | ${execMttr.count} resolved`,c:'kc-teal'},
     ];
   }
   if (persona === 'executive') {
     const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
     KPIS.executive = [
       {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${openPatterns.length} active pattern${openPatterns.length!==1?'s':''}`,c:'kc-amber'},
-      {lbl:'Grouped Problems',val:patternOccurrences,sub:`${ps.length} total · ${oneOffCount} one-off`,c:'kc-blue'},
+      {lbl:'Grouped Problems',val:patternOccurrences,sub:`${ps.length} total | ${oneOffCount} one-off`,c:'kc-blue'},
       {lbl:'Cost Exposure',val:fmtC(totalPatternCost),sub:`${highImpactPatterns.length} high-impact pattern${highImpactPatterns.length!==1?'s':''}`,c:'kc-coral'},
       {lbl:'Potential Savings',val:fmtC(potentialSavings),sub:'Modeled recurring reduction',c:'kc-green'},
       {lbl:'Operational Risk Backlog',val:riskBacklog,sub:'Patterns with open incidents',c:'kc-violet'},
-      {lbl:'Avg Resolution Time',val:fmtM(execMttr.avg),sub:`p95: ${fmtM(execMttr.p95)} · ${execMttr.count} resolved`,c:'kc-teal'},
+      {lbl:'Median MTTR',val:fmtM(execMttr.median),sub:`p85: ${fmtM(execMttr.p85)} | ${execMttr.count} resolved`,c:'kc-teal'},
     ];
   }
   if (persona === 'executive') {
     const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
-    const execMedian = execMttr.median || execMttr.avg;
-    const execP85 = execMttr.p85 || execMttr.p95;
+    const execMedian = execMttr.median;
+    const execP85 = execMttr.p85;
     KPIS.executive = [
-      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${patternOccurrences} grouped · ${openPatterns.length} active`,c:'kc-amber'},
+      {lbl:'Distinct Incident Patterns',val:patterns.length,sub:`${patternOccurrences} grouped | ${openPatterns.length} active`,c:'kc-amber'},
       {lbl:'Grouped Problems',val:patternOccurrences,sub:`${ps.length} total incidents analyzed`,c:'kc-blue'},
       {lbl:'Cost Exposure',val:fmtC(totalPatternCost),sub:`${highImpactPatterns.length} high-impact pattern${highImpactPatterns.length!==1?'s':''}`,c:'kc-coral'},
       {lbl:'Potential Savings',val:fmtC(potentialSavings),sub:'Estimated recoverable value',c:'kc-green'},
       {lbl:'Operational Risk Backlog',val:riskBacklog,sub:'Patterns with active or open incidents',c:'kc-violet'},
-      {lbl:'Resolution Time',val:`${fmtM(execMedian)} median`,sub:`p85 ${fmtM(execP85)} · ${execMttr.count} resolved`,c:'kc-teal',badge:{t:`Long tail - 15% exceed ${fmtM(execP85)}`,cls:'badge-up'}},
+      {lbl:'Median MTTR',val:fmtM(execMedian),sub:`p85 ${fmtM(execP85)} | ${execMttr.count} resolved`,c:'kc-teal',badge:{t:execP85 ? `Long tail - 15% exceed ${fmtM(execP85)}` : 'No resolved duration data',cls:'badge-up'}},
     ];
   }
   document.getElementById('kpiRow').innerHTML=KPIS[persona].map(k=>`
@@ -562,7 +587,7 @@ function renderTopPatternsSnapshot(ps) {
       <div class="snap-head narrative">
         <div>
           <div class="snap-title">${ps.length} problems reduced to ${patterns.length} recurring operational pattern${patterns.length!==1?'s':''}</div>
-          <div class="snap-sub">${patternOccurrences} grouped incidents · ${fmtC(totalPatternCost)} cost exposure · ${fmtC(potentialSavings)} potential savings · ${riskBacklog} operational risk backlog</div>
+          <div class="snap-sub">${patternOccurrences} grouped incidents | ${fmtC(totalPatternCost)} cost exposure | ${fmtC(potentialSavings)} potential savings | ${riskBacklog} operational risk backlog</div>
         </div>
         <div class="snap-actions">
           <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
@@ -574,7 +599,7 @@ function renderTopPatternsSnapshot(ps) {
         <div>
           <div class="focus-eyebrow">Recommended Focus This Week</div>
           <div class="focus-title">${focusPattern.title}</div>
-          <div class="focus-sub">${focusPattern.occurrences} occurrences · ${fmtC(patternCost(focusPattern))} exposure · ${patternOpenCount(focusPattern)} open incidents</div>
+          <div class="focus-sub">${focusPattern.occurrences} occurrences | ${fmtC(patternCost(focusPattern))} exposure | ${patternOpenCount(focusPattern)} open incidents</div>
         </div>
         <div class="focus-value">
           <span>Estimated recoverable value</span>
@@ -619,7 +644,7 @@ function renderTopPatternsSnapshot(ps) {
     <div class="snap-head">
       <div>
         <div class="snap-title">Recurring Pattern Summary</div>
-        <div class="snap-sub">${patternOccurrences} grouped problems from ${ps.length} total · ${riskBacklog} operational risk backlog</div>
+        <div class="snap-sub">${patternOccurrences} grouped problems from ${ps.length} total | ${riskBacklog} operational risk backlog</div>
       </div>
       <div class="snap-actions">
         <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
@@ -644,18 +669,17 @@ function renderCostBanner(ps){
     const oneOffCount=ps.length-patternOccurrences;
     const openPatterns=patterns.filter(pat=>pat.problems.some(p=>p.status==='OPEN'));
     const hiImpact=patterns.filter(pat=>isHighImpactPattern(pat, patterns));
-    const allResolved=ps.filter(p=>p.status==='RESOLVED'&&p.dur);
     const appFilter = document.getElementById('appFilter').value;
-    const avgDur=persona==='executive'&&!appFilter&&MTTR_SUMMARY
-      ? MTTR_SUMMARY.avg
-      : allResolved.length?allResolved.reduce((s,p)=>s+(p.dur||0),0)/allResolved.length:0;
+    const bannerMttr=persona==='executive'&&!appFilter&&MTTR_SUMMARY
+      ? safeMttrSummary(MTTR_SUMMARY, ps)
+      : mttrSummaryFromProblems(ps);
     document.getElementById('cbHead').textContent=`${patterns.length} distinct incident pattern${patterns.length!==1?'s':''} across ${patternOccurrences} grouped problems in the ${getTimeLabel()}`;
-    document.getElementById('cbSub').textContent=`${ps.length} total problems · ${oneOffCount} one-off · ${openPatterns.length} active patterns · ${hiImpact.length} high-impact patterns`;
+    document.getElementById('cbSub').textContent=`${ps.length} total problems | ${oneOffCount} one-off | ${openPatterns.length} active patterns | ${hiImpact.length} high-impact patterns`;
     document.getElementById('cbStats').innerHTML=`
       <div class="cb-stat"><div class="cb-stat-val">${patterns.length}</div><div class="cb-stat-lbl">Incident Patterns</div></div>
       <div class="cb-stat"><div class="cb-stat-val" style="color:var(--amber)">${openPatterns.length}</div><div class="cb-stat-lbl">Active Now</div></div>
       <div class="cb-stat"><div class="cb-stat-val recurring">${hiImpact.length}</div><div class="cb-stat-lbl">High Impact</div></div>
-      <div class="cb-stat"><div class="cb-stat-val">${fmtM(avgDur)}</div><div class="cb-stat-lbl">Avg Resolution</div></div>`;
+      <div class="cb-stat"><div class="cb-stat-val">${fmtM(bannerMttr.median)}</div><div class="cb-stat-lbl">Median MTTR</div></div>`;
     return;
   }
   const costs=ps.map(calcCost);
@@ -664,11 +688,11 @@ function renderCostBanner(ps){
   const waste=calcRecurringWaste(ps);
   const total=rev+eng;
   document.getElementById('cbHead').textContent=`Estimated ${fmtC(total)} operational losses this period`;
-  document.getElementById('cbSub').textContent=`${ps.filter(p=>p.rec>=60).length} recurring issues · ${ps.filter(p=>p.status==='OPEN').length} still open`;
+  document.getElementById('cbSub').textContent=`${ps.filter(p=>p.rec>=60).length} recurring issues | ${ps.filter(p=>p.status==='OPEN').length} still open`;
   document.getElementById('cbStats').innerHTML=`
-    <div class="cb-stat" title="Direct revenue loss from affected users × duration × severity"><div class="cb-stat-val">${fmtC(rev)}</div><div class="cb-stat-lbl">Revenue Loss</div></div>
-    <div class="cb-stat" title="Engineering time: MTTR × rate × responders"><div class="cb-stat-val">${fmtC(eng)}</div><div class="cb-stat-lbl">Eng Cost</div></div>
-    <div class="cb-stat" title="Cost of recurring problems you haven't fixed — this money will be spent again"><div class="cb-stat-val recurring">${fmtC(waste)}</div><div class="cb-stat-lbl">Recurring Waste</div></div>`;
+    <div class="cb-stat" title="Direct revenue loss from affected users x duration x severity"><div class="cb-stat-val">${fmtC(rev)}</div><div class="cb-stat-lbl">Revenue Loss</div></div>
+    <div class="cb-stat" title="Engineering time: MTTR x rate x responders"><div class="cb-stat-val">${fmtC(eng)}</div><div class="cb-stat-lbl">Eng Cost</div></div>
+    <div class="cb-stat" title="Cost of recurring problems you haven't fixed - this money will be spent again"><div class="cb-stat-val recurring">${fmtC(waste)}</div><div class="cb-stat-lbl">Recurring Waste</div></div>`;
 }
 
 // ── TABLE ──
@@ -705,7 +729,7 @@ function groupForExecutive(ps) {
     const recentRate  = recentCount / halfDays;
     const priorRate   = priorCount  / halfDays;
     // Guardrails: need both a meaningful ratio AND ≥2 absolute difference to avoid
-    // noise from low-volume patterns (e.g. 0→1 or 1→2 should not trigger worsening)
+    // noise from low-volume patterns (e.g. 0->1 or 1->2 should not trigger worsening)
     const delta = recentCount - priorCount;
     let trend;
     if (priorRate === 0 && recentCount >= 3) trend = 'worsening';   // brand-new pattern, needs ≥3 to flag
@@ -728,9 +752,9 @@ function groupForExecutive(ps) {
 }
 
 const EXEC_TREND = {
-  worsening: { icon: '↑', label: 'Worsening', color: '#f87171', bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.25)' },
-  stable:    { icon: '→', label: 'Stable',    color: '#94a3b8', bg: 'rgba(148,163,184,.10)', border: 'rgba(148,163,184,.20)' },
-  improving: { icon: '↓', label: 'Improving', color: '#34d399', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.25)' },
+  worsening: { icon: 'up', label: 'Worsening', color: '#f87171', bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.25)' },
+  stable:    { icon: '->', label: 'Stable',    color: '#94a3b8', bg: 'rgba(148,163,184,.10)', border: 'rgba(148,163,184,.20)' },
+  improving: { icon: 'down', label: 'Improving', color: '#34d399', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.25)' },
 };
 
 function renderExecutiveTable(ps) {
@@ -748,7 +772,7 @@ function renderExecutiveTable(ps) {
   groups.forEach(g => {
     const occLabel = g.openCount > 0
       ? `<span style="color:var(--amber);font-weight:600">${g.openCount} open</span>&nbsp;/ ${g.count} total`
-      : `${g.count}×`;
+      : `${g.count}x`;
     const tr = EXEC_TREND[g.trend] || EXEC_TREND.stable;
     const trendChip = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;background:${tr.bg};border:1px solid ${tr.border};color:${tr.color}">${tr.icon} ${tr.label}</span>`;
     const subtitle = g.trend === 'worsening'
@@ -759,7 +783,7 @@ function renderExecutiveTable(ps) {
     rows += `<tr class="prob-row" data-action="onRowClick" data-pid="${g.repId}">
       <td class="tdp" style="max-width:300px;font-weight:${g.status==='OPEN'?'600':'400'}">
         <span class="sdot ${g.status}"></span>${g.title}
-        ${g.ageDays>0?`<span style="font-size:10px;color:var(--text-3);margin-left:6px">· ${g.ageDays}d pattern</span>`:''}
+        ${g.ageDays>0?`<span style="font-size:10px;color:var(--text-3);margin-left:6px">| ${g.ageDays}d pattern</span>`:''}
       </td>
       <td class="tdm" style="font-size:12px">${occLabel}</td>
       <td><span class="sev ${g.sev}">${SEV_LBL[g.sev]||g.sev}</span></td>
@@ -784,33 +808,33 @@ function renderTable(ps){
     const exp=expandedIds.has(p.id);
     const ic=p.impact>=75?'hi':p.impact>=45?'md':'lo';
     const CELLS={
-      exp:`<td><button class="exp-btn ${exp?'open':''}" data-action="toggleExpand" data-pid="${p.id}">▶</button></td>`,
+      exp:`<td><button class="exp-btn ${exp?'open':''}" data-action="toggleExpand" data-pid="${p.id}">></button></td>`,
       check:`<td><input class="rc" type="checkbox" ${sel?'checked':''} data-action="toggleSel" data-pid="${p.id}"></td>`,
       biz:`<td class="tdp" style="max-width:260px"><span class="sdot ${p.status}"></span>${p.biz}</td>`,
       title:`<td class="tdp" style="max-width:250px;font-size:12px"><span class="sdot ${p.status}"></span>${p.title}</td>`,
       sev:`<td><span class="sev ${p.sev}">${SEV_LBL[p.sev]}</span></td>`,
       cost:`<td class="ccell">${fmtC(cost.total)}</td>`,
-      users:`<td class="tdm">${p.users>0?p.users.toLocaleString():'—'}</td>`,
+      users:`<td class="tdm">${p.users>0?p.users.toLocaleString():'-'}</td>`,
       dur:`<td class="tdm">${p.dur?fmtM(p.dur):`<span style="color:var(--amber)">Ongoing</span>`}</td>`,
-      mttr:`<td class="tdm">${p.dur?fmtM(p.dur):'—'}</td>`,
+      mttr:`<td class="tdm">${p.dur?fmtM(p.dur):'-'}</td>`,
       rec:`<td><div class="rb"><div class="rt"><div class="rf" style="width:${p.rec}%"></div></div><span style="font-size:11px;font-family:var(--mono);color:var(--text-3)">${p.rec}</span></div></td>`,
       status:`<td><span class="sdot ${p.status}"></span><span style="font-size:11px;color:var(--text-3)">${p.status}</span></td>`,
       svc:`<td style="font-size:11px;color:var(--text-3)">${p.svcs.join(', ')}</td>`,
-      rca:`<td>${p.hasRCA?`<span style="font-size:11px;font-family:var(--mono);color:var(--text-2)">${p.rca}</span>`:`<span class="rca-miss">⚠ Missing</span>`}</td>`,
+      rca:`<td>${p.hasRCA?`<span style="font-size:11px;font-family:var(--mono);color:var(--text-2)">${p.rca}</span>`:`<span class="rca-miss">Warning Missing</span>`}</td>`,
       open:`<td><span class="lbtn" data-action="openP" data-pid="${p.id}">↗</span></td>`,
       impact:`<td><span class="ic ${ic}">${p.impact}</span></td>`,
-      noise:`<td>${p.noise?`<span class="nf">⚠ Yes</span>`:''}</td>`,
-      cloud:`<td><span style="font-size:10px;color:#ff9900;font-family:var(--mono)">${p.cloud?.toUpperCase()??'—'}</span></td>`,
+      noise:`<td>${p.noise?`<span class="nf">Warning Yes</span>`:''}</td>`,
+      cloud:`<td><span style="font-size:10px;color:#ff9900;font-family:var(--mono)">${p.cloud?.toUpperCase()??'-'}</span></td>`,
     };
     rows+=`<tr class="prob-row ${sel?'selected':''}" data-action="onRowClick" data-pid="${p.id}">
-      ${cols.map(c=>CELLS[c]||'<td>—</td>').join('')}
+      ${cols.map(c=>CELLS[c]||'<td>-</td>').join('')}
     </tr>`;
     if(exp){
       const colCount=cols.length;
       rows+=`<tr class="exp-row"><td colspan="${colCount}"><div class="exp-content" id="exp-${p.id}">${renderExpContent(p)}</div></td></tr>`;
     }
   });
-  document.getElementById('tBody').innerHTML=rows;
+  document.getElementById('tBody').innerHTML=rows || `<tr><td colspan="${cols.length}" style="text-align:center;padding:32px;color:var(--text-3)">No problems in selected period</td></tr>`;
   updateAnalyzeBtns();
 }
 
@@ -820,9 +844,9 @@ function renderExpContent(p){
   if(!cache){
     // Trigger async load
     setTimeout(()=>loadExpSummary(p),50);
-    return`<div class="exp-loading"><div class="exp-spinner"></div><span>Davis CoPilot summarising…</span></div>`;
+    return`<div class="exp-loading"><div class="exp-spinner"></div><span>Davis CoPilot summarising...</span></div>`;
   }
-  const cloudTag=p.cloud?`<span class="cloud-tag">☁ ${p.cloud.toUpperCase()} · ${p.region}</span>`:'';
+  const cloudTag=p.cloud?`<span class="cloud-tag">Cloud ${p.cloud.toUpperCase()} | ${p.region}</span>`:'';
   return`
     <div class="exp-summary">${cache.summary}</div>
     <div class="exp-topfix">
@@ -832,7 +856,7 @@ function renderExpContent(p){
     </div>
     <div class="exp-actions">
       ${cloudTag}
-      <button class="exp-ai-btn exp-davis" data-action="deepAnalyze" data-pid="${p.id}">✦ Deep Analysis</button>
+      <button class="exp-ai-btn exp-davis" data-action="deepAnalyze" data-pid="${p.id}">AI Deep Analysis</button>
       <button class="exp-ai-btn exp-ext" data-action="extTriage" data-pid="${p.id}">🔌 External AI Triage</button>
       ${p.cloud==='aws'?`<button class="exp-ai-btn exp-aws" data-action="showRemPanel" data-pid="${p.id}">🟠 AWS DevOps Agent</button>`:''}
     </div>`;
@@ -852,7 +876,7 @@ async function loadExpSummary(p){
 // ── REMEDIATION PANEL ──
 
 // ---- Problem Classifier ----
-// Maps problem signals → RESOURCE | CONFIG | CODE_DEFECT | DEPENDENCY | UNKNOWN
+// Maps problem signals -> RESOURCE | CONFIG | CODE_DEFECT | DEPENDENCY | UNKNOWN
 const PROBLEM_TYPE_SIGNALS = {
   RESOURCE:    ['cpu spike','memory leak','oomkilled','disk i/o','gc pause','heap','resource saturation','out of memory','resource contention'],
   CONFIG:      ['connection pool','timeout','max_connections','configuration','thread pool','queue depth','rate limit','pool exhausted'],
@@ -882,10 +906,10 @@ function classifyProblem(p) {
 // p.cloud + p.k8s + p.hostType derived from entity metadata
 function detectInfrastructure(p) {
   // Production: entitiesClient().getEntity(rootCauseEntityId)
-  //   → properties.cloudType (AWS | AZURE | GCP | null)
-  //   → properties.awsRegion / azureLocation / gcpZone
-  //   → properties.kubernetesCluster (present = k8s)
-  //   → osType (LINUX | WINDOWS)
+  //   -> properties.cloudType (AWS | AZURE | GCP | null)
+  //   -> properties.awsRegion / azureLocation / gcpZone
+  //   -> properties.kubernetesCluster (present = k8s)
+  //   -> osType (LINUX | WINDOWS)
   const cloud = p.cloud || null;
   const isK8s = p.tags && p.tags.some(t => t.includes('kubernetes') || t.includes('k8s'));
   return {
@@ -893,7 +917,7 @@ function detectInfrastructure(p) {
     isK8s,
     isLinux: !cloud && !isK8s,
     region: p.region || null,
-    label: cloud ? cloud.toUpperCase() + (p.region ? ' · ' + p.region : '') : isK8s ? 'Kubernetes' : 'Linux Host',
+    label: cloud ? cloud.toUpperCase() + (p.region ? ' | ' + p.region : '') : isK8s ? 'Kubernetes' : 'Linux Host',
     chipClass: cloud === 'aws' ? 'aws' : cloud === 'azure' ? 'azure' : cloud === 'gcp' ? 'gcp' : isK8s ? 'k8s' : 'linux',
     icon: cloud === 'aws' ? '🟠' : cloud === 'azure' ? '🔵' : cloud === 'gcp' ? '🔵' : isK8s ? '☸' : '🐧',
   };
@@ -905,25 +929,25 @@ function resolveOptions(p, infra, problemType) {
   const options = [];
   const unavailable = [];
 
-  // ── DYNATRACE WORKFLOWS — always available ──
+  // ── DYNATRACE WORKFLOWS - always available ──
   options.push({
     id: 'dt-workflows',
-    icon: '⚡',
+    icon: 'Lightning',
     label: 'Dynatrace Workflows',
     tier: 'semi',
     time: '~10–20 min',
-    desc: 'Native Dynatrace automation — trigger remediation actions, notifications, and runbooks directly from the problem without any external integration.',
+    desc: 'Native Dynatrace automation - trigger remediation actions, notifications, and runbooks directly from the problem without any external integration.',
     confidence: problemType === 'UNKNOWN' ? 30 : problemType === 'CODE_DEFECT' ? 45 : 75,
     actionLabel: 'Configure Workflow',
     actionClass: 'act-semi',
     recommended: false,
   });
 
-  // ── LIVE DEBUGGER — for code defects only ──
+  // ── LIVE DEBUGGER - for code defects only ──
   if (problemType === 'CODE_DEFECT' || problemType === 'DEPENDENCY') {
     options.push({
       id: 'live-debugger',
-      icon: '⚡',
+      icon: 'Lightning',
       label: 'Dynatrace Live Debugger',
       tier: 'semi',
       time: '~5 min to insight',
@@ -935,10 +959,10 @@ function resolveOptions(p, infra, problemType) {
       recommended: true,
     });
   } else {
-    unavailable.push({ icon: '⚡', label: 'Live Debugger', reason: 'Not a code-level issue — no production snapshot needed' });
+    unavailable.push({ icon: 'Lightning', label: 'Live Debugger', reason: 'Not a code-level issue - no production snapshot needed' });
   }
 
-  // ── CLOUD AGENTS — resource/config issues only ──
+  // ── CLOUD AGENTS - resource/config issues only ──
   const isAutomatable = (problemType === 'RESOURCE' || problemType === 'CONFIG');
 
   if (infra.cloud === 'aws') {
@@ -949,14 +973,14 @@ function resolveOptions(p, infra, problemType) {
         label: 'AWS DevOps Agent',
         tier: 'auto',
         time: '~2–5 min',
-        desc: 'Dynatrace triggers AWS DevOps Agent via EventBridge → Systems Manager. Executes remediation runbook in ' + (infra.region || 'your AWS region') + ' autonomously.',
+        desc: 'Dynatrace triggers AWS DevOps Agent via EventBridge -> Systems Manager. Executes remediation runbook in ' + (infra.region || 'your AWS region') + ' autonomously.',
         confidence: p.hasRCA ? 85 : 45,
         actionLabel: 'Trigger AWS DevOps Agent',
         actionClass: 'act-auto',
         recommended: isAutomatable && p.hasRCA,
       });
     } else {
-      unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: problemType === 'CODE_DEFECT' ? 'Code defect — agent cannot fix source code' : 'Root cause unknown — unsafe to automate without RCA' });
+      unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: problemType === 'CODE_DEFECT' ? 'Code defect - agent cannot fix source code' : 'Root cause unknown - unsafe to automate without RCA' });
     }
     unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: 'Infrastructure is AWS, not Azure' });
     unavailable.push({ icon: '🔵', label: 'GCP Workflows', reason: 'Infrastructure is AWS, not GCP' });
@@ -968,14 +992,14 @@ function resolveOptions(p, infra, problemType) {
         label: 'Azure Automation Runbooks',
         tier: 'auto',
         time: '~3–8 min',
-        desc: 'Dynatrace problem triggers Azure Automation via webhook. Runbook executes in your Azure subscription — scale, restart, or reconfigure resources.',
+        desc: 'Dynatrace problem triggers Azure Automation via webhook. Runbook executes in your Azure subscription - scale, restart, or reconfigure resources.',
         confidence: p.hasRCA ? 80 : 40,
         actionLabel: 'Trigger Azure Automation',
         actionClass: 'act-auto',
         recommended: isAutomatable && p.hasRCA,
       });
     } else {
-      unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: problemType === 'CODE_DEFECT' ? 'Code defect — automation cannot fix source code' : 'Root cause unknown — unsafe to automate' });
+      unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: problemType === 'CODE_DEFECT' ? 'Code defect - automation cannot fix source code' : 'Root cause unknown - unsafe to automate' });
     }
     unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: 'Infrastructure is Azure, not AWS' });
     unavailable.push({ icon: '🔵', label: 'GCP Workflows', reason: 'Infrastructure is Azure, not GCP' });
@@ -987,14 +1011,14 @@ function resolveOptions(p, infra, problemType) {
         label: 'GCP Cloud Workflows',
         tier: 'auto',
         time: '~3–6 min',
-        desc: 'Dynatrace triggers GCP Cloud Workflows via Pub/Sub. Executes remediation steps — scale Cloud Run, restart GKE pods, update config — in your GCP project.',
+        desc: 'Dynatrace triggers GCP Cloud Workflows via Pub/Sub. Executes remediation steps - scale Cloud Run, restart GKE pods, update config - in your GCP project.',
         confidence: p.hasRCA ? 78 : 38,
         actionLabel: 'Trigger GCP Workflow',
         actionClass: 'act-auto',
         recommended: isAutomatable && p.hasRCA,
       });
     } else {
-      unavailable.push({ icon: '🔵', label: 'GCP Cloud Workflows', reason: problemType === 'CODE_DEFECT' ? 'Code defect — workflow cannot fix source code' : 'Root cause unknown — unsafe to automate' });
+      unavailable.push({ icon: '🔵', label: 'GCP Cloud Workflows', reason: problemType === 'CODE_DEFECT' ? 'Code defect - workflow cannot fix source code' : 'Root cause unknown - unsafe to automate' });
     }
     unavailable.push({ icon: '🟠', label: 'AWS DevOps Agent', reason: 'Infrastructure is GCP, not AWS' });
     unavailable.push({ icon: '🔵', label: 'Azure Automation', reason: 'Infrastructure is GCP, not Azure' });
@@ -1003,7 +1027,7 @@ function resolveOptions(p, infra, problemType) {
     if (isAutomatable) {
       options.push({
         id: 'ansible',
-        icon: '🔧',
+        icon: 'Tool',
         label: 'Ansible / AWX Runbook',
         tier: 'semi',
         time: '~15–30 min',
@@ -1019,7 +1043,7 @@ function resolveOptions(p, infra, problemType) {
     unavailable.push({ icon: '🔵', label: 'GCP Cloud Workflows', reason: 'Host is not running on GCP infrastructure' });
   }
 
-  // ── KUBERNETES — any cloud ──
+  // ── KUBERNETES - any cloud ──
   if (infra.isK8s && isAutomatable) {
     options.push({
       id: 'kubectl',
@@ -1027,7 +1051,7 @@ function resolveOptions(p, infra, problemType) {
       label: 'Kubernetes Auto-Remediation',
       tier: 'semi',
       time: '~5–10 min',
-      desc: 'Dynatrace Workflows execute kubectl commands — scale deployment, restart pods, update ConfigMap — via a connected Kubernetes operator.',
+      desc: 'Dynatrace Workflows execute kubectl commands - scale deployment, restart pods, update ConfigMap - via a connected Kubernetes operator.',
       confidence: 70,
       actionLabel: 'Configure K8s Remediation',
       actionClass: 'act-semi',
@@ -1035,15 +1059,15 @@ function resolveOptions(p, infra, problemType) {
     });
   }
 
-  // ── MANUAL — always last resort ──
+  // ── MANUAL - always last resort ──
   options.push({
     id: 'manual',
-    icon: '🎫',
-    label: 'Manual — Engineering Ticket',
+    icon: 'Ticket',
+    label: 'Manual - Engineering Ticket',
     tier: 'manual',
     time: '~2–8 hrs',
     desc: problemType === 'UNKNOWN' || !p.hasRCA
-      ? 'Root cause not identified yet. Investigate first — automation is not safe until the problem is understood.'
+      ? 'Root cause not identified yet. Investigate first - automation is not safe until the problem is understood.'
       : 'Engineer reviews, implements fix, deploys. Full control. Slowest path.',
     confidence: 100,
     actionLabel: 'Create Engineering Ticket',
@@ -1105,7 +1129,7 @@ function renderRemPanel() {
     CONFIG:      { label: 'Configuration',        cls: 'config',      auto: 'yes',     autoLabel: 'Automatable' },
     CODE_DEFECT: { label: 'Code Defect',          cls: 'code',        auto: 'no',      autoLabel: 'Not auto-fixable' },
     DEPENDENCY:  { label: 'External Dependency',  cls: 'dependency',  auto: 'partial', autoLabel: 'Partially automatable' },
-    UNKNOWN:     { label: 'Unknown — needs RCA',  cls: 'unknown',     auto: 'no',      autoLabel: 'Unsafe to automate' },
+    UNKNOWN:     { label: 'Unknown - needs RCA',  cls: 'unknown',     auto: 'no',      autoLabel: 'Unsafe to automate' },
   };
   const tm = TYPE_META[problemType] || TYPE_META.UNKNOWN;
 
@@ -1117,8 +1141,8 @@ function renderRemPanel() {
         <div class="ld-details-title">What you get</div>
         <div class="ld-item"><span class="ld-dot"></span>Variable state at the exact failing line</div>
         <div class="ld-item"><span class="ld-dot"></span>Full call stack with local values</div>
-        <div class="ld-item"><span class="ld-dot"></span>Request context — headers, payload shape</div>
-        <div class="ld-item"><span class="ld-dot"></span>Reproducible snapshot — no reproduction needed</div>
+        <div class="ld-item"><span class="ld-dot"></span>Request context - headers, payload shape</div>
+        <div class="ld-item"><span class="ld-dot"></span>Reproducible snapshot - no reproduction needed</div>
         <div class="ld-item"><span class="ld-dot"></span>Zero code changes or redeployment required</div>
       </div>` : '';
     const actionFn = opt.id === 'aws-agent' || opt.id === 'azure-auto' || opt.id === 'gcp-workflows'
@@ -1152,7 +1176,7 @@ function renderRemPanel() {
   const unavailHtml = unavailable.length ? `
     <div class="rem-unavail">
       <div class="rem-unavail-title">Not Available for This Problem</div>
-      ${unavailable.map(u => `<div class="unavail-item"><span class="unavail-x">✗</span><strong style="color:var(--text-2);margin-right:4px">${u.icon} ${u.label}</strong><span>— ${u.reason}</span></div>`).join('')}
+      ${unavailable.map(u => `<div class="unavail-item"><span class="unavail-x">x</span><strong style="color:var(--text-2);margin-right:4px">${u.icon} ${u.label}</strong><span>- ${u.reason}</span></div>`).join('')}
     </div>` : '';
 
   const matSegsHtml = matLabels.map((_, i) => `<div class="mat-seg ${i <= matStage ? 'lit-' + i : ''}"></div>`).join('');
@@ -1176,7 +1200,7 @@ function renderRemPanel() {
       <div class="rem-ctx-row">
         <span class="rem-ctx-label">Root Cause</span>
         <span class="rem-ctx-val" style="font-size:12px;font-family:var(--mono);color:${p.hasRCA ? 'var(--text-1)' : 'var(--amber)'}">
-          ${p.hasRCA ? p.rca : '⚠ Not identified — automation unsafe'}
+          ${p.hasRCA ? p.rca : 'Warning Not identified - automation unsafe'}
         </span>
       </div>
     </div>
@@ -1482,44 +1506,44 @@ function openAgentModal(pid, agentId) {
 
   const AGENT_CONFIGS = {
     'aws-agent': {
-      title: '🟠 AWS DevOps Agent — Autonomous Remediation',
+      title: '🟠 AWS DevOps Agent - Autonomous Remediation',
       steps: [
         { n: 1, title: 'Dynatrace OpInt', body: `Root cause identified: <strong>${p.rca || 'Unknown'}</strong><br><span style="color:var(--text-3);font-size:11px">Problem: ${p.title}</span>` },
         { n: 2, title: 'Davis CoPilot', body: `Generated remediation runbook for <strong>${infra.region || 'your region'}</strong><br><span style="color:var(--text-3);font-size:11px">Confidence: ${p.hasRCA ? '85%' : '45%'}</span>` },
-        { n: 3, title: 'AWS DevOps Agent', body: `Executes via <strong>EventBridge → Systems Manager</strong> in ${infra.region || 'ap-southeast-2'}<br><span style="color:var(--text-3);font-size:11px">No human approval required — confidence threshold met</span>` },
+        { n: 3, title: 'AWS DevOps Agent', body: `Executes via <strong>EventBridge -> Systems Manager</strong> in ${infra.region || 'ap-southeast-2'}<br><span style="color:var(--text-3);font-size:11px">No human approval required - confidence threshold met</span>` },
       ],
       runbook: getRunbook(p, 'aws'),
       confirmLabel: '🟠 Trigger Autonomous Remediation',
       confirmClass: 'background:linear-gradient(135deg,#ff9900,#e67e00);color:#000',
     },
     'azure-auto': {
-      title: '🔵 Azure Automation — Autonomous Remediation',
+      title: '🔵 Azure Automation - Autonomous Remediation',
       steps: [
         { n: 1, title: 'Dynatrace OpInt', body: `Root cause: <strong>${p.rca || 'Unknown'}</strong>` },
         { n: 2, title: 'Davis CoPilot', body: 'Generated Azure Automation runbook via webhook trigger' },
-        { n: 3, title: 'Azure Automation', body: `Executes in your <strong>Azure subscription</strong> — scales, restarts, or reconfigures resources` },
+        { n: 3, title: 'Azure Automation', body: `Executes in your <strong>Azure subscription</strong> - scales, restarts, or reconfigures resources` },
       ],
       runbook: getRunbook(p, 'azure'),
       confirmLabel: '🔵 Trigger Azure Automation',
       confirmClass: 'background:linear-gradient(135deg,#0078d4,#005a9e);color:#fff',
     },
     'gcp-workflows': {
-      title: '🔵 GCP Cloud Workflows — Autonomous Remediation',
+      title: '🔵 GCP Cloud Workflows - Autonomous Remediation',
       steps: [
         { n: 1, title: 'Dynatrace OpInt', body: `Root cause: <strong>${p.rca || 'Unknown'}</strong>` },
         { n: 2, title: 'Davis CoPilot', body: 'Generated GCP Workflow definition via Pub/Sub trigger' },
-        { n: 3, title: 'GCP Cloud Workflows', body: `Executes in your <strong>GCP project</strong> — scales Cloud Run, restarts GKE pods` },
+        { n: 3, title: 'GCP Cloud Workflows', body: `Executes in your <strong>GCP project</strong> - scales Cloud Run, restarts GKE pods` },
       ],
       runbook: getRunbook(p, 'gcp'),
       confirmLabel: '🔵 Trigger GCP Workflow',
       confirmClass: 'background:linear-gradient(135deg,#4285f4,#1a73e8);color:#fff',
     },
     'live-debugger': {
-      title: '⚡ Dynatrace Live Debugger',
+      title: 'Lightning Dynatrace Live Debugger',
       steps: [
         { n: 1, title: 'Dynatrace OpInt', body: `Code defect detected on <strong>${p.svcs?.[0] || 'service'}</strong><br><span style="color:var(--text-3);font-size:11px">Problem: ${p.title}</span>` },
-        { n: 2, title: 'Live Debugger', body: 'Non-breaking snapshot placed at <strong>exact failing line</strong> in production — no redeployment required' },
-        { n: 3, title: 'Developer', body: 'Reviews snapshot — <strong>variable state, call stack, request context</strong> — and implements targeted fix' },
+        { n: 2, title: 'Live Debugger', body: 'Non-breaking snapshot placed at <strong>exact failing line</strong> in production - no redeployment required' },
+        { n: 3, title: 'Developer', body: 'Reviews snapshot - <strong>variable state, call stack, request context</strong> - and implements targeted fix' },
       ],
       runbook: `# Live Debugger Snapshot Config
 service: ${p.svcs?.[0] || 'target-service'}
@@ -1534,14 +1558,14 @@ ttl: 30m
 
 # Dynatrace will notify via problem comment
 # when snapshot is ready for developer review`,
-      confirmLabel: '⚡ Activate Live Debugger',
+      confirmLabel: 'Lightning Activate Live Debugger',
       confirmClass: 'background:linear-gradient(135deg,#9b8fe4,#7b6fd4);color:#fff',
     },
     'dt-workflows': {
-      title: '⚡ Dynatrace Workflows',
+      title: 'Lightning Dynatrace Workflows',
       steps: [
         { n: 1, title: 'Dynatrace OpInt', body: `Problem detected: <strong>${p.title}</strong>` },
-        { n: 2, title: 'Dynatrace Workflows', body: 'Executes configured actions — notify, scale, restart, create ticket — natively within Dynatrace' },
+        { n: 2, title: 'Dynatrace Workflows', body: 'Executes configured actions - notify, scale, restart, create ticket - natively within Dynatrace' },
         { n: 3, title: 'Outcome', body: 'Actions completed and logged in problem timeline. No external integration required.' },
       ],
       runbook: `# Dynatrace Workflow Config
@@ -1562,7 +1586,7 @@ actions:
   - type: create_jira_issue
     project: OPS
     summary: "${p.title}"`,
-      confirmLabel: '⚡ Configure Workflow',
+      confirmLabel: 'Lightning Configure Workflow',
       confirmClass: 'background:linear-gradient(135deg,#00d4b4,#00a896);color:#000',
     },
   };
@@ -1591,14 +1615,14 @@ function triggerAgent(pid, agentId) {
   const LABELS = { 'aws-agent': 'AWS DevOps Agent', 'azure-auto': 'Azure Automation', 'gcp-workflows': 'GCP Cloud Workflows', 'live-debugger': 'Live Debugger', 'dt-workflows': 'Dynatrace Workflows', 'ansible': 'Ansible Playbook' };
   const DETAILS = {
     'live-debugger': `Snapshot will appear in Dynatrace Live Debugger within ~2 minutes.<br><br>Developer notification sent to <strong>team:${(p?.tags||[]).find(t=>t.startsWith('team:'))||'engineering'}</strong>.<br>Snapshot expires in <strong>30 minutes</strong>.`,
-    'dt-workflows': `Workflow executing — actions in progress. Check the Dynatrace Workflows dashboard for execution status and logs.`,
+    'dt-workflows': `Workflow executing - actions in progress. Check the Dynatrace Workflows dashboard for execution status and logs.`,
     default: `Runbook executing in <strong>${p?.region || 'your environment'}</strong>. Estimated completion: <strong>2–5 minutes</strong>.<br><br>Dynatrace will verify resolution and close this problem when metrics return to baseline.`,
   };
   const detail = DETAILS[agentId] || DETAILS.default;
   const execId = Math.random().toString(36).substring(2, 10).toUpperCase();
   document.getElementById('awsModalBody').innerHTML = `
     <div class="aws-sent">
-      <div class="aws-sent-icon">${agentId === 'live-debugger' ? '⚡' : agentId === 'dt-workflows' ? '⚡' : '🟢'}</div>
+      <div class="aws-sent-icon">${agentId === 'live-debugger' ? 'Lightning' : agentId === 'dt-workflows' ? 'Lightning' : '🟢'}</div>
       <div class="aws-sent-title">Dispatched to ${LABELS[agentId] || agentId}</div>
       <div class="aws-sent-sub">${detail}</div>
       <div style="margin-top:12px;padding:8px 14px;background:rgba(61,214,140,.06);border:1px solid rgba(61,214,140,.2);border-radius:var(--r);font-size:11px;color:var(--green);font-family:var(--mono)">
@@ -1625,7 +1649,7 @@ function getRunbook(p, platform) {
   };
   const runbook = rcaRunbooks[p.rca]?.[platform];
   if (runbook) return runbook;
-  return `# Auto-generated remediation\n# Problem: ${p.id} — ${p.title}\n# Platform: ${platform}\n# Root cause: ${p.rca || 'unknown'}\n\n# Dynatrace generated runbook will appear here\n# based on Davis AI evidence and entity metadata`;
+  return `# Auto-generated remediation\n# Problem: ${p.id} - ${p.title}\n# Platform: ${platform}\n# Root cause: ${p.rca || 'unknown'}\n\n# Dynatrace generated runbook will appear here\n# based on Davis AI evidence and entity metadata`;
 }
 
 
@@ -1671,10 +1695,10 @@ function switchAISrc(src){
 function onProviderChange(){
   const p=document.getElementById('extProvider').value;
   const notes={
-    anthropic:'⚠ Problem data will be sent to Anthropic. Customer provides their own API key.',
-    mcp:'Customer MCP Server — data sent to your configured endpoint. Full control over what is shared.',
-    bedrock:'AWS Bedrock — data stays within your AWS account. No external transfer.',
-    azure:'Azure OpenAI — data sent to your Azure tenant. Customer manages endpoint and key.',
+    anthropic:'Warning Problem data will be sent to Anthropic. Customer provides their own API key.',
+    mcp:'Customer MCP Server - data sent to your configured endpoint. Full control over what is shared.',
+    bedrock:'AWS Bedrock - data stays within your AWS account. No external transfer.',
+    azure:'Azure OpenAI - data sent to your Azure tenant. Customer manages endpoint and key.',
   };
   document.getElementById('extNote').textContent=notes[p]||'';
   document.getElementById('extEndpointRow').style.display=p==='bedrock'?'none':'';
@@ -1728,18 +1752,18 @@ async function analyzeMulti(){
 function renderAIPanel(ps){
   const el=document.getElementById('aiContent');
   if(aiState==='idle'){
-    el.innerHTML=`<div class="ai-idle"><div style="font-size:12px;color:var(--text-3)">Expand a row for inline context or select problems for cross-problem analysis.</div><div class="ai-idle-hint">Pattern context · ranked actions</div></div>`;
+    el.innerHTML=`<div class="ai-idle"><div style="font-size:12px;color:var(--text-3)">Expand a row for inline context or select problems for cross-problem analysis.</div><div class="ai-idle-hint">Pattern context | ranked actions</div></div>`;
     return;
   }
   if(aiState==='loading'){
     const steps=aiSrc==='external'?
       ['Connecting to external AI provider...','Preparing problem context...','Sending to '+getProviderLabel()+'...','Parsing AI response...','Structuring recommendations...']:
       ['Connecting to Davis CoPilot...','Fetching problem context...','Correlating entity signals...','Generating '+PMETA[persona].label+' analysis...','Structuring recommendations...'];
-    el.innerHTML=`<div class="ai-loading"><div class="ai-ring"></div><div style="font-size:12px;color:var(--text-3)">Analysing with ${aiSrc==='external'?getProviderLabel():'Davis CoPilot'}…</div><div class="ai-steps">${steps.map((s,i)=>`<div class="ai-step ${i===0?'active':''}" id="ais-${i}"><span class="ai-step-ic">${i===0?'⟳':'○'}</span>${s}</div>`).join('')}</div></div>`;
+    el.innerHTML=`<div class="ai-loading"><div class="ai-ring"></div><div style="font-size:12px;color:var(--text-3)">Analysing with ${aiSrc==='external'?getProviderLabel():'Davis CoPilot'}...</div><div class="ai-steps">${steps.map((s,i)=>`<div class="ai-step ${i===0?'active':''}" id="ais-${i}"><span class="ai-step-ic">${i===0?'⟳':'○'}</span>${s}</div>`).join('')}</div></div>`;
     let step=0;
     const iv=setInterval(()=>{
       const prev=document.getElementById(`ais-${step}`);
-      if(prev){prev.className='ai-step done';prev.querySelector('.ai-step-ic').textContent='✓';}
+      if(prev){prev.className='ai-step done';prev.querySelector('.ai-step-ic').textContent='ok';}
       step++;
       if(step<steps.length){const cur=document.getElementById(`ais-${step}`);if(cur){cur.className='ai-step active';cur.querySelector('.ai-step-ic').textContent='⟳';}}
       if(step>=steps.length)clearInterval(iv);
@@ -1753,17 +1777,17 @@ function renderAIPanel(ps){
     ? confidenceLevel(arrMean(aiPatterns.map(p => patternConfidence(p))))
     : 'MEDIUM';
   el.innerHTML=`<div class="ai-result fade-in">
-    <div class="ai-sec"><div class="ai-sec-lbl">📝 Summary — ${PMETA[persona].label} ${renderConfidenceBadge(aiConfidence, 'summary')}</div><div class="ai-summ">${r.summary}</div></div>
+    <div class="ai-sec"><div class="ai-sec-lbl">📝 Summary - ${PMETA[persona].label} ${renderConfidenceBadge(aiConfidence, 'summary')}</div><div class="ai-summ">${r.summary}</div></div>
     <div class="ai-sec"><div class="ai-sec-lbl">🔍 Patterns</div>${r.patterns.map(p=>`<div class="ai-pat-item"><span class="ai-pat-bullet">◆</span><span>${p}</span></div>`).join('')}</div>
-    ${r.costNarrative&&persona!=='developer'?`<div class="ai-sec"><div class="ai-sec-lbl">💰 Cost Narrative</div><div class="ai-cost-box">${r.costNarrative}</div></div>`:''}
+    ${r.costNarrative&&persona!=='developer'?`<div class="ai-sec"><div class="ai-sec-lbl">Cost Cost Narrative</div><div class="ai-cost-box">${r.costNarrative}</div></div>`:''}
     <div class="ai-sec"><div class="ai-sec-lbl">✅ Recommendations</div>${r.recommendations.map(rec=>`
       <div class="ai-rec">
         <div class="ai-rec-top"><span class="pri ${rec.priority}">${rec.priority.replace('_',' ')}</span><span class="ai-rec-title">${rec.title}</span></div>
         <div class="ai-rec-desc">${rec.description}</div>
         ${recommendationFeature(rec)?`<div class="ai-rec-feature">Dynatrace: ${recommendationFeature(rec)}</div>`:''}
-        <div class="ai-rec-footer"><span class="ai-rec-impact">✓ ${rec.estimatedImpact}</span><span class="ai-rec-owner">${rec.owner}</span></div>
+        <div class="ai-rec-footer"><span class="ai-rec-impact">ok ${rec.estimatedImpact}</span><span class="ai-rec-owner">${rec.owner}</span></div>
       </div>`).join('')}</div>
-    <div class="ai-meta"><div class="ai-meta-txt">${r.generatedBy==='davis-copilot'?'✦ Davis CoPilot':r.generatedBy==='external'?`🔌 ${getProviderLabel()}`:'✦ Demo mode'} · ${PMETA[persona].label} · ${ps?ps.length:selectedIds.size} problem${(ps?ps.length:selectedIds.size)!==1?'s':''}</div><div class="ai-meta-ms">${r.latencyMs}ms</div></div>
+    <div class="ai-meta"><div class="ai-meta-txt">${r.generatedBy==='davis-copilot'?'AI Davis CoPilot':r.generatedBy==='external'?`🔌 ${getProviderLabel()}`:'AI Demo mode'} | ${PMETA[persona].label} | ${ps?ps.length:selectedIds.size} problem${(ps?ps.length:selectedIds.size)!==1?'s':''}</div><div class="ai-meta-ms">${r.latencyMs}ms</div></div>
   </div>`;
 }
 
@@ -1791,9 +1815,9 @@ function getProviderLabel(){
 }
 
 // ── DAVIS COPILOT ──
-// Stateless single call — text only in body, response.text is the answer
+// Stateless single call - text only in body, response.text is the answer
 async function callDavisSkill(text) {
-  console.log('[OpInt Davis] → prompt:', text.slice(0, 200) + (text.length > 200 ? '…' : ''));
+  console.log('[OpInt Davis] -> prompt:', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
   const res = await fetch('/platform/davis/copilot/v1/skills/conversations:message', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -1817,14 +1841,14 @@ function extractJSON(raw) {
   return JSON.parse(m[0]);
 }
 
-// ── PATTERN INSIGHTS — two-level: bucket → sub-bucket ──
+// ── PATTERN INSIGHTS - two-level: bucket -> sub-bucket ──
 const patternInsights = new Map();      // kept for legacy callers that may reference it
 const subBucketInsights = new Map();    // keyed by subBucket.id
 
 const TOOL_ICONS = {
   'aws-agent': '🟠', 'azure-auto': '🔵', 'gcp-workflows': '🔵',
-  'live-debugger': '⚡', 'dt-workflows': '⚡', 'k8s-auto': '☸',
-  'ansible': '🔧', 'manual': '🎫',
+  'live-debugger': 'Lightning', 'dt-workflows': 'Lightning', 'k8s-auto': '☸',
+  'ansible': 'Tool', 'manual': 'Ticket',
 };
 
 // Group a pattern's problems into sub-buckets by {primaryEntity, rca}
@@ -1852,7 +1876,7 @@ function groupIntoSubBuckets(pat) {
 function renderSubBucketContent(sbId) {
   const ins = subBucketInsights.get(sbId);
   if (!ins || ins.state === 'loading') {
-    return `<div class="pc-ai-loading"><span class="pc-ai-spinner"></span>Davis is analyzing…</div>`;
+    return `<div class="pc-ai-loading"><span class="pc-ai-spinner"></span>Davis is analyzing...</div>`;
   }
   if (ins.state === 'error') return `<div class="pc-ai-loading" style="color:var(--coral);font-style:normal">Analysis unavailable</div>`;
 
@@ -1861,10 +1885,10 @@ function renderSubBucketContent(sbId) {
   if (rp) {
     const row = (cls, label, tier) => {
       if (!tier) return '';
-      const icon = TOOL_ICONS[tier.tool] || '🔧';
+      const icon = TOOL_ICONS[tier.tool] || 'Tool';
       return `<div class="pc-ai-rem-row">
         <span class="pc-ai-rem-tier ${cls}">${label}</span>
-        <span>${icon} <strong>${tier.label}</strong><span class="pc-ai-rem-time"> · ${tier.time}</span>
+        <span>${icon} <strong>${tier.label}</strong><span class="pc-ai-rem-time"> | ${tier.time}</span>
         ${tier.reason ? `<div class="pc-ai-rem-reason">${tier.reason}</div>` : ''}</span>
       </div>`;
     };
@@ -1884,16 +1908,16 @@ function renderSubBucketContent(sbId) {
 }
 
 const REMEDIATION_CATALOG = `Auto (fully autonomous):
-  aws-agent | AWS DevOps Agent | ~2–5 min — AWS resource/config issues with known root cause
-  azure-auto | Azure Automation Runbooks | ~3–8 min — Azure resource/config issues
-  gcp-workflows | GCP Cloud Workflows | ~3–6 min — GCP resource/config issues
+  aws-agent | AWS DevOps Agent | ~2–5 min - AWS resource/config issues with known root cause
+  azure-auto | Azure Automation Runbooks | ~3–8 min - Azure resource/config issues
+  gcp-workflows | GCP Cloud Workflows | ~3–6 min - GCP resource/config issues
 Semi-auto (human initiates, tool executes):
-  live-debugger | Dynatrace Live Debugger | ~5 min — code defects, error rate spikes, exceptions
-  dt-workflows | Dynatrace Workflows | ~10–20 min — any problem, triggers runbooks/notifications
-  k8s-auto | Kubernetes Auto-Remediation | ~5–10 min — Kubernetes pod/deployment issues
-  ansible | Ansible / AWX Runbook | ~15–30 min — on-premise or Linux hosts
+  live-debugger | Dynatrace Live Debugger | ~5 min - code defects, error rate spikes, exceptions
+  dt-workflows | Dynatrace Workflows | ~10–20 min - any problem, triggers runbooks/notifications
+  k8s-auto | Kubernetes Auto-Remediation | ~5–10 min - Kubernetes pod/deployment issues
+  ansible | Ansible / AWX Runbook | ~15–30 min - on-premise or Linux hosts
 Manual:
-  manual | Manual Engineering Ticket | ~2–8 hrs — always valid as last resort`;
+  manual | Manual Engineering Ticket | ~2–8 hrs - always valid as last resort`;
 
 const DYNATRACE_OBSERVABILITY_FEATURES = `Broad Dynatrace features and action capabilities to recommend when relevant:
   Davis AI - problem analysis, impact explanation, root-cause guidance, and prioritization
@@ -1988,27 +2012,27 @@ function getFallbackInline(p,persona){
   const cost=calcCost(p);
   const SUMMARIES={
     executive:{
-      'AVAILABILITY':`A critical platform outage affected ${(p.users||0).toLocaleString()} customers for ${fmtM(p.dur||30)}, causing an estimated ${fmtC(cost.total)} in losses. ${p.rec>=60?'This is a recurring issue — the root cause has not been permanently resolved.':'Immediate investigation is required to prevent recurrence.'}`,
-      'ERROR':`Payment and transaction errors disrupted the experience of ${(p.users||0).toLocaleString()} customers. The estimated business impact is ${fmtC(cost.total)}${p.rec>=60?' — and this same incident has occurred multiple times recently.':'.'}`,
+      'AVAILABILITY':`A critical platform outage affected ${(p.users||0).toLocaleString()} customers for ${fmtM(p.dur||30)}, causing an estimated ${fmtC(cost.total)} in losses. ${p.rec>=60?'This is a recurring issue - the root cause has not been permanently resolved.':'Immediate investigation is required to prevent recurrence.'}`,
+      'ERROR':`Payment and transaction errors disrupted the experience of ${(p.users||0).toLocaleString()} customers. The estimated business impact is ${fmtC(cost.total)}${p.rec>=60?' - and this same incident has occurred multiple times recently.':'.'}`,
       'PERFORMANCE':`Customers experienced slow or degraded performance affecting ${(p.users||0).toLocaleString()} sessions, with an estimated ${fmtC(cost.total)} revenue impact. ${p.rec>=60?'This pattern repeats frequently, indicating an unresolved systemic issue.':''}`,
       'RESOURCE_CONTENTION':`A platform resource constraint was detected. ${p.users===0?'No direct customer impact was recorded.':'Approximately '+p.users.toLocaleString()+' customers were affected.'}`,
     },
     developer:{
-      'AVAILABILITY':`Service ${p.rca||p.svcs[0]} went unavailable for ${fmtM(p.dur||30)}. ${p.hasRCA?`Root cause identified: ${p.rca}.`:'Root cause not documented — investigation required.'} ${p.rec>=60?'High recurrence score indicates a persistent failure mode.':''}`,
-      'ERROR':`Error rate spiked on ${p.svcs.join(', ')}. ${p.hasRCA?`Root cause: ${p.rca} — likely connection pool or dependency failure.`:'No root cause entity identified. Check downstream dependencies and error logs.'} Recurrence score: ${p.rec}/100.`,
-      'PERFORMANCE':`${p.rca||p.svcs[0]} response time degraded for ${fmtM(p.dur||30)}. ${p.rec>=60?'Deterministic pattern — correlates with peak traffic. Capacity or resource limit issue.':'Isolated incident — check recent deployments and resource utilisation.'}`,
-      'RESOURCE_CONTENTION':`${p.rca||p.svcs[0]} hit resource limits (CPU/memory). Duration: ${fmtM(p.dur||30)}. ${p.noise?'Likely batch job interference — consider threshold tuning.':'Check for memory leaks, unbounded caches, or misconfigured resource limits.'}`,
+      'AVAILABILITY':`Service ${p.rca||p.svcs[0]} went unavailable for ${fmtM(p.dur||30)}. ${p.hasRCA?`Root cause identified: ${p.rca}.`:'Root cause not documented - investigation required.'} ${p.rec>=60?'High recurrence score indicates a persistent failure mode.':''}`,
+      'ERROR':`Error rate spiked on ${p.svcs.join(', ')}. ${p.hasRCA?`Root cause: ${p.rca} - likely connection pool or dependency failure.`:'No root cause entity identified. Check downstream dependencies and error logs.'} Recurrence score: ${p.rec}/100.`,
+      'PERFORMANCE':`${p.rca||p.svcs[0]} response time degraded for ${fmtM(p.dur||30)}. ${p.rec>=60?'Deterministic pattern - correlates with peak traffic. Capacity or resource limit issue.':'Isolated incident - check recent deployments and resource utilisation.'}`,
+      'RESOURCE_CONTENTION':`${p.rca||p.svcs[0]} hit resource limits (CPU/memory). Duration: ${fmtM(p.dur||30)}. ${p.noise?'Likely batch job interference - consider threshold tuning.':'Check for memory leaks, unbounded caches, or misconfigured resource limits.'}`,
     },
     sre:{
-      'AVAILABILITY':`Availability incident on ${p.rca||p.svcs[0]} — ${fmtM(p.dur||30)} outage, ${(p.users||0).toLocaleString()} users affected, ${fmtC(cost.total)} estimated cost. ${p.rec>=60?'High recurrence — SLO error budget burning rapidly.':'Single occurrence — verify no SLO breach.'}`,
-      'ERROR':`Error rate incident: ${p.svcs.join('/')} impacted for ${fmtM(p.dur||30)}. ${p.hasRCA?`Root cause: ${p.rca}.`:'RCA missing.'} ${p.noise?'Short duration suggests noise candidate — review alert threshold.':'Impact confirmed — initiate post-incident review.'}`,
-      'PERFORMANCE':`Latency SLO violation on ${p.rca||p.svcs[0]} for ${fmtM(p.dur||30)}. ${p.rec>=60?'Recurring pattern at peak hours — HPA or capacity planning needed.':'Check recent deployment correlation and dependency health.'}`,
-      'RESOURCE_CONTENTION':`Resource saturation on ${p.rca||p.svcs[0]}. ${p.noise?'Auto-resolved in <15min — likely noisy alert. Tune thresholds.':'Genuine saturation — check limits, eviction policies, and scaling config.'}`,
+      'AVAILABILITY':`Availability incident on ${p.rca||p.svcs[0]} - ${fmtM(p.dur||30)} outage, ${(p.users||0).toLocaleString()} users affected, ${fmtC(cost.total)} estimated cost. ${p.rec>=60?'High recurrence - SLO error budget burning rapidly.':'Single occurrence - verify no SLO breach.'}`,
+      'ERROR':`Error rate incident: ${p.svcs.join('/')} impacted for ${fmtM(p.dur||30)}. ${p.hasRCA?`Root cause: ${p.rca}.`:'RCA missing.'} ${p.noise?'Short duration suggests noise candidate - review alert threshold.':'Impact confirmed - initiate post-incident review.'}`,
+      'PERFORMANCE':`Latency SLO violation on ${p.rca||p.svcs[0]} for ${fmtM(p.dur||30)}. ${p.rec>=60?'Recurring pattern at peak hours - HPA or capacity planning needed.':'Check recent deployment correlation and dependency health.'}`,
+      'RESOURCE_CONTENTION':`Resource saturation on ${p.rca||p.svcs[0]}. ${p.noise?'Auto-resolved in <15min - likely noisy alert. Tune thresholds.':'Genuine saturation - check limits, eviction policies, and scaling config.'}`,
     },
   };
   const FIXES={
     executive:{AVAILABILITY:'Escalate to engineering leadership for immediate resolution and post-incident review.',ERROR:'Request engineering team to investigate payment system root cause and implement permanent fix.',PERFORMANCE:'Authorise capacity investment to prevent peak-hour degradation recurring.',RESOURCE_CONTENTION:'Assign engineering team to investigate and resolve the resource constraint.'},
-    developer:{AVAILABILITY:`Restart ${p.rca||'the service'}, check health probes, review recent deployments. Add circuit breaker if downstream dependency.`,ERROR:`Check ${p.rca||'upstream service'} connection pool settings. Increase max_connections, add retry with backoff.`,PERFORMANCE:`Profile ${p.rca||p.svcs[0]} under load. Check HPA config — add custom metric scaling. Review GC settings if JVM.`,RESOURCE_CONTENTION:`Check resource limits in deployment YAML. Increase CPU/memory limits or add HPA. ${p.noise?'Exclude batch job window from alerting.':''}`},
+    developer:{AVAILABILITY:`Restart ${p.rca||'the service'}, check health probes, review recent deployments. Add circuit breaker if downstream dependency.`,ERROR:`Check ${p.rca||'upstream service'} connection pool settings. Increase max_connections, add retry with backoff.`,PERFORMANCE:`Profile ${p.rca||p.svcs[0]} under load. Check HPA config - add custom metric scaling. Review GC settings if JVM.`,RESOURCE_CONTENTION:`Check resource limits in deployment YAML. Increase CPU/memory limits or add HPA. ${p.noise?'Exclude batch job window from alerting.':''}`},
     sre:{AVAILABILITY:`Trigger runbook: restart ${p.rca||'affected service'}, verify health checks, check PagerDuty escalation. Open post-incident review.`,ERROR:`Execute connection pool reset on ${p.rca||'service'}. Check CloudWatch/Dynatrace for anomaly correlation with deployments.`,PERFORMANCE:`Scale ${p.rca||p.svcs[0]} replicas immediately. Set HPA min: 3, max: 10 with request-rate metric.`,RESOURCE_CONTENTION:`${p.noise?'Tune alert threshold to 95%, exclude batch window.':'Increase resource limits, check OOM kill logs, review eviction policy.'}`},
   };
   return{summary:(SUMMARIES[persona]||SUMMARIES.sre)[p.sev]||`Problem ${p.id} recorded for ${fmtM(p.dur||30)}, affecting ${(p.users||0).toLocaleString()} users.`,topFix:(FIXES[persona]||FIXES.sre)[p.sev]||'Investigate root cause and document findings before closing.'};
@@ -2056,7 +2080,7 @@ function calculateAIMetrics(ps, costs, totalCost) {
 async function callAIWithPrompt(ps,persona,costs,totalCost,source){
   const t0=Date.now();
   const PINSTR={
-    executive:`Brief a C-level executive. Plain English only — no pods, JVM, heap, GC, DQL. Focus on business impact, customer experience, revenue risk. CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number (cost, %, count, or duration) from the data. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure.`,
+    executive:`Brief a C-level executive. Plain English only - no pods, JVM, heap, GC, DQL. Focus on business impact, customer experience, revenue risk. CRITICAL: every sentence in "summary" and every item in "patterns" MUST cite at least one specific number (cost, %, count, or duration) from the data. Do not write generic statements. Recommendations must be strategic and reference the estimated cost figure.`,
     developer:`Brief a software developer. Technical root cause analysis. Name services, error types, config values. Recommend specific code-level or config-level fixes. Each recommendation must also name one broad Dynatrace feature or action capability that supports diagnosis, prevention, or ownership.`,
     sre:`Brief an SRE. Full operational analysis. Include infrastructure signals, alert noise assessment, SLO impact, runbook steps, blast radius. Each recommendation must also name one broad Dynatrace feature or action capability that supports reliability operations.`,
   };
@@ -2783,7 +2807,7 @@ function renderPatternDetailPane(pat, patterns) {
   return `<div class="px-detail">
     <div>
       <div class="px-detail-title">${pat.title}</div>
-      <div class="px-detail-sub">Why next: ${reason} · priority ${patternPriorityScore(pat, patterns)} · ${pat.occurrences} occurrences</div>
+      <div class="px-detail-sub">Why next: ${reason} | priority ${patternPriorityScore(pat, patterns)} | ${pat.occurrences} occurrences</div>
     </div>
     <div class="px-detail-grid">
       <div class="px-detail-metric"><strong>${pat.occurrences}x</strong><span>Occurrences</span></div>
@@ -2805,7 +2829,7 @@ function renderPatternDetailPane(pat, patterns) {
         <div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} events between ${fmtR(pat.firstSeen)} and ${fmtR(pat.lastSeen)}</strong></div>
         <div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div>
         <div class="px-evidence-row"><span>MTTR</span><strong>${avg ? fmtM(avg) : 'No resolved duration data'}</strong></div>
-        <div class="px-evidence-row"><span>Quality</span><strong>${patternConfidenceScore(pat)} / 100 · concentration ${pat.concentration}</strong></div>
+        <div class="px-evidence-row"><span>Quality</span><strong>${patternConfidenceScore(pat)} / 100 | concentration ${pat.concentration}</strong></div>
       </div>
     </div>
     ${renderInvestigationComplexityCard(pat, patterns)}
@@ -2838,7 +2862,7 @@ function buildPattern(problems) {
   const rcaValues = [...new Set(problems.filter(p => p.hasRCA && p.rca).map(p => p.rca))];
   const consistentRCA = rcaValues.length === 1;
 
-  // Time cluster detection — do events genuinely cluster at the same UTC hour?
+  // Time cluster detection - do events genuinely cluster at the same UTC hour?
   // Only valid timestamps (not NaN from bad parses) are counted.
   const hours = problems.map(p => new Date(p.start).getUTCHours()).filter(h => !isNaN(h));
   const hourCounts = {};
@@ -2865,7 +2889,7 @@ function buildPattern(problems) {
     : secondRate < firstRate * 0.7 ? 'DECREASING'
     : 'STABLE';
 
-  // Spark data — one point per problem, value = cost
+  // Spark data - one point per problem, value = cost
   const sparkData = problems.map(p => ({ t: p.start, v: calcCost(p).total }));
   const dimensions = buildPatternDimensions(problems);
 
@@ -2895,7 +2919,7 @@ function buildPattern(problems) {
   );
 
   // Concentration: how tightly cost + entities cluster (high = one entity dominates)
-  // Uses cost predictability (1 − CV) instead of Gini — easier to explain and equivalent directionally
+  // Uses cost predictability (1 − CV) instead of Gini - easier to explain and equivalent directionally
   const concentrationRaw   = clamp(clusterPurity * 0.3 + costConsistency * 0.3 + dimensionPurity * 0.4, 0, 1);
   const concentration = scoreLabel(concentrationRaw);
   const concentrationScore = concentration[0] + concentration.slice(1).toLowerCase();
@@ -2971,28 +2995,28 @@ const REC_META = {
 };
 
 function recommendAction(p) {
-  // 1. Time cluster — scheduled batch job or deployment window
+  // 1. Time cluster - scheduled batch job or deployment window
   if (p.hasTimeCluster) {
     return {
       type: 'ADD_TIME_WINDOW', confidence: 85,
-      text: `Occurrences cluster around ${String(p.dominantHour).padStart(2,'0')}:00 UTC — likely a scheduled batch job or deployment window.`,
+      text: `Occurrences cluster around ${String(p.dominantHour).padStart(2,'0')}:00 UTC - likely a scheduled batch job or deployment window.`,
       config: `alert.suppress_window(start="${String(p.dominantHour).padStart(2,'0')}:00", duration="2h", days="all")`,
     };
   }
 
-  // 2. Recurring with consistent root cause — engineering problem, not alerting problem
+  // 2. Recurring with consistent root cause - engineering problem, not alerting problem
   if (p.hasRCA && p.consistentRCA && p.frequency >= 3) {
     return {
       type: 'FIX_ROOT_CAUSE', confidence: 91,
-      text: `Same root cause (${p.rcaLabel}) identified across ${p.frequency} occurrences — alerting is surfacing unresolved technical debt.`,
+      text: `Same root cause (${p.rcaLabel}) identified across ${p.frequency} occurrences - alerting is surfacing unresolved technical debt.`,
       config: `problem.root_cause="${p.rcaLabel}" // assign to owning team for permanent fix`,
     };
   }
 
-  // 3. Default — investigate before taking action
+  // 3. Default - investigate before taking action
   return {
     type: 'INVESTIGATE_FIRST', confidence: 88,
-    text: `Occurred ${p.frequency}× ${p.hasRCA ? 'with inconsistent root cause' : 'with no root cause documented'}. Attach Live Debugger to the next occurrence to capture state.`,
+    text: `Occurred ${p.frequency}x ${p.hasRCA ? 'with inconsistent root cause' : 'with no root cause documented'}. Attach Live Debugger to the next occurrence to capture state.`,
     config: `live_debugger.arm(trigger="next_occurrence", capture=["variables","stack","request"])`,
   };
 }
@@ -3020,8 +3044,8 @@ function renderPatternIntelligence() {
   document.getElementById('intelSummary').innerHTML = `
     <div class="intel-icon">P</div>
     <div class="intel-main">
-      <div class="intel-headline">${patterns.length} patterns across ${patternOccurrences} grouped problems — ${ps.length} total problems</div>
-      <div class="intel-sub">${fixable} patterns have clear actionable paths · ${oneOffs.length} one-off problems below pattern threshold</div>
+      <div class="intel-headline">${patterns.length} patterns across ${patternOccurrences} grouped problems - ${ps.length} total problems</div>
+      <div class="intel-sub">${fixable} patterns have clear actionable paths | ${oneOffs.length} one-off problems below pattern threshold</div>
     </div>
     <div class="intel-stats">
       <div class="intel-stat">
@@ -3048,7 +3072,7 @@ function renderPatternIntelligence() {
   }
 
   // Pattern cards (engineer / SRE / developer)
-  const TREND_ICONS = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
+  const TREND_ICONS = { INCREASING: 'up', STABLE: '->', DECREASING: 'down' };
   const TREND_LABELS = { INCREASING: 'Worsening', STABLE: 'Stable', DECREASING: 'Improving' };
   const SEV_CLASS = { AVAILABILITY: 'severity-high', ERROR: 'severity-high', PERFORMANCE: 'severity-med', RESOURCE_CONTENTION: 'severity-low', CUSTOM_ALERT: 'severity-low' };
 
@@ -3062,7 +3086,7 @@ function renderPatternIntelligence() {
     const sectionHdr = `<div class="pattern-section-hdr">
       <span class="psh-icon">${meta.icon}</span>
       <span class="psh-title">${pat.title}</span>
-      <span class="psh-pill">${pat.occurrences}×</span>
+      <span class="psh-pill">${pat.occurrences}x</span>
       ${renderPatternDimensionChips(pat)}
       <span class="trend-chip ${pat.trend}">${TREND_ICONS[pat.trend]} ${TREND_LABELS[pat.trend]}</span>
       <span class="exec-pat-chip ${pat.concentration === 'HIGH' ? 'conc-high' : pat.concentration === 'MEDIUM' ? 'conc-med' : 'conc-low'}">Conc: ${pat.concentration}</span>
@@ -3074,7 +3098,7 @@ function renderPatternIntelligence() {
       <span class="psh-rec-pct" style="color:${recColor}">${pat.recurrenceScore}%</span>
     </div>`;
 
-    // ── One card per unique (entity × RCA) sub-bucket ──
+    // ── One card per unique (entity x RCA) sub-bucket ──
     const subBuckets = groupIntoSubBuckets(pat);
     const cardsHtml = subBuckets.map(sb => {
       const openCount = sb.problems.filter(p => p.status === 'OPEN').length;
@@ -3090,7 +3114,7 @@ function renderPatternIntelligence() {
             <span class="sdot ${sbStatus}"></span>
             <span class="sb-card-entity">${sb.entityLabel}</span>
             ${rcaChip}
-            <span class="sb-card-count">${sb.problems.length}×</span>
+            <span class="sb-card-count">${sb.problems.length}x</span>
             <span class="sb-card-cost">${fmtC(sbCost)}</span>
             <span class="lbtn" data-action="drillToExplorer" data-pid="${sb.problems[0]?.id}" title="Drill into problems">↗</span>
           </div>
@@ -3152,11 +3176,11 @@ function buildPatternActions(pat) {
   } else if (rec.type === 'FIX_ROOT_CAUSE') {
     actions.push(`<button class="pc-action fix" data-action="patternAction" data-pid="${pat.id}" data-type="fix">🔁 Assign Root Fix</button>`);
   } else {
-    actions.push(`<button class="pc-action debugger" data-action="patternAction" data-pid="${pat.id}" data-type="debug">⚡ Arm Live Debugger</button>`);
+    actions.push(`<button class="pc-action debugger" data-action="patternAction" data-pid="${pat.id}" data-type="debug">Lightning Arm Live Debugger</button>`);
   }
 
-  actions.push(`<button class="pc-action ticket" data-action="patternAction" data-pid="${pat.id}" data-type="ticket">🎫 Create Ticket</button>`);
-  actions.push(`<button class="pc-action drill" data-action="drillIntoPattern" data-pid="${pat.id}">📋 View All</button>`);
+  actions.push(`<button class="pc-action ticket" data-action="patternAction" data-pid="${pat.id}" data-type="ticket">Ticket Create Ticket</button>`);
+  actions.push(`<button class="pc-action drill" data-action="drillIntoPattern" data-pid="${pat.id}"> View All</button>`);
 
   return actions.join('');
 }
@@ -3271,14 +3295,14 @@ function renderExecutivePatternDetail(pat) {
 }
 
 function renderExecutivePatternsBoard(patterns, ps, label='Patterns') {
-  const TREND_ICON  = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
+  const TREND_ICON  = { INCREASING: 'up', STABLE: '->', DECREASING: 'down' };
   const TREND_CLS   = { INCREASING: 'trend-up', STABLE: 'trend-stable', DECREASING: 'trend-dn' };
   const FIX_CLS     = { HIGH: 'fix-high', MEDIUM: 'fix-med', LOW: 'fix-low', High: 'fix-high', Medium: 'fix-med', Low: 'fix-low' };
   const CONC_CLS    = { HIGH: 'conc-high', MEDIUM: 'conc-med', LOW: 'conc-low', High: 'conc-high', Medium: 'conc-med', Low: 'conc-low' };
   const TREND_TOOLTIP = {
-    INCREASING: 'Trend: rate in second half of period is >30% higher than first half — pattern is worsening',
+    INCREASING: 'Trend: rate in second half of period is >30% higher than first half - pattern is worsening',
     STABLE:     'Trend: occurrence rate is consistent across the period',
-    DECREASING: 'Trend: rate in second half is >30% lower than first half — pattern is improving',
+    DECREASING: 'Trend: rate in second half is >30% lower than first half - pattern is improving',
   };
   const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component.';
   const FIX_TOOLTIP  = 'Fixability: how likely a single engineering action can permanently resolve this pattern.';
@@ -3302,7 +3326,7 @@ function renderExecutivePatternsBoard(patterns, ps, label='Patterns') {
         ${d.primaryRootCause ? `<span class="exec-pat-chip exec-dim-chip">RCA: ${d.primaryRootCause}</span>` : ''}
       </div>
       <span class="exec-t2-val">${pat.occurrences}x</span>
-      <span class="exec-t2-meta">${fmtC(cost)}${openCount ? ` · ${openCount} open` : ''}</span>
+      <span class="exec-t2-meta">${fmtC(cost)}${openCount ? ` | ${openCount} open` : ''}</span>
       <button class="exec-detail-btn ${expandedPatterns.has(pat.id) ? 'open' : ''}" data-action="togglePatternExpand" data-pid="${pat.id}">
         ${expandedPatterns.has(pat.id) ? 'Hide' : 'Details'}
       </button>
@@ -3442,13 +3466,7 @@ function conciseExecMetrics(ps, patterns) {
   const riskBacklog = patterns.filter(pat => patternOpenCount(pat) > 0).length;
   const session = calcSessionMetrics(ps, patterns);
   const recoverable = patterns.length ? Math.round(totalPatternCost * 0.35 + session.valueDeliveredTotal) : 0;
-  const resolved = ps.filter(p => p.status === 'RESOLVED' && p.dur);
-  const durs = resolved.map(p => p.dur);
-  const mttr = MTTR_SUMMARY || {
-    median: arrPercentile(durs, .5),
-    p85: arrPercentile(durs, .85),
-    count: resolved.length,
-  };
+  const mttr = MTTR_SUMMARY ? safeMttrSummary(MTTR_SUMMARY, ps) : mttrSummaryFromProblems(ps);
   return { totalPatternCost, groupedProblems, highImpact, riskBacklog, recoverable, mttr };
 }
 
@@ -3458,8 +3476,8 @@ function renderConciseKpiRow(ps, patterns) {
   const cards = [
     { key:'risk', label:'Open Risk Exposure', value:fmtC(m.totalPatternCost), sub:`${m.highImpact} high-impact pattern${m.highImpact!==1?'s':''}`, cls:'risk' },
     { key:'recoverable', label:'Recoverable Now', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure`, cls:'recover' },
-    { key:'patterns', label:'Active Patterns', value:patterns.length, sub:`${m.groupedProblems} grouped · ${m.riskBacklog} risk backlog`, cls:'patterns' },
-    { key:'resolution', label:'Resolution Time', value:`${fmtM(m.mttr.median || 0)} median`, sub:`p85 ${fmtM(m.mttr.p85 || 0)} · ${m.mttr.count || 0} resolved`, cls:'time' },
+    { key:'patterns', label:'Active Patterns', value:patterns.length, sub:`${m.groupedProblems} grouped | ${m.riskBacklog} risk backlog`, cls:'patterns' },
+    { key:'resolution', label:'Median MTTR', value:fmtM(m.mttr.median), sub:`p85 ${fmtM(m.mttr.p85)} | ${m.mttr.count || 0} resolved`, cls:'time' },
   ];
   return `<section class="cx-kpis">${cards.map(c => `
     <button class="cx-kpi ${c.cls} ${execMetricDrilldown === c.key ? 'selected' : ''}" data-action="selectExecMetric" data-metric="${c.key}" aria-pressed="${execMetricDrilldown === c.key}">
@@ -3497,9 +3515,9 @@ function renderMetricDrilldown(ps, patterns) {
       related:topPattern,
     },
     resolution: {
-      label:'Resolution Time',
-      value:`${fmtM(m.mttr.median || 0)} median`,
-      why:`Median resolution time is ${fmtM(m.mttr.median || 0)}, while p85 is ${fmtM(m.mttr.p85 || 0)} across ${m.mttr.count || 0} resolved problems.`,
+      label:'Median MTTR',
+      value:fmtM(m.mttr.median),
+      why:`Median MTTR is ${fmtM(m.mttr.median)}, while p85 is ${fmtM(m.mttr.p85)} across ${m.mttr.count || 0} resolved problems.`,
       action:'Focus on recurring patterns that repeatedly drive the long resolution-time tail.',
       related:[...patterns].filter(pattern => pattern.avgDur > 0).sort((a, b) => b.avgDur - a.avgDur)[0] || null,
     },
@@ -3535,7 +3553,7 @@ function renderConciseFocusBanner(patterns) {
     <div>
       <div class="cx-eyebrow">Selected pattern</div>
       <h2>${selected.title}</h2>
-      <p>${selected.occurrences} occurrences · ${fmtC(exposure)} exposure · ${fmtC(recoverable)} recoverable · ${patternOpenCount(selected)} open</p>
+      <p>${selected.occurrences} occurrences | ${fmtC(exposure)} exposure | ${fmtC(recoverable)} recoverable | ${patternOpenCount(selected)} open</p>
       <div class="cx-focus-why">${why}</div>
     </div>
     <div class="cx-focus-actions">
@@ -3569,7 +3587,7 @@ function renderConcisePatternTable(patterns) {
           const rca = pat.dimensions?.rootCauseEntities?.[0] || pat.rcaLabel || 'RCA not consistently identified';
           return `<tr class="${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
             <td><span class="px-priority">#${idx + 1}</span></td>
-            <td><div class="cx-pat-name">${pat.title}</div><div class="cx-pat-meta">${services || 'Service not identified'} · ${rca}</div></td>
+            <td><div class="cx-pat-name">${pat.title}</div><div class="cx-pat-meta">${services || 'Service not identified'} | ${rca}</div></td>
             ${hasOwner ? `<td>${pat.owner || pat.ownerTeam || ''}</td>` : ''}
             <td>${pat.occurrences}</td>
             <td>${fmtC(patternCost(pat))}</td>
@@ -3618,9 +3636,9 @@ function renderConciseDetailPanel(pat, patterns) {
       <div class="cx-eyebrow">Evidence</div>
       <div class="px-evidence">
         <div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div>
-        <div class="px-evidence-row"><span>Confidence</span><strong>${patternConfidenceScore(pat)} / 100 · RCA consistency ${rcaConfidence}%</strong></div>
+        <div class="px-evidence-row"><span>Confidence</span><strong>${patternConfidenceScore(pat)} / 100 | RCA consistency ${rcaConfidence}%</strong></div>
         <div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div>
-        <div class="px-evidence-row"><span>Cost</span><strong>${fmtC(exposure)} exposure · ${fmtC(recoverable)} recoverable</strong></div>
+        <div class="px-evidence-row"><span>Cost</span><strong>${fmtC(exposure)} exposure | ${fmtC(recoverable)} recoverable</strong></div>
       </div>
     </div>
     ${renderInvestigationComplexityCard(pat, patterns)}
@@ -3669,8 +3687,8 @@ function renderDecisionDetailPanel(pat, patterns) {
   const hasRemediation = remediationState.patternId === pat.id && remediationState.status === 'done';
   const remediationResponse = hasRemediation ? remediationState.response : null;
   const remediationBody = hasRemediation ? renderAssistRemediationResponse(remediationResponse, remediationState.evidence) : '';
-  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity · ${complexity.signalSourceCount} signal sources · RCA confidence ${complexity.rcaConfidence}%`;
-  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 · concentration ${pat.concentration}</strong></div></div>`;
+  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources | RCA confidence ${complexity.rcaConfidence}%`;
+  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 | concentration ${pat.concentration}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Pattern Details</div><h3>${pat.title}</h3></div></div>
@@ -3679,10 +3697,10 @@ function renderDecisionDetailPanel(pat, patterns) {
     <div class="cx-detail-tiles"><div><strong>${pat.occurrences}</strong><span>Occurrences</span></div><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div><div><strong>${rcaConfidence}%</strong><span>RCA Confidence</span></div><div><strong>${pat.fixability}</strong><span>Fixability</span></div></div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     <div class="cx-complexity-summary"><span>Investigation Complexity</span><strong>${complexitySummary}</strong><p>${complexity.narrative}</p></div>
-    ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services · ${affected.applications} applications · ${affected.synthetic} synthetic monitors · ${affected.infrastructure} infrastructure components`, impactedBody)}
-    ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences · ${pat.trend.toLowerCase()} · RCA confidence ${rcaConfidence}%`, evidenceBody)}
+    ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
+    ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences | ${pat.trend.toLowerCase()} | RCA confidence ${rcaConfidence}%`, evidenceBody)}
     ${renderExecDisclosure('Investigation Complexity', complexitySummary, renderInvestigationComplexityCard(pat, patterns) || `<p>${complexity.narrative}</p>`)}
-    ${hasRemediation ? renderExecDisclosure('Remediation Path', `${actionCount} recommended actions · Estimated recovery ${fmtC(recoverable)}`, remediationBody) : ''}
+    ${hasRemediation ? renderExecDisclosure('Remediation Path', `${actionCount} recommended actions | Estimated recovery ${fmtC(recoverable)}`, remediationBody) : ''}
   </aside>`;
 }
 
@@ -3784,7 +3802,7 @@ function renderExecutivePatternView(patterns, ps) {
     const offset = clamp(patternExplorerState.offset || 0, 0, Math.max(0, rows.length - pageSize));
     patternExplorerState.offset = offset;
     const visibleRows = rows.slice(offset, offset + pageSize);
-    const sortMark = key => patternExplorerState.sort === key ? (patternExplorerState.dir === 'asc' ? ' ↑' : ' ↓') : '';
+    const sortMark = key => patternExplorerState.sort === key ? (patternExplorerState.dir === 'asc' ? ' up' : ' down') : '';
     const rowHtml = visibleRows.map(({ pat, score }, idx) => `
       <tr class="px-row ${pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
         <td><span class="px-priority">#${idx + 1}</span></td>
@@ -3801,7 +3819,7 @@ function renderExecutivePatternView(patterns, ps) {
         <div class="pattern-lead">
           <div>
             <div class="pattern-lead-title">${totalProblems} problems reduced to <strong>${patterns.length} recurring patterns</strong></div>
-            <div class="pattern-lead-sub">${patternOccurrences} grouped incidents · ${oneOffCount} one-off problems · ${reductionPct}% reduction in operational investigation scope</div>
+            <div class="pattern-lead-sub">${patternOccurrences} grouped incidents | ${oneOffCount} one-off problems | ${reductionPct}% reduction in operational investigation scope</div>
           </div>
           <div class="pattern-lead-meta">
             <div class="pattern-mini-stat"><div class="pattern-mini-val">${fmtC(totalPatternCost)}</div><div class="pattern-mini-lbl">Pattern cost</div></div>
@@ -3846,7 +3864,7 @@ function renderExecutivePatternView(patterns, ps) {
               </table>
             </div>
             <div class="px-footer">
-              <span>${rows.length} matching patterns · showing ${rows.length ? offset + 1 : 0}-${Math.min(offset + visibleRows.length, rows.length)}</span>
+              <span>${rows.length} matching patterns | showing ${rows.length ? offset + 1 : 0}-${Math.min(offset + visibleRows.length, rows.length)}</span>
               <span>Sorted by ${patternExplorerState.sort}
                 <button class="px-page-btn" data-action="pagePatternTable" data-dir="-1" ${offset <= 0 ? 'disabled' : ''}>Prev</button>
                 <button class="px-page-btn" data-action="pagePatternTable" data-dir="1" ${offset + pageSize >= rows.length ? 'disabled' : ''}>Next</button>
@@ -3927,22 +3945,22 @@ function renderExecutivePatternView(patterns, ps) {
   // Tier 3: efficiency chips
   const chips = [];
   if (sm.mttrLift != null) {
-    chips.push(`<div class="exec-chip"><span class="exec-chip-val">${sm.mttrLift}×</span><span class="exec-chip-lbl">MTTR lift with RCA</span></div>`);
+    chips.push(`<div class="exec-chip"><span class="exec-chip-val">${sm.mttrLift}x</span><span class="exec-chip-lbl">MTTR lift with RCA</span></div>`);
   }
-  chips.push(`<div class="exec-chip" title="Auto-correlated: % of problems where Davis AI identified a root cause entity — higher means less manual investigation"><span class="exec-chip-val">${Math.round(sm.autoCorrelationRate * 100)}%</span><span class="exec-chip-lbl">Auto-correlated</span></div>`);
+  chips.push(`<div class="exec-chip" title="Auto-correlated: % of problems where Davis AI identified a root cause entity - higher means less manual investigation"><span class="exec-chip-val">${Math.round(sm.autoCorrelationRate * 100)}%</span><span class="exec-chip-lbl">Auto-correlated</span></div>`);
   if (sm.avgQuality != null) {
     chips.push(`<div class="exec-chip" title="Pattern Quality Score (0–100): how reliably Davis can identify this as a real repeating problem vs random noise. Combines: how similar incident titles are (35%), how consistently the same root cause is found (35%), how regular the timing is (15%), and how predictable the cost is each time (15%)."><span class="exec-chip-val">${sm.avgQuality}</span><span class="exec-chip-lbl">Avg pattern quality</span></div>`);
   }
   if (sm.lowConfCount > 0) {
-    chips.push(`<div class="exec-chip exec-chip-warn" title="Patterns with quality score below 50 — inconsistent RCA, irregular recurrence, or mixed entity cluster. Treat costs for these patterns as indicative, not precise."><span class="exec-chip-val">${sm.lowConfCount}</span><span class="exec-chip-lbl">Low-confidence patterns</span></div>`);
+    chips.push(`<div class="exec-chip exec-chip-warn" title="Patterns with quality score below 50 - inconsistent RCA, irregular recurrence, or mixed entity cluster. Treat costs for these patterns as indicative, not precise."><span class="exec-chip-val">${sm.lowConfCount}</span><span class="exec-chip-lbl">Low-confidence patterns</span></div>`);
   }
   chips.push(`<div class="exec-chip" title="Events suppressed: estimated alert noise eliminated by Davis AI pattern grouping. Each grouped problem saves ~8 separate alert notifications."><span class="exec-chip-val">${sm.estimatedEventsSuppressed}</span><span class="exec-chip-lbl">Events suppressed</span></div>`);
 
   // ── System Direction ──
   const dirMeta = {
-    IMPROVING: { cls: 'dir-improving', icon: '↑', label: 'Improving',  sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
-    STABLE:    { cls: 'dir-stable',    icon: '→', label: 'Stable',     sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
-    DEGRADING: { cls: 'dir-degrading', icon: '↓', label: 'Degrading',  sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
+    IMPROVING: { cls: 'dir-improving', icon: 'up', label: 'Improving',  sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
+    STABLE:    { cls: 'dir-stable',    icon: '->', label: 'Stable',     sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
+    DEGRADING: { cls: 'dir-degrading', icon: 'down', label: 'Degrading',  sub: `Cost ${sm.costTrend.toLowerCase()}, recurrence ${sm.recurrenceTrend.toLowerCase()}, MTTR ${sm.mttrTrend.toLowerCase()}` },
   };
   const dir = dirMeta[sm.systemDirection];
 
@@ -3969,7 +3987,7 @@ function renderExecutivePatternView(patterns, ps) {
     const openPart  = t.openCount > 0
       ? `<span class="exec-tech-open">${t.openCount} open</span>` : '';
     const badgePart = isSlowest ? `<span class="exec-tech-badge slowest">⏱ Slowest</span>`
-                    : isFastest ? `<span class="exec-tech-badge fastest">⚡ Fastest</span>` : '';
+                    : isFastest ? `<span class="exec-tech-badge fastest">Lightning Fastest</span>` : '';
     return `<div class="exec-tech-row">
       <span class="exec-tech-icon">${t.icon}</span>
       <span class="exec-tech-label">${t.label}</span>
@@ -3994,17 +4012,17 @@ function renderExecutivePatternView(patterns, ps) {
   }).join('');
 
   // ── Key drivers with pattern metadata ──
-  const TREND_ICON  = { INCREASING: '↑', STABLE: '→', DECREASING: '↓' };
+  const TREND_ICON  = { INCREASING: 'up', STABLE: '->', DECREASING: 'down' };
   const TREND_CLS   = { INCREASING: 'trend-up', STABLE: 'trend-stable', DECREASING: 'trend-dn' };
   const FIX_CLS     = { HIGH: 'fix-high', MEDIUM: 'fix-med', LOW: 'fix-low', High: 'fix-high', Medium: 'fix-med', Low: 'fix-low' };
   const CONC_CLS    = { HIGH: 'conc-high', MEDIUM: 'conc-med', LOW: 'conc-low', High: 'conc-high', Medium: 'conc-med', Low: 'conc-low' };
 
   const TREND_TOOLTIP = {
-    INCREASING: 'Trend: rate in second half of period is >30% higher than first half — pattern is worsening',
+    INCREASING: 'Trend: rate in second half of period is >30% higher than first half - pattern is worsening',
     STABLE:     'Trend: occurrence rate is consistent across the period (within ±30%)',
-    DECREASING: 'Trend: rate in second half is >30% lower than first half — pattern is improving',
+    DECREASING: 'Trend: rate in second half is >30% lower than first half - pattern is improving',
   };
-  const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component. High = every occurrence implicates the same entity and costs roughly the same amount — easy to locate and fix. Low = incidents are spread across multiple components or vary widely in cost.';
+  const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component. High = every occurrence implicates the same entity and costs roughly the same amount - easy to locate and fix. Low = incidents are spread across multiple components or vary widely in cost.';
   const FIX_TOOLTIP  = 'Fixability: how likely a single engineering action can permanently resolve this pattern. High = Davis identified a consistent root cause, the pattern repeats on a stable schedule, and incidents cluster tightly on one component. Low = root cause varies or is unknown, making a permanent fix harder.';
 
   const driverRow = (badge, badgeCls, pat, valHtml, metaHtml) => `
@@ -4037,7 +4055,7 @@ function renderExecutivePatternView(patterns, ps) {
         ${d.primaryRootCause ? `<span class="exec-pat-chip exec-dim-chip">RCA: ${d.primaryRootCause}</span>` : ''}
       </div>
       <span class="exec-t2-val">${pat.occurrences}x</span>
-      <span class="exec-t2-meta">${fmtC(cost)}${openCount ? ` · ${openCount} open` : ''}</span>
+      <span class="exec-t2-meta">${fmtC(cost)}${openCount ? ` | ${openCount} open` : ''}</span>
       <button class="exec-detail-btn ${expandedPatterns.has(pat.id) ? 'open' : ''}" data-action="togglePatternExpand" data-pid="${pat.id}">
         ${expandedPatterns.has(pat.id) ? 'Hide' : 'Details'}
       </button>
@@ -4047,7 +4065,7 @@ function renderExecutivePatternView(patterns, ps) {
 
   const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const patternsBoard = execPatternsOpen ? `<div class="exec-t2-board exec-patterns-board">
-    <div class="exec-t2-hdr">Patterns · ${patterns.length} patterns · ${patternOccurrences} pattern occurrences · ${fmtC(patterns.reduce((s, pat) => s + pat.totalCost, 0))} pattern cost</div>
+    <div class="exec-t2-hdr">Patterns | ${patterns.length} patterns | ${patternOccurrences} pattern occurrences | ${fmtC(patterns.reduce((s, pat) => s + pat.totalCost, 0))} pattern cost</div>
     <div class="exec-patterns-list">${patterns.map(patternRow).join('')}</div>
   </div>` : '';
 
@@ -4066,11 +4084,11 @@ function renderExecutivePatternView(patterns, ps) {
       <!-- Change Over Time strip -->
       <div class="exec-change-strip">
         <div class="exec-change-item">
-          <span class="exec-change-icon ${sm.costTrendUp ? 'trend-up' : 'trend-dn'}">${sm.costTrendUp ? '↑' : '↓'}</span>
+          <span class="exec-change-icon ${sm.costTrendUp ? 'trend-up' : 'trend-dn'}">${sm.costTrendUp ? 'up' : 'down'}</span>
           <span class="exec-change-lbl">Cost trend</span>
         </div>
         <div class="exec-change-item">
-          <span class="exec-change-icon ${sm.mttrTrendUp ? 'trend-up' : 'trend-dn'}">${sm.mttrTrendUp ? '↑' : '↓'}</span>
+          <span class="exec-change-icon ${sm.mttrTrendUp ? 'trend-up' : 'trend-dn'}">${sm.mttrTrendUp ? 'up' : 'down'}</span>
           <span class="exec-change-lbl">MTTR trend</span>
         </div>
         <div class="exec-change-item">
@@ -4119,7 +4137,7 @@ function renderExecutivePatternView(patterns, ps) {
         <div class="exec-kpi-card">
           <div class="exec-kpi-lbl">Operational Cost</div>
           <div class="exec-kpi-big">${fmtC(totalCost)}</div>
-          <div class="exec-kpi-sub">${ps.length} problems · ${totalUsers.toLocaleString()} users affected</div>
+          <div class="exec-kpi-sub">${ps.length} problems | ${totalUsers.toLocaleString()} users affected</div>
         </div>
         <div class="exec-kpi-card">
           <div class="exec-kpi-lbl">Efficiency Delta</div>
@@ -4131,10 +4149,10 @@ function renderExecutivePatternView(patterns, ps) {
       <!-- Key Drivers -->
       <div class="exec-t2-board">
         <div class="exec-t2-hdr">Key Drivers</div>
-        ${topCostPat ? driverRow('Top cost', 'exec-t2-cost', topCostPat, fmtC(topCostPatCost), `${topCostPat.occurrences}× recurrence`) : ''}
+        ${topCostPat ? driverRow('Top cost', 'exec-t2-cost', topCostPat, fmtC(topCostPatCost), `${topCostPat.occurrences}x recurrence`) : ''}
         ${mostRecurring && mostRecurring !== topCostPat
           ? driverRow('Most recurring', 'exec-t2-recur', mostRecurring,
-              `${mostRecurring.occurrences}×`,
+              `${mostRecurring.occurrences}x`,
               fmtC(mostRecurring.problems.reduce((s,p)=>s+calcCost(p).total,0)))
           : ''}
         ${topServices.map(([svc, data], i) => `<div class="exec-t2-row">
@@ -4204,9 +4222,9 @@ function renderOneOffs(oneOffs) {
   el.innerHTML = `
     <div class="oneoffs-header" data-action="toggleOneOffs">
       <span style="font-size:14px">📄</span>
-      <span class="oneoffs-title">One-off Problems — no recurring pattern detected</span>
-      <span class="oneoffs-sub">${oneOffs.length} individual incidents · ${fmtC(oneOffs.reduce((s, p) => s + calcCost(p).total, 0))} combined cost</span>
-      <span class="oneoffs-toggle ${isOpen ? 'open' : ''}">▶</span>
+      <span class="oneoffs-title">One-off Problems - no recurring pattern detected</span>
+      <span class="oneoffs-sub">${oneOffs.length} individual incidents | ${fmtC(oneOffs.reduce((s, p) => s + calcCost(p).total, 0))} combined cost</span>
+      <span class="oneoffs-toggle ${isOpen ? 'open' : ''}">></span>
     </div>
     <div class="oneoffs-list" style="display:${isOpen ? '' : 'none'}" id="oneoffsList">
       ${oneOffs.map(p => {
@@ -4249,7 +4267,7 @@ function togglePatternActions(id) {
 function drillIntoPattern(patId) {
   // Switch to explorer and highlight the pattern's problems
   switchView('explorer');
-  // The explorer renders all — user can see individual problems there
+  // The explorer renders all - user can see individual problems there
 }
 
 function patternAction(action, patId) {
@@ -4258,16 +4276,16 @@ function patternAction(action, patId) {
     window:   '⏱ Time-based suppression window configured.\nAlert will be muted during the detected cluster window.',
     threshold:'📉 Alert tuning ticket created.\nSend to your Dynatrace admin to adjust threshold settings.',
     fix:      '🔁 Root cause fix ticket created and assigned to the owning team.\nProblem linked to engineering backlog.',
-    debug:    '⚡ Live Debugger armed.\nNext occurrence of this pattern will automatically capture a production snapshot.',
+    debug:    'Lightning Live Debugger armed.\nNext occurrence of this pattern will automatically capture a production snapshot.',
     tune:     '📊 Alert frequency tuning ticket created.\nReview evaluation window and consecutive breach settings.',
-    ticket:   '🎫 Engineering ticket created in Jira.\nPattern details, cost impact, and recommendation attached.',
+    ticket:   'Ticket Engineering ticket created in Jira.\nPattern details, cost impact, and recommendation attached.',
   };
   alert(msgs[action] || 'Action triggered: ' + action);
 }
 
 
 // ══════════════════════════════════════════
-// TEAM PROGRESS — RECORD KEEPING
+// TEAM PROGRESS - RECORD KEEPING
 // ServiceNow ticket refs + pattern history
 // ══════════════════════════════════════════
 
@@ -4295,7 +4313,7 @@ const PATTERN_HISTORY = [
     firstFlagged: Date.now() - 50 * 86400000,   // 50 days ago
     severity: 'PERFORMANCE',
     recommendation: 'FIX_ROOT_CAUSE',
-    // ServiceNow ticket — from Dynatrace linkedTickets[]
+    // ServiceNow ticket - from Dynatrace linkedTickets[]
     // In production: problem.linkedTickets[0].ticketId
     ticket: {
       id: 'INC0044102',
@@ -4306,7 +4324,7 @@ const PATTERN_HISTORY = [
       openedAt: Date.now() - 6 * 86400000,
       resolvedAt: null,
     },
-    // Weekly occurrence counts — production: derived from DQL pattern grouping per week
+    // Weekly occurrence counts - production: derived from DQL pattern grouping per week
     occurrencesByWeek: [2, 3, 3, 2, 3, 2, 2, 3],
     costByWeek: [7200, 8400, 7800, 6900, 8100, 7200, 6800, 8100],
     isRegressed: false,
@@ -4361,7 +4379,7 @@ const PATTERN_HISTORY = [
     firstFlagged: Date.now() - 35 * 86400000,
     severity: 'AVAILABILITY',
     recommendation: 'INVESTIGATE_FIRST',
-    ticket: null,    // ← No ServiceNow ticket found — UNACTIONED
+    ticket: null,    // ← No ServiceNow ticket found - UNACTIONED
     occurrencesByWeek: [0, 2, 1, 2, 2, 1, 2, 2],
     costByWeek: [0, 4800, 2400, 4800, 4800, 2400, 4800, 4800],
     isRegressed: false,
@@ -4407,7 +4425,7 @@ const PATTERN_HISTORY = [
     },
     occurrencesByWeek: [1, 0, 0, 1, 0, 0, 0, 1],
     costByWeek: [28000, 0, 0, 28000, 0, 0, 0, 28000],
-    // Ticket closed but firing again — REGRESSION
+    // Ticket closed but firing again - REGRESSION
     isRegressed: true,
     rca: 'auth-service',
   },
@@ -4454,11 +4472,11 @@ function renderProgress() {
   const snap = WEEKLY_SNAPSHOTS;
   const first = snap[0], last = snap[snap.length - 1];
 
-  // Compute deltas (first → last week)
+  // Compute deltas (first -> last week)
   const delta = (key, invert = false) => {
     const d = ((last[key] - first[key]) / first[key]) * 100;
     const improving = invert ? d < 0 : d < 0;
-    return { pct: Math.abs(Math.round(d)), improving, direction: d < 0 ? '↓' : d > 0 ? '↑' : '→' };
+    return { pct: Math.abs(Math.round(d)), improving, direction: d < 0 ? 'down' : d > 0 ? 'up' : '->' };
   };
 
   const unactionedCount = PATTERN_HISTORY.filter(ph => !ph.ticket).length;
@@ -4466,7 +4484,7 @@ function renderProgress() {
   const regressedCount  = PATTERN_HISTORY.filter(ph => ph.isRegressed || getPatternStatus(ph) === 'regressed').length;
   document.getElementById('progressTabCount').textContent =
     (unactionedCount + stalledCount + regressedCount) > 0
-      ? `${unactionedCount + stalledCount + regressedCount} ⚠`
+      ? `${unactionedCount + stalledCount + regressedCount} Warning`
       : PATTERN_HISTORY.length;
 
   document.getElementById('progressContent').innerHTML = `
@@ -4483,7 +4501,7 @@ function renderProgress() {
 function renderHealthTrend(snap, first, last, delta) {
   return `
     <div class="prog-section">
-      <div class="prog-section-title">Operational Health Trend — 8 weeks</div>
+      <div class="prog-section-title">Operational Health Trend - 8 weeks</div>
       <div class="trend-card">
         <div class="trend-card-header">
           <div>
@@ -4606,10 +4624,10 @@ function renderMetricPills(last, delta) {
 function renderPatternPersistence() {
   const STATUS_META = {
     ticketed:   { label: 'Ticketed',   dotCls: 'ticketed',   cardCls: ''           },
-    stalled:    { label: 'Stalled ⚠', dotCls: 'stalled',    cardCls: 'stalled'    },
+    stalled:    { label: 'Stalled Warning', dotCls: 'stalled',    cardCls: 'stalled'    },
     resolved:   { label: 'Resolved',   dotCls: 'resolved',   cardCls: ''           },
     regressed:  { label: 'Regressed 🔴',dotCls:'regressed',  cardCls: 'regressed'  },
-    unactioned: { label: 'No Ticket ⚠',dotCls:'unactioned',  cardCls: 'unactioned' },
+    unactioned: { label: 'No Ticket Warning',dotCls:'unactioned',  cardCls: 'unactioned' },
   };
 
   const TICKET_STATUS_CLS = { open:'open', in_progress:'progress', resolved:'resolved', closed:'resolved' };
@@ -4636,9 +4654,9 @@ function renderPatternPersistence() {
     const ticketHtml = ph.ticket
       ? `<span class="ticket-badge ${TICKET_STATUS_CLS[ph.ticket.status] || 'open'}"
            data-action="openTicket" data-url="${ph.ticket.url}" title="Open in ServiceNow">
-           🎫 ${ph.ticket.id} · ${TICKET_STATUS_LBL[ph.ticket.status] || ph.ticket.status}
+           Ticket ${ph.ticket.id} | ${TICKET_STATUS_LBL[ph.ticket.status] || ph.ticket.status}
          </span>`
-      : `<span class="ticket-badge none">🎫 No ticket found</span>`;
+      : `<span class="ticket-badge none">Ticket No ticket found</span>`;
 
     const ageHtml = daysOpen !== null
       ? `<span class="age-badge ${ageCls}">⏱ ${daysOpen}d open</span>`
@@ -4649,18 +4667,18 @@ function renderPatternPersistence() {
       <div class="pc2-detail">
         <div class="pc2-detail-grid">
           <div class="pc2-detail-block">
-            <div class="pc2-detail-lbl">Occurrence Trend — 8 weeks</div>
+            <div class="pc2-detail-lbl">Occurrence Trend - 8 weeks</div>
             ${buildOccurrenceTimeline(ph.occurrencesByWeek, WEEKLY_SNAPSHOTS.map(s => s.week))}
           </div>
           <div class="pc2-detail-block">
             <div class="pc2-detail-lbl">Cost Breakdown</div>
             <div class="coi-breakdown">
-              <div class="coi-row"><span>Total occurrences</span><strong>${totalOccs}×</strong></div>
+              <div class="coi-row"><span>Total occurrences</span><strong>${totalOccs}x</strong></div>
               <div class="coi-row"><span>First flagged</span><strong>${daysSinceFirst}d ago</strong></div>
               ${ph.ticket ? `
-              <div class="coi-row"><span>Assigned to</span><strong>${ph.ticket.assignee || '—'}</strong></div>
-              <div class="coi-row"><span>Team</span><strong>${ph.ticket.team || '—'}</strong></div>
-              ` : '<div class="coi-row"><span style="color:var(--amber)">⚠ No owner assigned</span></div>'}
+              <div class="coi-row"><span>Assigned to</span><strong>${ph.ticket.assignee || '-'}</strong></div>
+              <div class="coi-row"><span>Team</span><strong>${ph.ticket.team || '-'}</strong></div>
+              ` : '<div class="coi-row"><span style="color:var(--amber)">Warning No owner assigned</span></div>'}
               ${status === 'resolved' || status === 'regressed' ? `
               <div class="coi-row" style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)"><span>Est. cost saved</span><strong style="color:var(--green)">${fmtC(saved)}/wk</strong></div>
               ` : `
@@ -4671,11 +4689,11 @@ function renderPatternPersistence() {
         </div>
         ${ph.isRegressed || status === 'regressed' ? `
         <div class="regression-alert">
-          🔴 <strong>Regression detected</strong> — ServiceNow ticket ${ph.ticket?.id || ''} was closed but this pattern has returned. Root fix did not hold.
+          🔴 <strong>Regression detected</strong> - ServiceNow ticket ${ph.ticket?.id || ''} was closed but this pattern has returned. Root fix did not hold.
         </div>` : ''}
         <div style="margin-top:10px;font-size:11px;color:var(--text-3)">
           <strong style="color:var(--text-2)">OpInt recommendation:</strong> ${REC_META_LOCAL[ph.recommendation] || ph.recommendation}
-          ${ph.rca ? ` · Root cause: <span style="font-family:var(--mono);color:var(--text-2)">${ph.rca}</span>` : ' · Root cause not identified'}
+          ${ph.rca ? ` | Root cause: <span style="font-family:var(--mono);color:var(--text-2)">${ph.rca}</span>` : ' | Root cause not identified'}
         </div>
       </div>` : '';
 
@@ -4689,8 +4707,8 @@ function renderPatternPersistence() {
               ${ticketHtml}
               ${ageHtml}
               <span style="font-size:10px;color:var(--text-3)">${daysSinceFirst}d since first flagged</span>
-              ${status === 'unactioned' ? `<span style="font-size:10px;color:var(--amber);font-weight:600">⚠ No action recorded</span>` : ''}
-              ${status === 'stalled' ? `<span style="font-size:10px;color:var(--orange);font-weight:600">⚠ Ticket open ${daysOpen}d — still recurring</span>` : ''}
+              ${status === 'unactioned' ? `<span style="font-size:10px;color:var(--amber);font-weight:600">Warning No action recorded</span>` : ''}
+              ${status === 'stalled' ? `<span style="font-size:10px;color:var(--orange);font-weight:600">Warning Ticket open ${daysOpen}d - still recurring</span>` : ''}
             </div>
           </div>
           <div class="pc2-right">
@@ -4703,7 +4721,7 @@ function renderPatternPersistence() {
               <div class="pc2-cost-val">${fmtC(coi)}</div>
               <div class="pc2-cost-lbl">${ph.ticket ? 'since ticket opened' : 'since first flagged'}</div>
             </div>`}
-            <span class="pc2-expand-btn ${isExpanded ? 'open' : ''}">▶</span>
+            <span class="pc2-expand-btn ${isExpanded ? 'open' : ''}">></span>
           </div>
         </div>
         ${detailHtml}
@@ -4762,12 +4780,12 @@ function applyCfg(){
   document.getElementById('cfgPanel').classList.add('hidden');
   render();
 }
-function doRefresh(){const b=document.querySelector('.btn-ghost');b.textContent='↻ Refreshing…';b.disabled=true;loadProblems().finally(()=>{render();b.textContent='↻ Refresh';b.disabled=false;});}
+function doRefresh(){const b=document.querySelector('.btn-ghost');b.textContent='Refreshing...';b.disabled=true;loadProblems().finally(()=>{render();b.textContent='Refresh';b.disabled=false;});}
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
 
 // ============================================================
-// EVENT DELEGATION — replaces all inline onclick handlers
+// EVENT DELEGATION - replaces all inline onclick handlers
 // ============================================================
 document.addEventListener('click', function(e) {
   // Stop propagation for containers marked with data-stop-propagation
@@ -4893,7 +4911,7 @@ document.addEventListener('input', function(e) {
   }
 });
 
-// BOOT — render immediately with demo data, then replace with live Grail data
+// BOOT - render immediately with demo data, then replace with live Grail data
 document.addEventListener('keydown', function(e) {
   const bubble = e.target.closest('.act-map-bubble[data-act-map="1"]');
   if (!bubble) return;

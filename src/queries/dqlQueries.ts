@@ -75,7 +75,7 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Recurring pattern detection — groups by normalised title
+   * Recurring pattern detection - groups by normalised title
    */
   fetchRecurringProblems: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -115,7 +115,7 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Problems missing root cause — for RCA coverage metric
+   * Problems missing root cause - for RCA coverage metric
    */
   fetchMissingRCA: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -128,7 +128,7 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Problems by application — top impacted apps
+   * Problems by application - top impacted apps
    */
   fetchProblemsByApplication: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -148,7 +148,7 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Noisy alert candidates — high frequency, short duration, zero user impact
+   * Noisy alert candidates - high frequency, short duration, zero user impact
    */
   fetchNoisyAlerts: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -187,7 +187,7 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Root cause clusters — groups recurring problems by root cause entity
+   * Root cause clusters - groups recurring problems by root cause entity
    */
   fetchRootCauseClusters: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -204,7 +204,7 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Overall operational KPIs — single-record aggregate
+   * Overall operational KPIs - single-record aggregate
    */
   fetchKPIs: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -274,7 +274,7 @@ fetch bizevents
   `.trim(),
 
   /**
-   * Problem heatmap — occurrences by service and hour-of-day
+   * Problem heatmap - occurrences by service and hour-of-day
    */
   fetchProblemHeatmap: (filters: FilterState): string => `
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
@@ -341,7 +341,7 @@ export function computeOperationalImpactScore(
 }
 
 export function mttrLabel(minutes: number): string {
-  if (!minutes || minutes === 0) return '—';
+  if (!minutes || minutes === 0) return '-';
   if (minutes < 60) return `${Math.round(minutes)}m`;
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);

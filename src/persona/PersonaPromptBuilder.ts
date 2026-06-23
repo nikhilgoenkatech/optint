@@ -68,17 +68,17 @@ Use these broad feature names only. Do not recommend granular telemetry sources 
 const RESPONSE_SCHEMA = `
 Return ONLY this JSON (no other text):
 {
-  "summary": "string — 2-3 sentence summary tailored to this persona",
+  "summary": "string - 2-3 sentence summary tailored to this persona",
   "patterns": ["string", "string"],
-  "costNarrative": "string — one sentence on cost/business impact (exec/sre only, else empty string)",
-  "sloImpact": "string — SLO impact assessment (sre only, else empty string)",
-  "noiseAssessment": "string — alert noise comment (sre only, else empty string)",
+  "costNarrative": "string - one sentence on cost/business impact (exec/sre only, else empty string)",
+  "sloImpact": "string - SLO impact assessment (sre only, else empty string)",
+  "noiseAssessment": "string - alert noise comment (sre only, else empty string)",
   "recommendations": [
     {
       "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
       "title": "string",
       "description": "string",
-      "dynatraceFeature": "string — one broad Dynatrace feature or action capability from the approved list",
+      "dynatraceFeature": "string - one broad Dynatrace feature or action capability from the approved list",
       "estimatedImpact": "string",
       "owner": "string"
     }
