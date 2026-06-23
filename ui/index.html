@@ -644,6 +644,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-kpi.time{border-bottom-color:var(--teal)}
 .cx-kpi-label,.cx-eyebrow{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3)}
 .exec-persona .cx-kpi-label{font-size:9px}
+.cx-info-pill{display:inline-grid;place-items:center;width:14px;height:14px;margin-left:5px;border:1px solid rgba(90,115,145,.65);border-radius:999px;color:var(--text-3);font-family:var(--mono);font-size:9px;font-weight:900;line-height:1;text-transform:none;letter-spacing:0;vertical-align:middle;cursor:help}
+.cx-info-pill:hover{border-color:var(--blue);color:var(--text-1);background:rgba(77,184,255,.10)}
 .cx-kpi-value{font-size:28px;font-weight:900;font-family:var(--mono);line-height:1;margin-top:7px;color:var(--text-1)}
 .exec-persona .cx-kpi-value{font-size:22px;margin-top:4px}
 .cx-kpi-sub,.cx-muted{font-size:11px;color:var(--text-3);margin-top:6px}
@@ -774,12 +776,17 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-timeline-bucket span{width:100%;max-width:20px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--amber),rgba(245,197,24,.35))}
 .exec-timeline-bucket b{font-family:var(--mono);font-size:10px;color:var(--text-1);line-height:1}
 .exec-timeline-bucket small{font-size:8px;color:var(--text-3);white-space:nowrap}
+.exec-persona .exec-timeline-bucket small{min-height:10px;max-width:42px;overflow:hidden;text-overflow:ellipsis}
+.exec-persona .exec-timeline-bucket:not(.has-occurrence):not(.edge) small{visibility:hidden}
+.exec-persona .cx-decision-view:not(.panel-maximized) .exec-timeline-bucket:not(.has-occurrence):not(.edge) small{display:none}
+.exec-persona .cx-decision-view:not(.panel-maximized) .exec-timeline-bucket small{font-size:7px;max-width:34px}
 .exec-rec-timeline.estimated .exec-timeline-bucket span{opacity:.72;background:repeating-linear-gradient(135deg,var(--amber),var(--amber) 3px,rgba(245,197,24,.25) 3px,rgba(245,197,24,.25) 6px)}
 .exec-timeline-note,.exec-timeline-empty{margin-top:6px;font-size:10px;color:var(--text-3)}
 .cx-evidence-list{margin:0;padding-left:17px;color:var(--text-2);font-size:11px;line-height:1.55}
 .cx-complexity-summary{margin-top:10px;padding:10px 11px;border:1px solid var(--border);background:rgba(77,184,255,.025);border-radius:var(--r)}
 .exec-persona .cx-complexity-summary{margin-top:8px;padding:8px 9px}
 .cx-complexity-summary span{display:block;font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)}
+.cx-complexity-summary .cx-info-pill,.cx-detail-label .cx-info-pill{display:inline-grid;font-size:9px;text-transform:none;letter-spacing:0;color:var(--text-3)}
 .cx-complexity-summary strong{display:block;margin-top:4px;font-size:11px;color:var(--text-1)}
 .cx-complexity-summary p{margin:5px 0 0;font-size:11px;line-height:1.45;color:var(--text-3)}
 .cx-affected-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg-2)}
@@ -1013,6 +1020,12 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-pat-occ{font-size:11px;color:var(--text-2);padding:6px 0;border-top:1px solid rgba(255,255,255,.04)}
 .exec-pat-occ-title{font-family:var(--mono);color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .exec-empty{padding:16px 18px;font-size:12px;color:var(--text-3)}
+.exec-empty-highlight{margin:18px auto;padding:18px;max-width:430px;border:1px solid rgba(0,201,167,.38);border-left:3px solid var(--teal);border-radius:var(--rl);background:linear-gradient(135deg,rgba(0,201,167,.10),rgba(77,184,255,.035));box-shadow:0 14px 32px rgba(0,0,0,.24);text-align:center;color:var(--text-2)}
+.exec-empty-mark{width:34px;height:34px;margin:0 auto 10px;display:grid;place-items:center;border-radius:999px;border:1px solid rgba(0,201,167,.45);background:rgba(0,201,167,.10);color:var(--teal);font-family:var(--mono);font-weight:900}
+.exec-empty-highlight strong{display:block;color:var(--text-1);font-size:16px;margin-bottom:7px}
+.exec-empty-highlight p{margin:0 auto 12px;max-width:360px;font-size:12px;line-height:1.5;color:var(--text-2)}
+.exec-empty-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.exec-empty-grid span{padding:7px 8px;border:1px solid var(--border);border-radius:var(--r);background:rgba(255,255,255,.025);font-size:10px;color:var(--text-3);text-align:left}
 /* Exec Tier 3: efficiency chips */
 .exec-t3-row{display:flex;gap:10px;flex-wrap:wrap}
 .exec-chip{display:flex;flex-direction:column;gap:4px;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl);padding:12px 18px;flex:1;min-width:100px}
