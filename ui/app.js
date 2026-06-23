@@ -416,6 +416,7 @@ let patternSearchTimer=null;
 let remediationPatternId=null;
 let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
 const remediationCache=new Map();
+let developerScopeOptions=[];
 /** @type {ToolDetectionRow[]} */
 let TOOL_DETECTION_ROWS=[];
 
@@ -428,12 +429,104 @@ function isConciseExecView() {
 // ============================================================
 // RENDER
 // ============================================================
+function cleanScopeValue(value) {
+  const text = String(value || '').trim();
+  if (!text || /^(SERVICE|HOST|APPLICATION|PROCESS_GROUP)$/i.test(text)) return '';
+  if (/^[A-Z]+-[A-Z0-9]{6,}$/i.test(text)) return '';
+  return text;
+}
+
+function addDeveloperScope(map, type, label, source, rawValue, problemId) {
+  const cleanLabel = cleanScopeValue(label);
+  const cleanRaw = cleanScopeValue(rawValue || label);
+  if (!cleanLabel || !cleanRaw) return;
+  const key = `${type}|${cleanRaw}`;
+  const existing = map.get(key) || { type, label:cleanLabel, source, rawValue:cleanRaw, count:0, problemIds:new Set() };
+  if (!existing.problemIds.has(problemId)) {
+    existing.problemIds.add(problemId);
+    existing.count += 1;
+  }
+  map.set(key, existing);
+}
+
+function parseScopeTag(tag) {
+  const raw = String(tag || '').trim();
+  const [, key='', value=''] = /^([^:=]+)[:=](.+)$/.exec(raw) || [];
+  const k = key.toLowerCase();
+  const v = cleanScopeValue(value || raw);
+  if (!v) return null;
+  if (/team|squad/.test(k)) return { type:'team', label:`Team: ${v}`, rawValue:raw };
+  if (/owner/.test(k)) return { type:'owner', label:`Owner: ${v}`, rawValue:raw };
+  if (/namespace/.test(k)) return { type:'namespace', label:`Namespace: ${v}`, rawValue:raw };
+  if (/environment|env|stage/.test(k)) return { type:'environment', label:`Environment: ${v}`, rawValue:raw };
+  if (/application|app/.test(k)) return { type:'application', label:`Application: ${v}`, rawValue:raw };
+  if (/business|capability|domain/.test(k)) return { type:'business', label:`Business: ${v}`, rawValue:raw };
+  if (/deploy|release|version|build/.test(k)) return { type:'deployment', label:`Deployment: ${v}`, rawValue:raw };
+  return null;
+}
+
+function buildDeveloperScopeTaxonomy(problemRows) {
+  const map = new Map();
+  (problemRows || []).forEach(p => {
+    (p.svcs || []).forEach(s => addDeveloperScope(map, 'service', `Service: ${s}`, 'entity', s, p.id));
+    (p.tags || []).forEach(tag => {
+      const parsed = parseScopeTag(tag);
+      if (parsed) addDeveloperScope(map, parsed.type, parsed.label, 'tag', parsed.rawValue, p.id);
+    });
+  });
+  const priority = { service:1, team:2, owner:3, namespace:4, application:5, environment:6, business:7, deployment:8 };
+  return [...map.values()]
+    .filter(scope => scope.count > 0)
+    .sort((a, b) => (priority[a.type] || 99) - (priority[b.type] || 99) || b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 60);
+}
+
+function selectedDeveloperScope() {
+  const value = document.getElementById('appFilter')?.value || '';
+  return developerScopeOptions.find(scope => `${scope.type}|${scope.rawValue}` === value) || null;
+}
+
+function applyDeveloperScopeFilter(rows, selectedScope) {
+  if (!selectedScope) return rows;
+  return (rows || []).filter(p => {
+    if (selectedScope.type === 'service') return (p.svcs || []).some(s => s === selectedScope.rawValue || `Service: ${s}` === selectedScope.label);
+    return (p.tags || []).includes(selectedScope.rawValue);
+  });
+}
+
+function syncDeveloperScopeFilter() {
+  const select = document.getElementById('appFilter');
+  if (!select) return;
+  if (persona !== 'developer') {
+    select.style.display = 'none';
+    select.value = '';
+    return;
+  }
+  select.style.display = '';
+  const current = select.value;
+  developerScopeOptions = buildDeveloperScopeTaxonomy(PROBLEMS);
+  if (!developerScopeOptions.length) {
+    select.innerHTML = '<option value="">No developer scopes found</option>';
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  select.innerHTML = '<option value="">All Developer Scope</option>' + developerScopeOptions
+    .map(scope => `<option value="${attrText(`${scope.type}|${scope.rawValue}`)}">${attrText(`${scope.label} - ${scope.count} problems`)}</option>`)
+    .join('');
+  if ([...select.options].some(option => option.value === current)) select.value = current;
+}
+
 function getFiltered(){
-  const m=PMETA[persona], af=document.getElementById('appFilter').value;
-  return PROBLEMS.filter(m.filter).filter(p=>!af||p.svcs.includes(af)).sort(m.rank);
+  const m=PMETA[persona];
+  const scoped = persona === 'developer'
+    ? applyDeveloperScopeFilter(PROBLEMS, selectedDeveloperScope())
+    : PROBLEMS;
+  return scoped.filter(m.filter).sort(m.rank);
 }
 
 function render(){
+  syncDeveloperScopeFilter();
   const ps=getFiltered();
   // persona bar
   const m=PMETA[persona];
