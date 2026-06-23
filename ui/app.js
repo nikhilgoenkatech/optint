@@ -1761,7 +1761,7 @@ async function getPatternRemediation(patternId, opts={}) {
     aiState = 'result';
     renderPatternRemediationPanel();
     renderAIPanel(pat.problems || []);
-    if (persona === 'executive') rerenderPatternsView();
+    if (currentView === 'patterns') rerenderPatternsView();
     return;
   }
 
@@ -1769,6 +1769,7 @@ async function getPatternRemediation(patternId, opts={}) {
   aiState = 'loading';
   renderPatternRemediationPanel();
   renderAIPanel(pat.problems || []);
+  if (currentView === 'patterns') rerenderPatternsView();
   try {
     const prompt = buildPatternAssistPrompt(request);
     window.__OPINT_LAST_REMEDIATION_PROMPT__ = prompt;
@@ -1796,7 +1797,7 @@ async function getPatternRemediation(patternId, opts={}) {
   }
   renderPatternRemediationPanel();
   renderAIPanel(pat.problems || []);
-  if (persona === 'executive') rerenderPatternsView();
+  if (currentView === 'patterns') rerenderPatternsView();
 }
 
 // ---- Action Handlers ----
@@ -2051,6 +2052,8 @@ async function analyzePattern(patternId) {
   selectedIds.clear();
   (pat.problems || []).forEach(p => selectedIds.add(p.id));
   switchAISrc('davis');
+  aiState = 'loading';
+  rerenderPatternsView();
   await analyzeMulti();
   rerenderPatternsView();
 }
@@ -4362,6 +4365,32 @@ function renderExecDisclosure(title, summary, body) {
   return `<details class="cx-disclosure"><summary><span><strong>${title}</strong><small>${summary}</small></span><b>+</b></summary><div class="cx-disclosure-body">${body}</div></details>`;
 }
 
+function renderWorkspaceAnalysisBlock(pat, intro) {
+  if (aiState === 'loading') {
+    return `<div class="cx-remediation-summary"><span>Generating analysis from Dynatrace Assist...</span></div>`;
+  }
+  if (aiState === 'result' && lastAIResult) {
+    const recs = Array.isArray(lastAIResult.recommendations) ? lastAIResult.recommendations : [];
+    const patterns = Array.isArray(lastAIResult.patterns) ? lastAIResult.patterns : [];
+    return `<div class="ai-compact"><div class="cx-eyebrow">Dynatrace Intelligence Analysis</div><p>${lastAIResult.summary || 'Analysis generated for the selected context.'}</p>${patterns.length ? `<ul>${patterns.slice(0,3).map(item => `<li>${typeof item === 'string' ? item : item.signal || item.title || item.description || 'Analysis signal'}</li>`).join('')}</ul>` : ''}${recs.length ? `<ul>${recs.slice(0,3).map(r => `<li>${typeof r === 'string' ? r : r.title || r.action || r.description || 'Recommended action'}</li>`).join('')}</ul>` : ''}</div>`;
+  }
+  return `<div class="cx-complexity-summary"><span>Analysis</span><strong>Available on request</strong><p>${intro}</p><button class="snap-cta" data-action="analyzeSelectedPattern" data-pid="${pat.id}">Generate Analysis</button></div>`;
+}
+
+function renderWorkspaceRemediationBlock(pat) {
+  const isCurrent = remediationState.patternId === pat.id;
+  if (isCurrent && remediationState.status === 'loading') {
+    return `<div class="cx-remediation-summary"><span>Generating remediation path from Dynatrace Assist...</span></div>`;
+  }
+  if (isCurrent && remediationState.status === 'error') {
+    return `<div class="cx-remediation-summary"><strong>Remediation unavailable</strong><p>${remediationState.error?.message || remediationState.error || 'Dynatrace Assist is unavailable, try again.'}</p></div>`;
+  }
+  if (isCurrent && remediationState.status === 'done') {
+    return renderAssistRemediationResponse(remediationState.response, remediationState.evidence);
+  }
+  return `<div class="cx-remediation-summary"><strong>No remediation path generated yet</strong><p>Select Get Remediation Path to generate recommended next actions for this pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`;
+}
+
 function renderDecisionDetailPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a pattern to see why it matters and what should be done next.</div></aside>`;
   const openCount = patternOpenCount(pat);
@@ -4388,21 +4417,11 @@ function renderDecisionDetailPanel(pat, patterns) {
   const hasRemediation = remediationState.patternId === pat.id && remediationState.status === 'done';
   const remediationLoading = remediationState.patternId === pat.id && remediationState.status === 'loading';
   const remediationError = remediationState.patternId === pat.id && remediationState.status === 'error';
-  const remediationResponse = hasRemediation ? remediationState.response : null;
-  const remediationBody = hasRemediation ? renderAssistRemediationResponse(remediationResponse, remediationState.evidence) : '';
   const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources | RCA confidence ${complexity.rcaConfidence}%`;
   const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${rcaConfidence}%</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidence} / 100 | concentration ${pat.concentration}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
-  const analysisBody = aiState === 'result' && lastAIResult
-    ? `<div class="ai-compact"><div class="cx-eyebrow">Dynatrace Intelligence Analysis</div><p>${lastAIResult.summary || 'Analysis generated for the selected context.'}</p>${Array.isArray(lastAIResult.recommendations) ? `<ul>${lastAIResult.recommendations.slice(0,3).map(r => `<li>${typeof r === 'string' ? r : r.title || r.action || r.description || 'Recommended action'}</li>`).join('')}</ul>` : ''}</div>`
-    : `<div class="cx-complexity-summary"><span>Analysis</span><strong>Available on request</strong><p>Use assisted analysis when leadership needs a concise business-risk explanation for this selected pattern.</p><button class="snap-cta" data-action="analyzeSelectedPattern" data-pid="${pat.id}">Generate Analysis</button></div>`;
-  const remediationPanel = remediationLoading
-    ? `<div class="cx-remediation-summary"><span>Generating remediation path from Dynatrace Assist...</span></div>`
-    : remediationError
-      ? `<div class="cx-remediation-summary"><strong>Remediation unavailable</strong><p>${remediationState.error || 'Dynatrace Assist is unavailable, try again.'}</p></div>`
-      : hasRemediation
-        ? remediationBody
-        : `<div class="cx-remediation-summary"><strong>No remediation path generated yet</strong><p>Select Get Remediation Path to generate recommended next actions for this pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`;
+  const analysisBody = renderWorkspaceAnalysisBlock(pat, 'Use assisted analysis when leadership needs a concise business-risk explanation for this selected pattern.');
+  const remediationPanel = renderWorkspaceRemediationBlock(pat);
   const timelineBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Occurrences</span><strong>${pat.occurrences}</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>First seen</span><strong>${pat.firstSeen ? new Date(pat.firstSeen).toLocaleString() : 'Not available'}</strong></div><div class="px-evidence-row"><span>Last seen</span><strong>${pat.lastSeen ? new Date(pat.lastSeen).toLocaleString() : 'Not available'}</strong></div></div>`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Pattern Details</div><h3>${pat.title}</h3></div></div>
@@ -4528,9 +4547,9 @@ function renderSreContextPanel(pat, patterns) {
   const selectedTab = srePanelTab;
   const repeatedRca = pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || 'RCA not consistently identified';
   const tabBody = selectedTab === 'analysis'
-    ? `<div class="cx-complexity-summary"><span>Analysis</span><strong>Reliability-focused analysis is available on request.</strong><p>Use this tab to review recurring reliability signals, recurrence drivers, and prevention recommendations.</p></div>`
+    ? renderWorkspaceAnalysisBlock(pat, 'Generate reliability-focused analysis to review recurring signals, recurrence drivers, automation opportunities, and prevention recommendations.')
     : selectedTab === 'remediation'
-      ? `<div class="cx-complexity-summary"><span>Remediation</span><strong>Automation and prevention path</strong><p>Generate a remediation path to identify workflow automation, ownership routing, or validation guardrails.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`
+      ? renderWorkspaceRemediationBlock(pat)
       : `<div class="cx-detail-tiles"><div><strong>${priority}/100</strong><span>Reliability Priority</span></div><div><strong>${automation}/100</strong><span>Automation Opportunity</span></div><div><strong>${rcaConfidence}%</strong><span>RCA Confidence</span></div><div><strong>${blast}/100</strong><span>Blast Radius Score</span></div></div>
         ${rcaConfidence < 25 ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Confidence Warning</div><strong>RCA confidence is ${rcaConfidence}%.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
         <div class="cx-complexity-summary"><span>Reliability Signals</span><strong>${repeatedRca}</strong><p>${pat.occurrences} recurring incidents | ${pat.trend} trend | ${patternOpenCount(pat)} still open</p></div>
@@ -4644,9 +4663,9 @@ function renderDeveloperContextPanel(pat, patterns) {
   const failureType = developerFailureType(pat);
   const rootCause = developerRootCauseStatus(pat);
   const tabBody = selectedTab === 'analysis'
-    ? `<div class="cx-complexity-summary"><span>Dynatrace Intelligence Analysis</span><strong>Generate analysis when deeper reasoning is needed.</strong><p>Analysis should focus on likely root cause, affected service or runtime area, and next validation step.</p></div>`
+    ? renderWorkspaceAnalysisBlock(pat, 'Generate technical analysis to focus on likely root cause, affected service or runtime area, and next validation step.')
     : selectedTab === 'remediation'
-      ? `<div class="cx-complexity-summary"><span>Remediation Path</span><strong>Technical fix path</strong><p>Generate remediation when the developer is ready to evaluate a concrete fix and validation plan.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Generate Remediation Path</button></div>`
+      ? renderWorkspaceRemediationBlock(pat)
       : `<div class="cx-detail-tiles"><div><strong>${service}</strong><span>Service / Endpoint</span></div><div><strong>${failureType}</strong><span>Failure Type</span></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div></div>
         <div class="cx-complexity-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.occurrences} grouped occurrences | ${patternOpenCount(pat)} open incidents | confidence ${patternConfidenceScore(pat)}/100</p></div>
         <div class="cx-complexity-summary"><span>Impact Summary</span><strong>${fmtC(patternCost(pat))} exposure</strong><p>${pat.problems?.length || 0} scoped problems | ${patternAffectedEntities(pat).length} affected entities</p></div>
@@ -5866,7 +5885,10 @@ document.addEventListener('click', function(e) {
     case 'toggleExecKpiDetail': e.stopPropagation(); toggleExecKpiDetail(el.dataset.mode); break;
     case 'selectPatternRow': e.stopPropagation(); selectPatternRow(pid); break;
     case 'focusPatternExplorer': e.stopPropagation(); focusPatternExplorer(); break;
-    case 'getPatternRemediation': e.stopPropagation(); if (pid) getPatternRemediation(pid); break;
+    case 'getPatternRemediation':
+      e.stopPropagation();
+      if (pid) getPatternRemediation(pid, currentView === 'patterns' ? { openDrawers:false, scroll:false } : {});
+      break;
     case 'setExecAnalyticalView': e.stopPropagation(); setExecAnalyticalView(el.dataset.mode); break;
     case 'setSreAnalyticalView': e.stopPropagation(); setSreAnalyticalView(el.dataset.mode); break;
     case 'setSrePanelTab': e.stopPropagation(); setSrePanelTab(el.dataset.tab); break;
