@@ -657,6 +657,10 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .cx-kpi-value{font-size:22px;margin-top:4px}
 .cx-kpi-sub,.cx-muted{font-size:11px;color:var(--text-3);margin-top:6px}
 .exec-persona .cx-kpi-sub{font-size:10px;margin-top:4px}
+.cx-cost-model-indicator{display:flex;align-items:center;gap:7px;align-self:flex-start;margin-bottom:-2px;padding:5px 8px;border:1px solid rgba(61,214,140,.20);border-radius:var(--r);background:rgba(61,214,140,.045);font-size:10px;color:var(--text-3)}
+.cx-cost-model-indicator span{font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.cx-cost-model-indicator strong{color:var(--text-1);font-family:var(--mono);font-size:11px}
+.cx-cost-model-indicator em{font-style:normal;color:var(--green);font-weight:800}
 .cx-cost-link{display:inline-flex;align-items:center;margin-left:6px;border:0;background:transparent;color:var(--green);font-size:10px;font-weight:850;font-family:var(--font);cursor:pointer;text-decoration:none}
 .cx-cost-link:hover{color:var(--text-1)}
 .cx-focus{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,rgba(245,197,24,.10),rgba(77,184,255,.035));border:1px solid rgba(245,197,24,.22);border-radius:var(--rl);padding:13px 16px}
@@ -664,6 +668,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-focus.neutral{background:var(--bg-1);border-color:var(--border)}
 .cx-focus h2,.cx-section-head h3{margin:0;color:var(--text-1);font-size:17px;font-weight:850;letter-spacing:-.2px}
 .cx-focus p{margin:4px 0 0;color:var(--text-3);font-size:12px}
+.cx-focus-action-label{display:inline-flex;margin-right:5px;color:var(--green);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
 .cx-focus-why{margin-top:6px;font-size:11px;line-height:1.4;color:var(--text-2)}
 .cx-focus-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .exec-persona .cx-focus-actions{gap:6px;flex-wrap:nowrap;min-width:0}
@@ -697,7 +702,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-map-axis.x{left:48px;right:28px;bottom:9px;text-align:center}
 .cx-map-axis.y{left:-47px;top:110px;width:140px;transform:rotate(-90deg);text-align:center}
 .cx-map-q{position:absolute;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:rgba(139,166,199,.5)}
-.cx-map-q.q1{right:38px;top:26px;color:rgba(61,214,140,.72)}
+.cx-map-q.q1{right:38px;top:54px;color:rgba(61,214,140,.72)}
 .cx-map-q.q2{left:62px;top:26px;color:rgba(255,107,107,.72)}
 .cx-map-q.q3{left:62px;bottom:48px}
 .cx-map-q.q4{right:38px;bottom:48px;color:rgba(77,184,255,.72)}
@@ -761,7 +766,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-action-block strong{display:block;color:var(--text-1);margin-top:7px}
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
-.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,73fr) minmax(360px,27fr);height:100%;align-items:stretch}
+.exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,70fr) minmax(390px,30fr);height:100%;align-items:stretch}
 .exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(240px,35fr) minmax(620px,65fr)}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
 .exec-persona .cx-decision-main{gap:8px;min-height:0;overflow:hidden}
@@ -791,7 +796,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .exec-rec-timeline{height:56px;margin-top:6px;padding-top:5px}
 .exec-timeline-bucket{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px}
 .exec-timeline-bucket span{width:100%;max-width:20px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--amber),rgba(245,197,24,.35))}
-.exec-timeline-bucket b{font-family:var(--mono);font-size:10px;color:var(--text-1);line-height:1}
+.exec-timeline-bucket b{font-family:var(--mono);font-size:10px;color:var(--text-1);line-height:1;min-height:10px}
 .exec-timeline-bucket small{font-size:8px;color:var(--text-3);white-space:nowrap}
 .exec-persona .exec-timeline-bucket small{min-height:10px;max-width:42px;overflow:hidden;text-overflow:ellipsis}
 .exec-persona .exec-timeline-bucket:not(.has-occurrence):not(.edge) small{visibility:hidden}

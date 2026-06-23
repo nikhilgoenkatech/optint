@@ -4569,10 +4569,9 @@ function conciseExecMetrics(ps, patterns) {
 function renderConciseKpiRow(ps, patterns) {
   const m = conciseExecMetrics(ps, patterns);
   const recoveryPct = m.totalPatternCost ? Math.round((m.recoverable / m.totalPatternCost) * 100) : 0;
-  const modelPct = Math.round(recoveryRate() * 100);
   const cards = [
-    { key:'risk', label:'Open Risk Exposure', info:'Estimated operational impact from active recurring patterns in the selected time range.', value:fmtC(m.totalPatternCost), sub:`Active recurring pattern impact ${highlightText('Cost model', activeCostProfile, 'neutral')}`, cfg:true, cls:'risk' },
-    { key:'recoverable', label:'Recoverable Now', info:'Modeled value that may be recovered by addressing recurring patterns using the current recovery model.', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure ${highlightText('Recovery model', `${modelPct}%`, 'low')} ${highlightText('Profile', activeCostProfile, 'neutral')}`, cfg:true, cls:'recover' },
+    { key:'risk', label:'Open Risk Exposure', info:'Estimated operational impact from active recurring patterns in the selected time range.', value:fmtC(m.totalPatternCost), sub:'Active recurring pattern impact', cls:'risk' },
+    { key:'recoverable', label:'Recoverable Now', info:'Modeled value that may be recovered by addressing recurring patterns using the current recovery model.', value:fmtC(m.recoverable), sub:`${recoveryPct}% of exposure`, cls:'recover' },
     { key:'patterns', label:'Active Patterns', info:'Recurring operational patterns that require leadership attention, not raw problem count.', value:patterns.length, sub:`Recurring patterns requiring attention`, cls:'patterns' },
     { key:'resolution', label:'Median MTTR', info:'Median resolution time for resolved problems. Shows a dash when there is insufficient duration data.', value:fmtM(m.mttr.median), sub:`${m.mttr.count || 0} resolved problems`, cls:'time' },
   ];
@@ -4580,8 +4579,17 @@ function renderConciseKpiRow(ps, patterns) {
     <button class="cx-kpi ${c.cls} ${execMetricDrilldown === c.key ? 'selected' : ''}" data-action="selectExecMetric" data-metric="${c.key}" aria-pressed="${execMetricDrilldown === c.key}">
       <div class="cx-kpi-label">${c.label}${infoPill(c.info, `kpi-${c.key}`)}</div>
       <div class="cx-kpi-value">${c.value}</div>
-      <div class="cx-kpi-sub">${c.sub}${c.cfg ? `<span class="cx-cost-link" role="button" tabindex="0" data-action="toggleCfg">Cost assumptions</span>` : ''}</div>
+      <div class="cx-kpi-sub">${c.sub}</div>
     </button>`).join('')}</section>`;
+}
+
+function renderExecutiveCostModelIndicator() {
+  return `<div class="cx-cost-model-indicator">
+    <span>Cost model</span>
+    <strong>${activeCostProfile}</strong>
+    <em>Recovery ${Math.round(recoveryRate() * 100)}%</em>
+    <button class="cx-cost-link" data-action="toggleCfg">Edit assumptions</button>
+  </div>`;
 }
 
 function renderMetricDrilldown(ps, patterns) {
@@ -4651,7 +4659,7 @@ function renderConciseFocusBanner(patterns) {
     <div>
       <div class="cx-eyebrow">Selected Focus</div>
       <h2>${selected.title}</h2>
-      <p>${highlightText('Primary Action', primaryAction, 'low')}</p>
+      <p><span class="cx-focus-action-label">Primary Action</span> ${primaryAction}</p>
     </div>
     <div class="cx-focus-actions">
       <div class="cx-focus-stat"><span>Exposure</span><strong>${fmtC(exposure)}</strong></div>
@@ -4860,9 +4868,10 @@ function executiveTimelineShortLabel(startMs, endMs) {
   return start === end ? start : `${start}-${end}`;
 }
 
-function executiveTimelineRelativeLabel(bucketIndex, bucketCount) {
+function executiveTimelineRelativeLabel(bucketIndex, bucketCount, days) {
   if (bucketIndex >= bucketCount - 1) return 'now';
-  return `${bucketCount - bucketIndex}d`;
+  const bucketDays = Math.max(1, days / bucketCount);
+  return `${Math.max(1, Math.round(days - bucketIndex * bucketDays))}d`;
 }
 
 function selectedRangeDays() {
@@ -4883,7 +4892,7 @@ function renderExecutiveRecurrenceTimeline(pat) {
     start:start + i * bucketMs,
     end:start + (i + 1) * bucketMs,
     label: executiveTimelineLabel(start + i * bucketMs, start + (i + 1) * bucketMs),
-    shortLabel: executiveTimelineRelativeLabel(i, bucketCount),
+    shortLabel: executiveTimelineRelativeLabel(i, bucketCount, days),
   }));
   const problems = Array.isArray(pat.problems) ? pat.problems : [];
   const timestamps = problems
@@ -4907,7 +4916,7 @@ function renderExecutiveRecurrenceTimeline(pat) {
     const showLabel = b.count > 0 || idx === 0 || idx === buckets.length - 1;
     const label = showLabel ? b.shortLabel : '';
     const cls = [b.count > 0 ? 'has-occurrence' : '', idx === 0 || idx === buckets.length - 1 ? 'edge' : ''].filter(Boolean).join(' ');
-    return `<div class="exec-timeline-bucket ${cls}" title="${b.label}: ${b.count} occurrence${b.count === 1 ? '' : 's'}"><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><b>${b.count}</b><small>${label}</small></div>`;
+    return `<div class="exec-timeline-bucket ${cls}" title="${b.label}: ${b.count} occurrence${b.count === 1 ? '' : 's'}"><b>${b.count > 0 ? b.count : ''}</b><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><small>${label}</small></div>`;
   }).join('');
   const note = useEstimated || timelinePoints.length < (pat.occurrences || 0)
     ? '<div class="exec-timeline-note">Best-effort distribution from selected pattern recurrence data. Confidence is limited because exact timestamps are incomplete.</div>'
@@ -5342,6 +5351,7 @@ function renderDecisionFirstExecView(patterns, ps) {
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${renderExecutiveCostModelIndicator()}
         ${renderConciseKpiRow(ps, patterns)}
         ${renderConciseFocusBanner(patterns)}
         <section class="cx-view-controls">
