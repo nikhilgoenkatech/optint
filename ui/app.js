@@ -414,7 +414,8 @@ async function loadProblems() {
       const rawStatus = String(r['event.status'] ?? 'CLOSED').toUpperCase();
       const status = STATUS_MAP[rawStatus] ?? 'RESOLVED';
 
-      const start = toMs(r['event.start']) ?? Date.now();
+      const eventStartMs = toMs(r['event.start']);
+      const start = eventStartMs ?? Date.now();
       const dur = durationMinutesFromRecord(r, start, rawStatus);
 
       const rawImpact = r['dt.davis.impact_level'];
@@ -437,6 +438,7 @@ async function loadProblems() {
         status,
         sev: SEV_MAP[String(r['event.category'] ?? '').toUpperCase()] ?? 'CUSTOM_ALERT',
         start,
+        hasOccurrenceTimestamp: eventStartMs !== null,
         end: toMs(r['event.end']),
         dur,
         users: typeof r['dt.davis.affected_users_count'] === 'number' ? r['dt.davis.affected_users_count'] : (entityIds.length || 0),
@@ -4298,7 +4300,6 @@ function renderConciseFocusBanner(patterns) {
   }
   const exposure = patternCost(selected);
   const primaryAction = selected.recommendation?.text || actFirstModel(selected, patterns).reason || 'Sponsor remediation for the selected recurring pattern.';
-  const priority = executivePriorityLevel(selected, patterns);
   return `<section class="cx-focus">
     <div>
       <div class="cx-eyebrow">Selected Focus</div>
@@ -4306,7 +4307,6 @@ function renderConciseFocusBanner(patterns) {
       <p>${highlightText('Primary Action', primaryAction, 'low')}</p>
     </div>
     <div class="cx-focus-actions">
-      <div class="cx-focus-stat badge-stat"><span>Priority</span>${highlightText('', priority, priority)}</div>
       <div class="cx-focus-stat"><span>Exposure</span><strong>${fmtC(exposure)}</strong></div>
       <div class="cx-focus-stat"><span>Occurrences</span><strong>${selected.occurrences}</strong></div>
       <div class="cx-focus-stat"><span>Open Incidents</span><strong>${patternOpenCount(selected)}</strong></div>
@@ -4487,7 +4487,7 @@ function occurrenceTimestamp(problem) {
     ?? toMs(problem?.eventStart)
     ?? toMs(problem?.startTime)
     ?? toMs(problem?.timestamp)
-    ?? toMs(problem?.start)
+    ?? (problem?.hasOccurrenceTimestamp === false ? null : toMs(problem?.start))
     ?? toMs(problem?.event?.end)
     ?? toMs(problem?.eventEnd)
     ?? toMs(problem?.end)
@@ -4584,11 +4584,10 @@ function renderDecisionDetailPanel(pat, patterns) {
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection">Clear Selection</button></div></div>
-    <div class="cx-highlight-row">${highlightText('Priority', priority, priority)}${confidenceBadge(confidence)}${highlightText('Effort', effort, effort)}</div>
     <div class="cx-detail-label">Business Impact</div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
     <div class="cx-detail-label">Technical Actionability</div>
-    <div class="cx-detail-tiles actionability"><div>${highlightText('Effort', effort, effort)}<span>Remediation Effort</span></div><div>${confidenceBadge(confidence)}<span>Confidence</span></div><div>${highlightText('Priority', priority, priority)}<span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
+    <div class="cx-detail-tiles actionability"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidenceLabel(confidence)}</strong><span>Confidence</span></div><div><strong>${priority}</strong><span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
