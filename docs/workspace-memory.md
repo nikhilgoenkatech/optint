@@ -12,6 +12,7 @@ This document summarizes the important context from the OpInt workspace recovery
   - `restore executive workspace only`
 - Do not assume older screenshots map cleanly to current source. Use the screenshots as UX intent, not as proof that a component still exists.
 - Do not attempt a full restore in one pass.
+- Executive workspace is now the restored baseline. Further Executive work should be limited to defects only; the next restoration phase should focus on SRE.
 
 ## Core Product Direction
 
@@ -50,6 +51,16 @@ Executive UX should include:
 - Remediation.
 
 Executive language should be plain English and business-oriented. Avoid implementation details such as logs, traces, pods, JVM, heap, GC, DQL, spans, or stack traces in executive recommendations.
+
+Executive restored baseline:
+
+- Top KPI row: Open Risk Exposure, Recoverable Now, Active Patterns, Median MTTR.
+- Selected Focus strip below KPIs.
+- Act-First Map is the default canvas; Pattern Explorer is the alternate canvas.
+- Persistent right panel is always visible with empty state, Business Impact, Technical Actionability, Pattern Timeline, Recommended Action, and Remediation Path after explicit request.
+- Bubble color represents when the selected recurring pattern was last seen: seen recently, seen 7-14d ago, or seen 15d+ ago.
+- Cost assumptions remain accessible, but detailed cost formulas should stay out of the normal Executive panel.
+- Executive Analysis and full DQL lineage are intentionally not part of the restored baseline.
 
 ### SRE
 

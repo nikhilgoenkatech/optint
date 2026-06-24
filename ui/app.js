@@ -4919,15 +4919,22 @@ function renderExecutiveRecurrenceTimeline(pat) {
   }
   const max = Math.max(1, ...buckets.map(b => b.count));
   const bars = buckets.map((b, idx) => {
-    const showLabel = b.count > 0 || idx === 0 || idx === buckets.length - 1;
+    const showLabel = shouldShowExecutiveTimelineLabel(buckets, idx);
     const label = showLabel ? b.shortLabel : '';
-    const cls = [b.count > 0 ? 'has-occurrence' : '', idx === 0 || idx === buckets.length - 1 ? 'edge' : ''].filter(Boolean).join(' ');
+    const cls = [b.count > 0 ? 'has-occurrence' : '', idx === 0 || idx === buckets.length - 1 ? 'edge' : '', showLabel ? 'label-visible' : 'label-hidden'].filter(Boolean).join(' ');
     return `<div class="exec-timeline-bucket ${cls}" title="${b.label}: ${b.count} occurrence${b.count === 1 ? '' : 's'}"><b>${b.count > 0 ? b.count : ''}</b><span style="height:${Math.max(3, Math.round((b.count / max) * 36))}px"></span><small>${label}</small></div>`;
   }).join('');
   const note = useEstimated || timelinePoints.length < (pat.occurrences || 0)
     ? '<div class="exec-timeline-note">Best-effort distribution from selected pattern recurrence data. Confidence is limited because exact timestamps are incomplete.</div>'
     : '';
   return `<div class="exec-rec-timeline ${note ? 'estimated' : ''}">${bars}</div>${note}`;
+}
+
+function shouldShowExecutiveTimelineLabel(buckets, idx) {
+  if (idx === 0 || idx === buckets.length - 1) return true;
+  if (buckets.length <= 7) return true;
+  if (buckets.length <= 10) return idx % 2 === 0;
+  return idx % 3 === 0;
 }
 
 function estimatedPatternTimelinePoints(pat, start, now, bucketCount) {
@@ -4963,19 +4970,19 @@ function infoPill(text, key) {
   return `<span class="cx-info-wrap"><span class="cx-info-pill ${open ? 'open' : ''}" role="button" tabindex="0" data-action="toggleExecInfo" data-info-id="${attrText(id)}" title="${attrText(text)}" aria-label="${attrText(text)}" aria-expanded="${open}">i</span>${open ? `<span class="cx-info-popover" role="tooltip">${text}</span>` : ''}</span>`;
 }
 
-function executiveBubbleAgeClass(pat) {
-  const firstSeen = Number(new Date(pat.firstSeen || pat.problems?.[0]?.start || Date.now()).getTime());
-  const ageDays = Number.isFinite(firstSeen) ? Math.floor((Date.now() - firstSeen) / 86400000) : 0;
-  if (ageDays >= 15) return 'age-old';
-  if (ageDays >= 7) return 'age-aging';
-  return 'age-fresh';
+function executivePatternLastSeen(pat) {
+  const timestamps = (pat.problems || [])
+    .map(occurrenceTimestamp)
+    .filter(Number.isFinite);
+  return timestamps.length ? Math.max(...timestamps) : Number(new Date(pat.lastSeen || pat.firstSeen || Date.now()).getTime());
 }
 
-function executiveBubbleAgeLabel(pat) {
-  const firstSeen = Number(new Date(pat.firstSeen || pat.problems?.[0]?.start || Date.now()).getTime());
-  const ageDays = Number.isFinite(firstSeen) ? Math.floor((Date.now() - firstSeen) / 86400000) : 0;
-  if (ageDays <= 0) return '<1d';
-  return `${ageDays}d`;
+function executiveBubbleSeenClass(pat) {
+  const lastSeen = executivePatternLastSeen(pat);
+  const ageDays = Number.isFinite(lastSeen) ? Math.floor((Date.now() - lastSeen) / 86400000) : 0;
+  if (ageDays >= 15) return 'seen-old';
+  if (ageDays >= 7) return 'seen-aging';
+  return 'seen-recent';
 }
 
 function renderDecisionDetailPanel(pat, patterns) {
@@ -5045,17 +5052,15 @@ function renderConciseActFirstMap(patterns) {
     const primaryAction = pat.recommendation?.text || model.reason;
     const priority = executivePriorityLevel(pat, patterns);
     const confidence = patternConfidenceScore(pat);
-    const ageLabel = executiveBubbleAgeLabel(pat);
     const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Occurrences ${pat.occurrences} | Open incidents ${patternOpenCount(pat)} | Confidence ${confidenceLabel(patternConfidenceScore(pat))} | Action ${primaryAction}`;
     const selected = execPatternSelectionMade && pat.id === patternExplorerState.selectedId;
     const popupClass = [
-      bottom < 36 ? 'pop-above' : 'pop-below',
-      left > 76 ? 'pop-shift-left' : left < 24 ? 'pop-shift-right' : '',
+      bottom < 42 ? 'pop-above' : 'pop-below',
+      left > 70 ? 'pop-shift-left' : left < 30 ? 'pop-shift-right' : '',
       selected && execClosedBubblePopupId === pat.id ? 'popup-hidden' : '',
     ].filter(Boolean).join(' ');
-    return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
+    return `<button class="cx-map-bubble ${executiveBubbleSeenClass(pat)} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
       <span>#${idx + 1}</span>
-      <em class="cx-bubble-age">${ageLabel}</em>
       <div class="cx-bubble-popover" role="tooltip">
         <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
         <div class="cx-pop-title">${pat.title}</div>
@@ -5066,7 +5071,6 @@ function renderConciseActFirstMap(patterns) {
           <div><small>Occurrences</small><strong>${pat.occurrences}</strong></div>
           <div><small>Open</small><strong>${patternOpenCount(pat)}</strong></div>
           <div><small>Confidence</small><strong>${confidenceLabel(confidence)}</strong></div>
-          <div><small>Age</small><strong>${ageLabel}</strong></div>
         </div>
         <p>${primaryAction}</p>
       </div>
@@ -5083,7 +5087,7 @@ function renderConciseActFirstMap(patterns) {
       <div class="cx-map-q q1">Act Now</div><div class="cx-map-q q2">Plan And Fund</div><div class="cx-map-q q3">Deprioritize</div><div class="cx-map-q q4">Quick Win</div>
       ${bubbles}
     </div>
-    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="age-fresh"></b><em class="age-fresh-text">&lt;7d</em> <b class="age-aging"></b><em class="age-aging-text">7-14d</em> <b class="age-old"></b><em class="age-old-text">15d+</em></span></div>
+    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="seen-recent"></b><em class="seen-recent-text">seen recently</em> <b class="seen-aging"></b><em class="seen-aging-text">seen 7-14d ago</em> <b class="seen-old"></b><em class="seen-old-text">seen 15d+ ago</em></span></div>
   </section>`;
 }
 
