@@ -677,6 +677,8 @@ function render(){
   const m=PMETA[persona];
   document.body.classList.toggle('concise-exec', isConciseExecView());
   document.body.classList.toggle('exec-persona', persona === 'executive');
+  document.body.classList.toggle('sre-persona', persona === 'sre');
+  document.body.classList.toggle('developer-persona', persona === 'developer');
   document.body.classList.toggle('workspace-persona', currentView === 'patterns');
   document.documentElement.style.setProperty('--persona',m.color);
   document.getElementById('pbarIcon').textContent=m.icon;
@@ -5185,23 +5187,38 @@ function renderSreRiskMatrix(patterns, ps=[]) {
   }
   const ranked = [...patterns].map(pat => ({ pat, score: sreReliabilityPriority(pat, patterns) }))
     .sort((a, b) => b.score - a.score);
+  const effortValues = ranked.map(({ pat }) => 100 - patternFixabilityScore(pat));
+  const riskValues = ranked.map(({ score }) => score);
+  const effortMin = effortValues.length ? Math.min(...effortValues) : 0;
+  const effortMax = effortValues.length ? Math.max(...effortValues) : 100;
+  const riskMin = riskValues.length ? Math.min(...riskValues) : 0;
+  const riskMax = riskValues.length ? Math.max(...riskValues) : 100;
+  const displayScale = (value, min, max, fallback=0.5) => {
+    if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max === min) return fallback;
+    return clamp((value - min) / (max - min), 0, 1);
+  };
   const bubbles = ranked.map(({ pat, score }, idx) => {
     const effort = 100 - patternFixabilityScore(pat);
-    const left = Math.round(8 + clamp(effort / 100, 0.05, 0.95) * 84);
-    const bottom = Math.round(10 + clamp(score / 100, 0.06, 1) * 78);
+    const spreadOffset = ((idx % 3) - 1) * 4;
+    const rowOffset = ((Math.floor(idx / 3) % 3) - 1) * 3;
+    const left = Math.round(clamp(10 + displayScale(effort, effortMin, effortMax) * 80 + spreadOffset, 8, 92));
+    const bottom = Math.round(clamp(12 + displayScale(score, riskMin, riskMax) * 76 + rowOffset, 10, 90));
     const size = Math.round(clamp(22 + sreBlastRadiusScore(pat) / 3, 22, 48));
     const selected = pat.id === patternExplorerState.selectedId;
     const automation = sreAutomationOpportunity(pat);
     const blast = sreBlastRadiusScore(pat);
     const rca = Math.round((pat.rcaConsistency || 0) * 100);
+    const priorityStatus = sreScoreStatus(score);
+    const priorityClass = priorityStatus.toLowerCase();
     const tooltip = `${pat.title} | Reliability priority ${sreScoreStatus(score)} | Automation opportunity ${sreScoreStatus(automation)} | Blast radius ${sreScoreStatus(blast)}`;
     const popupClass = [
       bottom < 42 ? 'pop-above' : 'pop-below',
       left > 70 ? 'pop-shift-left' : left < 30 ? 'pop-shift-right' : '',
       selected && execClosedBubblePopupId === pat.id ? 'popup-hidden' : '',
     ].filter(Boolean).join(' ');
-    return `<button class="cx-map-bubble ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
-      <span>#${idx + 1}</span>
+    return `<button class="cx-map-bubble sre-risk-bubble sre-risk-${priorityClass} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
+      <span class="sre-bubble-rank">#${idx + 1}</span>
+      <span class="sre-bubble-status">${priorityStatus}</span>
       <div class="cx-bubble-popover sre-bubble-popover" role="tooltip">
         <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
         <div class="cx-pop-title">${pat.title}</div>
@@ -5293,8 +5310,8 @@ function renderSreContextPanel(pat, patterns) {
         </div>
         ${rcaConfidence < 25 ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Confidence Warning</div><strong>RCA confidence is Low.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
         <div class="cx-complexity-summary"><span>Reliability Signals</span><strong>${repeatedRca}</strong><p>${pat.occurrences} recurring incidents | ${pat.trend} trend | ${patternOpenCount(pat)} still open</p></div>
-        <div class="cx-complexity-summary"><span>Automation Opportunity</span><strong>Candidate for workflow automation.</strong><p>Pattern has recurred ${pat.occurrences} times with ${repeatedRca}.</p></div>
-        <div class="cx-complexity-summary"><span>Operational Debt Drivers</span><strong>Unresolved recurring reliability risk.</strong><p>${pat.occurrences} recurring incidents | RCA ${rcaConfidence ? 'partially identified' : 'incomplete'} | ownership or prevention path needs confirmation.</p></div>`;
+        <div class="cx-complexity-summary"><span>Operational Debt Drivers</span><strong>Unresolved recurring reliability risk.</strong><p>${pat.occurrences} recurring incidents | RCA ${rcaConfidence ? 'partially identified' : 'incomplete'} | ownership or prevention path needs confirmation.</p></div>
+        ${renderExecDisclosure('Supporting Evidence', `${pat.problems?.length || 0} grouped problems`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('') || '<span class="px-chip">No problem IDs available</span>'}</div>`)}`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Reliability Context</div><h3>${pat.title}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
     <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="details">Details</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="remediation">Remediation</button></div>
