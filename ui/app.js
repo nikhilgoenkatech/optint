@@ -3405,6 +3405,11 @@ function attrText(value) {
   }[ch]));
 }
 
+function setIntelSummary(html='') {
+  const el = document.getElementById('intelSummary');
+  if (el) el.innerHTML = html;
+}
+
 const RAW_CATEGORY_BUCKETS = ['ERROR','AVAILABILITY','SLOWDOWN','RESOURCE_CONTENTION','CUSTOM_ALERT','UNKNOWN'];
 const WORKSPACE_CATEGORY_BUCKETS = ['AVAILABILITY','ERROR','PERFORMANCE','RESOURCE_CONTENTION','CUSTOM_ALERT','UNKNOWN'];
 const DQL_TO_WORKSPACE_CATEGORY = {
@@ -4206,9 +4211,9 @@ function renderPatternIntelligence() {
   const patternOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const fixable = patterns.filter(pat => ['FIX_ROOT_CAUSE','ADD_TIME_WINDOW'].includes(pat.recommendation.type)).length;
   if (persona === 'executive' || persona === 'sre' || persona === 'developer') {
-    document.getElementById('intelSummary').innerHTML = '';
+    setIntelSummary('');
   } else {
-  document.getElementById('intelSummary').innerHTML = `
+  setIntelSummary(`
     <div class="intel-icon">P</div>
     <div class="intel-main">
       <div class="intel-headline">${patterns.length} patterns across ${patternOccurrences} grouped problems - ${ps.length} total problems</div>
@@ -4227,7 +4232,7 @@ function renderPatternIntelligence() {
         <div class="intel-stat-val" style="color:var(--green)">${fixable}</div>
         <div class="intel-stat-lbl">Actionable</div>
       </div>
-    </div>`;
+    </div>`);
   }
 
   // Executive gets spotlight tiles + ranked list; engineers get sub-bucket cards
@@ -5533,7 +5538,7 @@ function renderSreWorkspace(patterns, ps) {
   }
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns, ps) : renderSreRiskMatrix(patterns, ps);
-  document.getElementById('intelSummary').innerHTML = '';
+  setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     ${renderSreDqlReport(ps, patterns)}
     ${renderSreFocus(patterns)}
@@ -5702,7 +5707,7 @@ function renderDeveloperWorkspace(patterns, ps) {
   }
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = developerAnalyticalView === 'explorer' ? renderConcisePatternTable(patterns) : renderDeveloperServiceHeatMap(patterns);
-  document.getElementById('intelSummary').innerHTML = '';
+  setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
     ${renderDeveloperFocus(patterns)}
     <div class="cx-decision-workspace">
@@ -5727,7 +5732,7 @@ function renderConciseExecView(patterns, ps) {
     patternExplorerState.selectedId = ranked[0]?.pat.id || null;
   }
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || ranked[0]?.pat;
-  document.getElementById('intelSummary').innerHTML = '';
+  setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view">
     ${renderConciseKpiRow(ps, patterns)}
     ${renderConciseFocusBanner(patterns)}
@@ -5747,7 +5752,7 @@ function renderDecisionFirstExecView(patterns, ps) {
     ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
     : null;
   const selectedView = execAnalyticalView === 'map' ? renderConciseActFirstMap(patterns) : renderConcisePatternTable(patterns);
-  document.getElementById('intelSummary').innerHTML = '';
+  setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
