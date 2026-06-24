@@ -3436,6 +3436,14 @@ function problemWorkspaceCategory(problem) {
   return normalizeAuditCategory(problem?.sev, WORKSPACE_CATEGORY_BUCKETS);
 }
 
+function dominantPatternCategory(pat) {
+  const counts = countCategories((pat?.problems || []).map(problemWorkspaceCategory), WORKSPACE_CATEGORY_BUCKETS);
+  const ranked = Object.entries(counts)
+    .filter(([category, count]) => category !== 'UNKNOWN' && count > 0)
+    .sort((a, b) => b[1] - a[1] || WORKSPACE_CATEGORY_BUCKETS.indexOf(a[0]) - WORKSPACE_CATEGORY_BUCKETS.indexOf(b[0]));
+  return ranked[0]?.[0] || 'UNKNOWN';
+}
+
 function buildDeveloperCategoryValidation(ps, patterns) {
   const rawDistribution = countCategories(RAW_DQL_CATEGORY_AUDIT.map(row => row.rawCategory), RAW_CATEGORY_BUCKETS);
   const transformedDistribution = countCategories((ps || []).map(problemWorkspaceCategory), WORKSPACE_CATEGORY_BUCKETS);
@@ -3456,16 +3464,18 @@ function buildDeveloperCategoryValidation(ps, patterns) {
   const patternRows = (patterns || []).map(pat => {
     const rawCounts = countCategories((pat.problems || []).map(problemRawCategory), RAW_CATEGORY_BUCKETS);
     const workspaceCounts = countCategories((pat.problems || []).map(problemWorkspaceCategory), WORKSPACE_CATEGORY_BUCKETS);
+    const dominantCategory = dominantPatternCategory(pat);
     const heatmapCategory = developerFailureType(pat);
     const presentWorkspaceCategories = Object.entries(workspaceCounts).filter(([, count]) => count > 0).map(([key]) => key);
     const mixedCategories = presentWorkspaceCategories.length > 1;
-    const heatmapMismatch = presentWorkspaceCategories.length > 0 && !presentWorkspaceCategories.includes(heatmapCategory);
+    const heatmapMismatch = dominantCategory !== 'UNKNOWN' && heatmapCategory !== dominantCategory;
     return {
       patternId: pat.id,
       patternName: pat.title,
       problemCount: pat.problems?.length || 0,
       rawCounts,
       workspaceCounts,
+      dominantCategory,
       heatmapCategory,
       mixedCategories,
       heatmapMismatch,
@@ -3513,6 +3523,7 @@ function logDeveloperCategoryValidation(ps, patterns, source) {
   console.table(report.patternRows.map(row => ({
     pattern: row.patternName,
     problems: row.problemCount,
+    dominantCategory: row.dominantCategory,
     heatmapCategory: row.heatmapCategory,
     rawCategories: categoryCountsToText(row.rawCounts),
     workspaceCategories: categoryCountsToText(row.workspaceCounts),
@@ -5533,7 +5544,14 @@ function renderSreWorkspace(patterns, ps) {
 }
 
 function developerFailureType(pat) {
-  return (pat.problems?.[0]?.cat || pat.problems?.[0]?.eventType || pat.dimensions?.categories?.[0] || 'ERROR').toString().toUpperCase();
+  const dominantCategory = dominantPatternCategory(pat);
+  const renderedCategory = dominantCategory !== 'UNKNOWN'
+    ? dominantCategory
+    : normalizeAuditCategory(pat.problems?.[0]?.sev || pat.dimensions?.severities?.[0], WORKSPACE_CATEGORY_BUCKETS);
+  if (dominantCategory !== 'UNKNOWN' && renderedCategory !== dominantCategory) {
+    console.warn('[Developer Heat Map]', pat.title, dominantCategory, renderedCategory);
+  }
+  return renderedCategory;
 }
 
 function developerPrimaryService(pat) {
