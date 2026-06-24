@@ -5501,6 +5501,46 @@ function renderSreDqlReport(ps, patterns) {
   </section>`;
 }
 
+function renderSreWorkspaceHeader(patterns, ps) {
+  const selected = patternExplorerState.selectedId
+    ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
+    : null;
+  const rcaConfidence = selected ? Math.round((selected.rcaConsistency || 0) * 100) : null;
+  const priority = selected ? sreReliabilityPriority(selected, patterns) : null;
+  const source = dataSourceLabel();
+  const sourceClass = DATA_SOURCE_STATE || 'demo';
+  const summary = selected
+    ? `${rcaConfidence < 25 ? 'RCA warning: ' : ''}RCA confidence is ${sreRcaStatus(rcaConfidence)}. Prioritize evidence enrichment before automation or prevention work.`
+    : 'Select a bubble from the Reliability Risk Matrix or a row from Operational Debt Explorer to inspect recurrence, automation opportunity, and prevention options.';
+  const stats = selected
+    ? `<div class="workspace-header-stats">
+        <div><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
+        <div><span>Reliability Priority</span><strong>${sreScoreStatus(priority)}</strong></div>
+        <div><span>RCA Confidence</span><strong>${sreRcaStatus(rcaConfidence)}</strong></div>
+        <div><span>Trend</span><strong>${selected.trend}</strong></div>
+      </div>`
+    : `<div class="workspace-header-stats compact">
+        <div><span>Time range</span><strong>${getTimeLabel()}</strong></div>
+        <div><span>DQL records</span><strong>${ps.length}</strong></div>
+        <div><span>Patterns</span><strong>${patterns.length}</strong></div>
+      </div>`;
+  return `<section class="workspace-header">
+    <div class="workspace-header-copy">
+      <div class="cx-eyebrow">Reliability Workspace</div>
+      <h2>${selected ? selected.title : 'No reliability pattern selected'}</h2>
+      <p>${summary}</p>
+      <div class="workspace-header-source ${sourceClass}"><span>${source}</span><small>${getTimeLabel()} | ${ps.length} records | ${patterns.length} patterns</small></div>
+    </div>
+    <div class="workspace-header-side">
+      ${stats}
+      <div class="cx-view-switch">
+        <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
+        <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
+      </div>
+    </div>
+  </section>`;
+}
+
 function renderSreContextPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="workspace-empty-state"><div class="workspace-empty-card"><strong>Select a reliability risk</strong><p>Review reliability signals, automation opportunity, analysis, and remediation for the selected risk.</p><small>Choose a matrix bubble or explorer row</small></div></div></aside>`;
   const priority = sreReliabilityPriority(pat, patterns);
@@ -5545,15 +5585,7 @@ function renderSreWorkspace(patterns, ps) {
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
-        ${renderSreDqlReport(ps, patterns)}
-        ${renderSreFocus(patterns)}
-        <section class="cx-view-controls">
-          <div><div class="cx-eyebrow">View Controls</div><span>Choose one reliability engineering view</span></div>
-          <div class="cx-view-switch">
-            <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
-            <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
-          </div>
-        </section>
+        ${renderSreWorkspaceHeader(patterns, ps)}
         <div class="cx-selected-view">${selectedView}</div>
       </div>
       ${renderSreContextPanel(selected, patterns)}
@@ -5627,6 +5659,42 @@ function renderDeveloperFocus(patterns) {
       <div class="cx-focus-stat"><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
       <div class="cx-focus-stat"><span>Root Cause</span><strong>${developerRootCauseStatus(selected).slice(0, 26)}</strong></div>
       <div class="cx-focus-stat"><span>Trend</span><strong>${selected.trend}</strong></div>
+    </div>
+  </section>`;
+}
+
+function renderDeveloperWorkspaceHeader(patterns) {
+  const selected = patternExplorerState.selectedId ? patterns.find(p => p.id === patternExplorerState.selectedId) || null : null;
+  const scope = selectedDeveloperScope();
+  const scopeLabel = scope?.label || 'All Developer Scope';
+  const title = selected ? developerPrimaryService(selected) : 'No service or recurring issue selected';
+  const summary = selected
+    ? `Investigate here: ${developerRootCauseStatus(selected)}`
+    : 'Select a service or recurring issue to review evidence, analysis, and remediation.';
+  const stats = selected
+    ? `<div class="workspace-header-stats">
+        <div><span>Failure Type</span><strong>${developerFailureType(selected)}</strong></div>
+        <div><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
+        <div><span>Root Cause</span><strong>${developerRootCauseStatus(selected).replace(/^Repeated RCA:\s*/, '').slice(0, 24)}</strong></div>
+        <div><span>Trend</span><strong>${selected.trend}</strong></div>
+      </div>`
+    : `<div class="workspace-header-stats compact">
+        <div><span>Scope</span><strong>${scopeLabel}</strong></div>
+        <div><span>Patterns</span><strong>${patterns.length}</strong></div>
+      </div>`;
+  return `<section class="workspace-header developer-workspace-header">
+    <div class="workspace-header-copy">
+      <div class="cx-eyebrow">Developer Workspace</div>
+      <h2>${title}</h2>
+      <p>${summary}</p>
+      <div class="workspace-header-source developer"><span>Developer Scope</span><small>${scopeLabel}</small></div>
+    </div>
+    <div class="workspace-header-side">
+      ${stats}
+      <div class="cx-view-switch">
+        <button class="${developerAnalyticalView === 'heatmap' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="heatmap">Service Heat Map</button>
+        <button class="${developerAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="explorer">Pattern Explorer</button>
+      </div>
     </div>
   </section>`;
 }
@@ -5714,14 +5782,7 @@ function renderDeveloperWorkspace(patterns, ps) {
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
-        ${renderDeveloperFocus(patterns)}
-        <section class="cx-view-controls">
-          <div><div class="cx-eyebrow">View Controls</div><span>Choose one technical triage view</span></div>
-          <div class="cx-view-switch">
-            <button class="${developerAnalyticalView === 'heatmap' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="heatmap">Service Heat Map</button>
-            <button class="${developerAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="explorer">Pattern Explorer</button>
-          </div>
-        </section>
+        ${renderDeveloperWorkspaceHeader(patterns)}
         <div class="cx-selected-view">${selectedView}</div>
       </div>
       ${renderDeveloperContextPanel(selected, patterns)}
