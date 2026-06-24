@@ -1532,7 +1532,6 @@ function renderAssistRemediationResponse(response, evidence=null) {
         <span class="rem-opt-time">${meta.time}</span>
       </div>
       <div class="rem-conf">
-        <span class="rem-conf-lbl">Confidence</span>
         <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${confPct}%;background:${confColor}"></div></div>
         <span class="rem-conf-pct" style="color:${confColor}">${confText}</span>
       </div>
@@ -4972,6 +4971,14 @@ function executiveBubbleAgeClass(pat) {
   return 'age-fresh';
 }
 
+function executiveBubbleAgeLabel(pat) {
+  const firstSeen = Number(new Date(pat.firstSeen || pat.problems?.[0]?.start || Date.now()).getTime());
+  const ageDays = Number.isFinite(firstSeen) ? Math.floor((Date.now() - firstSeen) / 86400000) : 0;
+  if (ageDays >= 15) return '30d';
+  if (ageDays >= 7) return '14d';
+  return '7d';
+}
+
 function renderDecisionDetailPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection" disabled>Clear Selection</button></div></div>
@@ -5057,6 +5064,7 @@ function renderConciseActFirstMap(patterns) {
     const primaryAction = pat.recommendation?.text || model.reason;
     const priority = executivePriorityLevel(pat, patterns);
     const confidence = patternConfidenceScore(pat);
+    const ageLabel = executiveBubbleAgeLabel(pat);
     const tooltip = `${pat.title} | Exposure ${fmtC(cost)} | Occurrences ${pat.occurrences} | Open incidents ${patternOpenCount(pat)} | Confidence ${confidenceLabel(patternConfidenceScore(pat))} | Action ${primaryAction}`;
     const selected = execPatternSelectionMade && pat.id === patternExplorerState.selectedId;
     const popupClass = [
@@ -5066,6 +5074,7 @@ function renderConciseActFirstMap(patterns) {
     ].filter(Boolean).join(' ');
     return `<button class="cx-map-bubble ${executiveBubbleAgeClass(pat)} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
       <span>#${idx + 1}</span>
+      <em class="cx-bubble-age">${ageLabel}</em>
       <div class="cx-bubble-popover" role="tooltip">
         <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
         <div class="cx-pop-title">${pat.title}</div>
@@ -5076,6 +5085,7 @@ function renderConciseActFirstMap(patterns) {
           <div><small>Occurrences</small><strong>${pat.occurrences}</strong></div>
           <div><small>Open</small><strong>${patternOpenCount(pat)}</strong></div>
           <div><small>Confidence</small><strong>${confidenceLabel(confidence)}</strong></div>
+          <div><small>Age</small><strong>${ageLabel}</strong></div>
         </div>
         <p>${primaryAction}</p>
       </div>
@@ -5092,7 +5102,7 @@ function renderConciseActFirstMap(patterns) {
       <div class="cx-map-q q1">Act Now</div><div class="cx-map-q q2">Plan And Fund</div><div class="cx-map-q q3">Deprioritize</div><div class="cx-map-q q4">Quick Win</div>
       ${bubbles}
     </div>
-    <div class="cx-map-selection">${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</div>
+    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="age-fresh"></b>7d <b class="age-aging"></b>14d <b class="age-old"></b>30d</span></div>
   </section>`;
 }
 
