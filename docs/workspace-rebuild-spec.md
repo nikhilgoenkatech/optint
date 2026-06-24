@@ -192,3 +192,66 @@ Expected behavior:
 - Do not introduce a new data model unless optional display-only fields are required.
 - Prefer reconnecting existing helpers over duplicating logic.
 - Run typecheck and build after each batch.
+
+## Restoration Status
+
+### Implemented
+
+Shared workspace:
+
+- Persistent right-panel model is restored for Executive, SRE, and Developer.
+- Each persona has a selected focus strip.
+- Only one primary analytical canvas is visible at a time.
+- Analysis and remediation are explicit user actions inside the right-panel workflow.
+- Clear Selection supports a true no-selection state for SRE and Developer.
+- Selection is preserved when switching between each persona's primary and alternate canvas.
+
+Executive:
+
+- KPI row is restored with Open Risk Exposure, Recoverable Now, Active Patterns, and Median MTTR.
+- Act-First Map is the default Executive canvas.
+- Pattern Explorer is available as the alternate Executive canvas.
+- Persistent Selected Pattern panel is restored.
+- Right panel includes Business Impact, Technical Actionability, Pattern Timeline, Recommended Action, and on-request Remediation Path.
+- Executive no-selection state keeps the right panel visible.
+
+SRE:
+
+- KPI row is restored with Operational Debt, Automation Candidates, Repeat Offenders, and Median MTTR.
+- Reliability Risk Matrix is the default SRE canvas.
+- Operational Debt Explorer is available as the alternate SRE canvas.
+- Persistent Reliability Context panel is restored with Details, Analysis, and Remediation tabs.
+- Analysis and remediation are not auto-generated.
+- SRE can report DQL source state and show DQL problem records when no recurring pattern is found for shorter timeframes.
+
+Developer:
+
+- KPI row is restored with Open Errors, Services Impacted, Needs Investigation, and Median Resolution Time.
+- Developer Scope is visible and persona-specific.
+- Service Heat Map is the default Developer canvas.
+- Pattern Explorer is available as the alternate Developer canvas.
+- Persistent Developer Context panel is restored with Details, Dynatrace Intelligence Analysis, and Remediation Path tabs.
+- Analysis and remediation are not auto-generated.
+- Developer Details are compact, with supporting evidence and impacted entities collapsed.
+
+### Partially Implemented
+
+- DQL data reporting exists for SRE, but the full DQL validation trust layer is not implemented.
+- Cost assumptions are configurable at runtime, but persistence to configuration storage is not implemented.
+- Data transparency exists through documentation and selected runtime affordances, but full runtime lineage is not implemented.
+- Pattern Timeline is restored for Executive using selected-pattern occurrence evidence, but future validation against DQL-derived trend queries remains deferred.
+- Persona-specific Assist workflows exist, but full prompt/response lineage and admin download are deferred.
+
+### Intentionally Deferred
+
+- DQL validation trust layer.
+- Data Lineage runtime mode.
+- DQL-vs-JS reconciliation.
+- Validation confidence.
+- Query inventory panel.
+- Cost persistence.
+- Full lineage/admin query panel.
+- DQL-backed pattern recognition replacement.
+- Runtime editing of DQL or scoring formulas.
+
+Deferred items must be implemented additively. They should not change the restored workspace layout or selection model unless explicitly approved.
