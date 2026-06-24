@@ -5412,15 +5412,27 @@ function renderDeveloperFocus(patterns) {
 function renderDeveloperServiceHeatMap(patterns) {
   const categories = ['AVAILABILITY','ERROR','PERFORMANCE','RESOURCE_CONTENTION','CUSTOM_ALERT'];
   const services = [...new Set(patterns.map(developerPrimaryService))].slice(0, 10);
-  const maxOcc = Math.max(1, ...patterns.map(p => p.occurrences || 0));
+  const occurrenceValues = patterns.map(p => p.occurrences || 0).filter(v => v > 0);
+  const minOcc = Math.min(...occurrenceValues, 1);
+  const maxOcc = Math.max(1, ...occurrenceValues);
+  const occurrenceSpread = Math.max(1, maxOcc - minOcc);
+  const recurrenceTier = (pat) => {
+    const scaled = ((pat.occurrences || 0) - minOcc) / occurrenceSpread;
+    if (pat.trend === 'INCREASING' && scaled >= 0.66) return 'critical';
+    if (scaled >= 0.66) return 'high';
+    if (scaled >= 0.33) return 'moderate';
+    return 'low';
+  };
   const rows = services.map(service => {
+    const rowSelected = patterns.some(p => p.id === patternExplorerState.selectedId && developerPrimaryService(p) === service);
     const cells = categories.map((cat, catIndex) => {
       const pat = patterns.find(p => developerPrimaryService(p) === service && developerFailureType(p) === cat);
       if (!pat) return `<div class="heat-cell empty" aria-label="${service} ${cat} no recurring failures"></div>`;
-      const intensity = clamp((pat.occurrences || 1) / maxOcc, 0.25, 1);
+      const intensity = clamp(((pat.occurrences || 0) - minOcc) / occurrenceSpread, 0.24, 1);
+      const tier = recurrenceTier(pat);
       const selected = pat.id === patternExplorerState.selectedId;
       const trend = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'stable';
-      const trendGlyph = pat.trend === 'INCREASING' ? '↑' : pat.trend === 'DECREASING' ? '↓' : '→';
+      const trendLabel = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'flat';
       const popupClosed = selected && execClosedBubblePopupId === pat.id;
       const popupPos = catIndex >= categories.length - 2 ? 'left' : 'right';
       const tooltip = `${service} | ${cat} | ${pat.occurrences} occurrences | ${pat.trend}`;
@@ -5431,16 +5443,16 @@ function renderDeveloperServiceHeatMap(patterns) {
         <div class="heat-popup-grid">
           <div><span>Failure</span><b>${cat.replace('_',' ')}</b></div>
           <div><span>Recurrence</span><b>${pat.occurrences}x</b></div>
-          <div><span>Trend</span><b>${trendGlyph} ${trend}</b></div>
+          <div><span>Trend</span><b>${trendLabel}</b></div>
           <div><span>Confidence</span><b>${developerConfidenceStatus(pat)}</b></div>
         </div>
       </div>` : '';
-      return `<div class="heat-cell ${selected ? 'selected' : ''}" role="button" tabindex="0" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}"><strong>${pat.occurrences}</strong><small class="heat-trend ${trend}">${trendGlyph}</small>${popup}</div>`;
+      return `<div class="heat-cell ${tier} ${selected ? 'selected' : ''}" role="button" tabindex="0" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}"><strong>${pat.occurrences}</strong><small class="heat-trend ${trend}">${trendLabel}</small>${popup}</div>`;
     }).join('');
-    return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}</div>`;
+    return `<div class="heat-row ${rowSelected ? 'selected' : ''}"><div class="heat-service">${service}</div>${cells}</div>`;
   }).join('');
   return `<section class="cx-map dev-heat">
-    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-legend"><span>Darker = recurring more often</span><b>↑ worsening</b><b>→ stable</b><b>↓ improving</b></div></div>
+    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-legend"><span><i class="heat-dot low"></i>Lower recurrence</span><span><i class="heat-dot moderate"></i>Moderate</span><span><i class="heat-dot high"></i>High</span><span><i class="heat-dot critical"></i>Critical / worsening</span><b>trend: up | flat | down</b></div></div>
     <div class="heat-grid"><div class="heat-head"><span>Service / Endpoint</span>${categories.map(c => `<span>${c.replace('_',' ')}</span>`).join('')}</div>${rows || '<div class="exec-empty">No recurring service patterns available.</div>'}</div>
   </section>`;
 }
@@ -5457,8 +5469,9 @@ function renderDeveloperContextPanel(pat, patterns) {
     ? renderWorkspaceAnalysisBlock(pat, 'Generate technical analysis to focus on likely root cause, affected service or runtime area, and next validation step.')
     : selectedTab === 'remediation'
       ? renderWorkspaceRemediationBlock(pat)
-      : `<div class="cx-detail-tiles dev-detail-tiles"><div><strong>${service}</strong><span>Service</span></div><div><strong>${failureType}</strong><span>Failure Type</span></div><div><strong>${confidence}</strong><span>Root Cause Confidence</span><small>${developerConfidenceExplanation(pat)}</small></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div><div><strong>${impactSummary}</strong><span>Impact Summary</span><small>${patternOpenCount(pat)} open | ${patternAffectedEntities(pat).length} affected</small></div></div>
-        <div class="cx-complexity-summary dev-rca-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.problems?.length || 0} scoped problems in this selected Developer context.</p></div>
+      : `<div class="dev-detail-hero"><span>Service / Endpoint</span><strong>${service}</strong><small>${failureType}</small></div>
+        <div class="cx-detail-tiles dev-detail-tiles"><div><strong>${confidence}</strong><span>Root Cause Confidence</span><small>${developerConfidenceExplanation(pat)}</small></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div></div>
+        <div class="cx-complexity-summary dev-rca-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${impactSummary} | ${patternOpenCount(pat)} open | ${patternAffectedEntities(pat).length} affected | ${pat.problems?.length || 0} scoped problems in this Developer context.</p></div>
         ${renderExecDisclosure('Supporting evidence', `${pat.occurrences} grouped occurrences`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('')}</div>`)}
         ${renderExecDisclosure('Impacted entities', `${patternAffectedEntities(pat).length} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
   return `<aside class="cx-detail">
