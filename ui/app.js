@@ -5270,7 +5270,7 @@ function renderSreDqlReport(ps, patterns) {
 }
 
 function renderSreContextPanel(pat, patterns) {
-  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a reliability risk to review signals, automation opportunity, analysis, and remediation.</div></aside>`;
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="workspace-empty-state"><div class="workspace-empty-card"><strong>Select a reliability risk</strong><p>Review reliability signals, automation opportunity, analysis, and remediation for the selected risk.</p><small>Choose a matrix bubble or explorer row</small></div></div></aside>`;
   const priority = sreReliabilityPriority(pat, patterns);
   const automation = sreAutomationOpportunity(pat);
   const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
@@ -5429,7 +5429,7 @@ function renderDeveloperServiceHeatMap(patterns) {
 }
 
 function renderDeveloperContextPanel(pat, patterns) {
-  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a service or recurring issue to review evidence, analysis, and remediation.</div></aside>`;
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="workspace-empty-state"><div class="workspace-empty-card"><strong>Select a service or recurring issue</strong><p>Review scoped evidence, analysis, and remediation for the selected service or recurring issue.</p><small>Choose a heat-map cell or explorer row</small></div></div></aside>`;
   const selectedTab = developerPanelTab;
   const service = developerPrimaryService(pat);
   const failureType = developerFailureType(pat);
