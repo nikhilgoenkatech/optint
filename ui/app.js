@@ -4038,7 +4038,7 @@ function renderPatternIntelligence() {
 
   if (persona === 'developer') {
     renderDeveloperWorkspace(patterns, ps);
-    renderOneOffs(oneOffs);
+    document.getElementById('oneoffsSection').innerHTML = '';
     document.getElementById('explorerTabCount').textContent = ps.length;
     return;
   }
@@ -4700,7 +4700,8 @@ function renderConcisePatternTable(patterns) {
         <tbody>${rows.map(({ pat, score }, idx) => {
           const services = patternServices(pat).slice(0, 2).join(', ');
           const rca = pat.dimensions?.rootCauseEntities?.[0] || pat.rcaLabel || 'RCA not consistently identified';
-          return `<tr class="${execPatternSelectionMade && pat.id === patternExplorerState.selectedId ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
+          const rowSelected = pat.id === patternExplorerState.selectedId && (persona !== 'executive' || execPatternSelectionMade);
+          return `<tr class="${rowSelected ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}">
             <td><span class="px-priority">#${idx + 1}</span></td>
             <td><div class="cx-pat-name">${pat.title}</div><div class="cx-pat-meta">${services || 'Service not identified'} | ${rca}</div></td>
             ${hasOwner ? `<td>${pat.owner || pat.ownerTeam || ''}</td>` : ''}
@@ -4801,7 +4802,7 @@ function renderWorkspaceRemediationBlock(pat) {
   if (isCurrent && remediationState.status === 'done') {
     return renderAssistRemediationResponse(remediationState.response, remediationState.evidence);
   }
-  return '';
+  return `<div class="cx-complexity-summary"><span>Remediation</span><strong>Available on request</strong><p>Generate a remediation path from Dynatrace Assist for the selected recurring issue.</p><button class="snap-cta" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`;
 }
 
 function executivePriorityLevel(pat, patterns) {
@@ -5341,6 +5342,23 @@ function developerRootCauseStatus(pat) {
   return rca ? `Repeated RCA: ${rca}` : 'Needs investigation';
 }
 
+function developerConfidenceStatus(pat) {
+  const score = patternConfidenceScore(pat);
+  if (score >= 75) return 'High';
+  if (score >= 45) return 'Medium';
+  return 'Low';
+}
+
+function developerConfidenceExplanation(pat) {
+  const status = developerConfidenceStatus(pat);
+  const hasRca = Boolean(pat.dimensions?.rootCauseEntities?.length || pat.dimensions?.rootCauses?.length || pat.problems?.some(p => p.rca));
+  if (status === 'High') return 'Repeated evidence is consistent across the selected recurring issue.';
+  if (status === 'Medium') return hasRca
+    ? 'Some root-cause evidence repeats, but validation is still useful before remediation.'
+    : 'The recurrence is visible, but root-cause evidence is incomplete.';
+  return 'Evidence is limited or inconsistent, so use Assist analysis before deciding on a fix.';
+}
+
 function renderDeveloperScopeControl() {
   const current = document.getElementById('appFilter')?.value || '';
   const groups = ['service','endpoint','team','owner','namespace','application','environment'];
@@ -5361,8 +5379,8 @@ function renderDeveloperScopeControl() {
 }
 
 function renderDeveloperFocus(patterns) {
-  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || patterns[0] || null;
-  if (!selected) return `<section class="cx-focus neutral"><div><div class="cx-eyebrow">Selected Focus</div><h2>Select a service or recurring issue</h2><p>Select a service or recurring issue to inspect root cause, affected endpoint, and recommended fix.</p></div></section>`;
+  const selected = patternExplorerState.selectedId ? patterns.find(p => p.id === patternExplorerState.selectedId) || null : null;
+  if (!selected) return `<section class="cx-focus neutral"><div><div class="cx-eyebrow">Selected Focus</div><h2>No service or recurring issue selected</h2><p>Select a service or recurring issue to review evidence, analysis, and remediation.</p></div></section>`;
   return `<section class="cx-focus">
     <div><div class="cx-eyebrow">Selected Focus</div><h2>${developerPrimaryService(selected)}</h2><p><strong>Investigate here:</strong> ${developerRootCauseStatus(selected)}</p></div>
     <div class="cx-focus-actions">
@@ -5397,7 +5415,7 @@ function renderDeveloperServiceHeatMap(patterns) {
 }
 
 function renderDeveloperContextPanel(pat, patterns) {
-  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a service or recurring issue to view root cause status, evidence, analysis, and remediation.</div></aside>`;
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a service or recurring issue to review evidence, analysis, and remediation.</div></aside>`;
   const selectedTab = developerPanelTab;
   const service = developerPrimaryService(pat);
   const failureType = developerFailureType(pat);
@@ -5407,7 +5425,7 @@ function renderDeveloperContextPanel(pat, patterns) {
     : selectedTab === 'remediation'
       ? renderWorkspaceRemediationBlock(pat)
       : `<div class="cx-detail-tiles"><div><strong>${service}</strong><span>Service / Endpoint</span></div><div><strong>${failureType}</strong><span>Failure Type</span></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div></div>
-        <div class="cx-complexity-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.occurrences} grouped occurrences | ${patternOpenCount(pat)} open incidents | confidence ${patternConfidenceScore(pat)}/100</p></div>
+        <div class="cx-complexity-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.occurrences} grouped occurrences | ${patternOpenCount(pat)} open incidents | confidence ${developerConfidenceStatus(pat)}</p><small>${developerConfidenceExplanation(pat)}</small></div>
         <div class="cx-complexity-summary"><span>Impact Summary</span><strong>${fmtC(patternCost(pat))} exposure</strong><p>${pat.problems?.length || 0} scoped problems | ${patternAffectedEntities(pat).length} affected entities</p></div>
         ${renderExecDisclosure('Supporting evidence', `${pat.occurrences} grouped occurrences`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('')}</div>`)}
         ${renderExecDisclosure('Impacted entities', `${patternAffectedEntities(pat).length} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
@@ -5420,8 +5438,8 @@ function renderDeveloperContextPanel(pat, patterns) {
 
 function renderDeveloperWorkspace(patterns, ps) {
   const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
-  if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
-    patternExplorerState.selectedId = ranked[0]?.pat.id || null;
+  if (patternExplorerState.selectedId && !patterns.some(p => p.id === patternExplorerState.selectedId)) {
+    patternExplorerState.selectedId = null;
   }
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = developerAnalyticalView === 'explorer' ? renderConcisePatternTable(patterns) : renderDeveloperServiceHeatMap(patterns);
