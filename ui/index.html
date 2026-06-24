@@ -889,7 +889,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-decision-main{display:flex;flex-direction:column;gap:var(--ws-gap);min-width:0;min-height:0}
 .exec-persona .cx-decision-main{gap:8px;min-height:0;overflow:hidden}
 .cx-decision-workspace .cx-detail{position:sticky;top:76px;max-height:calc(100vh - 98px);overflow:auto}
-.workspace-persona .cx-decision-workspace .cx-detail{position:static;top:auto;max-height:none;height:100%;overflow:auto}
+.sre-persona .cx-decision-workspace,.developer-persona .cx-decision-workspace{align-items:start}
+.sre-persona .cx-decision-workspace .cx-detail,.developer-persona .cx-decision-workspace .cx-detail{position:sticky;top:76px;max-height:calc(100vh - 98px);height:auto;align-self:start;overflow:auto}
 .exec-persona .cx-decision-workspace .cx-detail{position:static;top:auto;max-height:none;height:100%;overflow:auto}
 .cx-view-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--rl)}
 .workspace-persona .cx-view-controls{padding:var(--ws-control-pad);gap:10px}

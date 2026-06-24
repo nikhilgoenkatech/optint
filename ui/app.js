@@ -5543,10 +5543,10 @@ function renderSreWorkspace(patterns, ps) {
   const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns, ps) : renderSreRiskMatrix(patterns, ps);
   setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
-    ${renderSreDqlReport(ps, patterns)}
-    ${renderSreFocus(patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${renderSreDqlReport(ps, patterns)}
+        ${renderSreFocus(patterns)}
         <section class="cx-view-controls">
           <div><div class="cx-eyebrow">View Controls</div><span>Choose one reliability engineering view</span></div>
           <div class="cx-view-switch">
@@ -5712,9 +5712,9 @@ function renderDeveloperWorkspace(patterns, ps) {
   const selectedView = developerAnalyticalView === 'explorer' ? renderConcisePatternTable(patterns) : renderDeveloperServiceHeatMap(patterns);
   setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
-    ${renderDeveloperFocus(patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${renderDeveloperFocus(patterns)}
         <section class="cx-view-controls">
           <div><div class="cx-eyebrow">View Controls</div><span>Choose one technical triage view</span></div>
           <div class="cx-view-switch">
