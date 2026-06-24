@@ -747,9 +747,9 @@ function renderKPIs(ps){
       {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-green',mode:'dev-mttr',actionText:execKpiDetail==='dev-mttr'?'Hide details':'View details'},
     ],
     sre:[
-      {lbl:'Total Problems',val:ps.length,sub:`${open} open now`,c:'kc-blue',mode:'sre-total',actionText:execKpiDetail==='sre-total'?'Hide details':'View details'},
-      {lbl:'Recurring Waste',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
-      {lbl:'Noisy Alerts',val:noisy,sub:'noise candidates',c:'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
+      {lbl:'Operational Debt',val:ps.length,sub:`${open} open now`,c:'kc-blue',mode:'sre-total',actionText:execKpiDetail==='sre-total'?'Hide details':'View details'},
+      {lbl:'Automation Candidates',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
+      {lbl:'Repeat Offenders',val:noisy,sub:'noise candidates',c:'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
       {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-violet',mode:'sre-mttr',actionText:execKpiDetail==='sre-mttr'?'Hide details':'View details'},
     ],
   };
@@ -3072,7 +3072,7 @@ function rerenderPatternsView() {
 function selectPatternRow(id, opts={}) {
   patternExplorerState.selectedId = id;
   if (persona === 'executive') execPatternSelectionMade = true;
-  if (persona === 'executive') execClosedBubblePopupId = null;
+  if (persona === 'executive' || persona === 'sre') execClosedBubblePopupId = null;
   renderTopPatternsSnapshot(getFiltered());
   rerenderPatternsView();
   if (opts.remediate !== false && !['executive','sre','developer'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
@@ -4031,7 +4031,7 @@ function renderPatternIntelligence() {
 
   if (persona === 'sre') {
     renderSreWorkspace(patterns, ps);
-    renderOneOffs(oneOffs);
+    document.getElementById('oneoffsSection').innerHTML = '';
     document.getElementById('explorerTabCount').textContent = ps.length;
     return;
   }
@@ -5159,20 +5159,44 @@ function renderSreRiskMatrix(patterns) {
     const bottom = Math.round(10 + clamp(score / 100, 0.06, 1) * 78);
     const size = Math.round(clamp(22 + sreBlastRadiusScore(pat) / 3, 22, 48));
     const selected = pat.id === patternExplorerState.selectedId;
-    const tooltip = `${pat.title} | Reliability priority ${score}/100 | Automation opportunity ${sreAutomationOpportunity(pat)}/100 | Blast radius score ${sreBlastRadiusScore(pat)}/100`;
-    return `<button class="cx-map-bubble ${selected ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" data-tooltip="${attrText(tooltip)}" title="${attrText(tooltip)}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">#${idx + 1}</button>`;
+    const automation = sreAutomationOpportunity(pat);
+    const blast = sreBlastRadiusScore(pat);
+    const rca = Math.round((pat.rcaConsistency || 0) * 100);
+    const tooltip = `${pat.title} | Reliability priority ${sreScoreStatus(score)} | Automation opportunity ${sreScoreStatus(automation)} | Blast radius ${sreScoreStatus(blast)}`;
+    const popupClass = [
+      bottom < 42 ? 'pop-above' : 'pop-below',
+      left > 70 ? 'pop-shift-left' : left < 30 ? 'pop-shift-right' : '',
+      selected && execClosedBubblePopupId === pat.id ? 'popup-hidden' : '',
+    ].filter(Boolean).join(' ');
+    return `<button class="cx-map-bubble ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
+      <span>#${idx + 1}</span>
+      <div class="cx-bubble-popover sre-bubble-popover" role="tooltip">
+        <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
+        <div class="cx-pop-title">${pat.title}</div>
+        <div class="cx-pop-grid">
+          <div><small>Priority</small><strong class="sre-status-${sreScoreStatus(score).toLowerCase()}">${sreScoreStatus(score)}</strong></div>
+          <div><small>Automation</small><strong class="sre-status-${sreScoreStatus(automation).toLowerCase()}">${sreScoreStatus(automation)}</strong></div>
+          <div><small>RCA Confidence</small><strong class="sre-status-${sreRcaStatus(rca).toLowerCase()}">${sreRcaStatus(rca)}</strong></div>
+          <div><small>Blast Radius</small><strong class="sre-status-${sreScoreStatus(blast).toLowerCase()}">${sreScoreStatus(blast)}</strong></div>
+          <div><small>Recurrence</small><strong>${pat.occurrences}x</strong></div>
+          <div><small>Open</small><strong>${patternOpenCount(pat)}</strong></div>
+        </div>
+        <p>${pat.trend} trend | ${pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || 'RCA not consistently identified'}</p>
+      </div>
+    </button>`;
   }).join('');
-  return `<section class="cx-map">
+  return `<section class="cx-map sre-risk-map">
     <div class="cx-section-head">
       <div><div class="cx-eyebrow">Reliability Risk Matrix</div><h3>Operational risk x remediation effort</h3></div>
       <div class="cx-muted">Bubble size = Blast Radius Score</div>
     </div>
     <div class="cx-map-plot">
-      <div class="cx-map-axis y">Operational risk high</div>
-      <div class="cx-map-axis x">Remediation effort low to high</div>
+      <div class="cx-map-axis y">Reliability Risk: Low to High</div>
+      <div class="cx-map-axis x">Remediation Effort: Low to High</div>
       <div class="cx-map-q q1">Act Now</div><div class="cx-map-q q2">Strategic Investment</div><div class="cx-map-q q3">Quick Wins</div><div class="cx-map-q q4">Monitor</div>
       ${bubbles || '<div class="exec-empty">No recurring reliability patterns available.</div>'}
     </div>
+    <div class="cx-map-selection"><span>${patternExplorerState.selectedId ? 'Selected reliability risk is highlighted.' : 'Select a bubble to review reliability context.'}</span><span class="cx-age-legend"><b class="seen-old"></b><em class="seen-old-text">High</em> <b class="seen-aging"></b><em class="seen-aging-text">Medium</em> <b class="seen-recent"></b><em class="seen-recent-text">Low</em></span></div>
   </section>`;
 }
 
@@ -5211,7 +5235,7 @@ function renderSreDqlReport(ps, patterns) {
 }
 
 function renderSreContextPanel(pat, patterns) {
-  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a reliability pattern to inspect operational context, automation opportunities, and remediation.</div></aside>`;
+  if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a reliability risk to review signals, automation opportunity, analysis, and remediation.</div></aside>`;
   const priority = sreReliabilityPriority(pat, patterns);
   const automation = sreAutomationOpportunity(pat);
   const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);

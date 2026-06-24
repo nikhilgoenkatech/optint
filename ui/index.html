@@ -733,6 +733,10 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-pop-grid small{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
 .cx-pop-grid strong{display:block;margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--text-1)}
 .cx-bubble-popover p{margin:8px 0 0;font-size:10px;line-height:1.45;color:var(--text-2)}
+.sre-bubble-popover{width:260px}
+.sre-bubble-popover .sre-status-high{color:var(--coral)}
+.sre-bubble-popover .sre-status-medium{color:var(--amber)}
+.sre-bubble-popover .sre-status-low{color:var(--green)}
 .cx-map-bubble:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
 .cx-map-helper{margin-top:4px;font-size:10px;color:var(--blue)}
 .cx-map-cost-control{display:flex;align-items:center;gap:8px;justify-content:flex-end;color:var(--text-3);font-size:11px;white-space:nowrap}
@@ -782,6 +786,10 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-detail-tiles span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-top:3px}
 .cx-detail-tiles small{display:block;margin-top:5px;font-size:9px;line-height:1.35;color:var(--text-3)}
 .sre-status-tiles strong{font-family:var(--font);font-size:14px}
+.sre-status-tiles div{padding:7px}
+.sre-status-tiles .sre-status-high{border-color:rgba(255,103,112,.28);background:rgba(255,103,112,.055)}
+.sre-status-tiles .sre-status-medium{border-color:rgba(245,197,24,.26);background:rgba(245,197,24,.045)}
+.sre-status-tiles .sre-status-low{border-color:rgba(61,214,140,.22);background:rgba(61,214,140,.04)}
 .sre-status-tiles .sre-status-high strong{color:var(--coral)}
 .sre-status-tiles .sre-status-medium strong{color:var(--amber)}
 .sre-status-tiles .sre-status-low strong{color:var(--green)}
@@ -801,6 +809,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-action-block strong{display:block;color:var(--text-1);margin-top:7px}
 .cx-action-block p{margin:6px 0 10px;color:var(--text-2);font-size:12px;line-height:1.45}
 .cx-decision-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,32vw);gap:14px;align-items:start;min-width:0}
+.sre-risk-map .cx-map-axis.y{left:-58px;width:158px}
+.sre-risk-map .cx-map-axis.x{bottom:8px}
 .exec-persona .cx-decision-workspace{grid-template-columns:minmax(0,70fr) minmax(390px,30fr);height:100%;align-items:stretch}
 .exec-persona .cx-decision-view.panel-maximized .cx-decision-workspace{grid-template-columns:minmax(240px,35fr) minmax(620px,65fr)}
 .cx-decision-main{display:flex;flex-direction:column;gap:12px;min-width:0}
