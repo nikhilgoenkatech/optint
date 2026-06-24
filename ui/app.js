@@ -397,7 +397,14 @@ async function loadProblems() {
 
   if (USE_DEMO_DATA) {
     PROBLEMS = MOCK_PROBLEMS;
+    RAW_DQL_CATEGORY_AUDIT = PROBLEMS.map(p => ({
+      id: p.id,
+      displayId: p.displayId || p.id,
+      rawCategory: String(p.rawEventCategory || p.sev || 'UNKNOWN').toUpperCase(),
+      eventName: p.title || p.biz || 'Demo problem',
+    }));
     DATA_SOURCE_STATE = 'demo';
+    logDeveloperCategoryValidation(PROBLEMS, detectPatterns(PROBLEMS).patterns, 'demo');
     refreshPatternRuntime();
     return;
   }
@@ -422,6 +429,7 @@ async function loadProblems() {
     const records = result?.result?.records;
     if (!records || records.length === 0) {
       PROBLEMS = [];
+      RAW_DQL_CATEGORY_AUDIT = [];
       DATA_SOURCE_STATE = 'empty';
       await loadMttrSummary(timeRange);
       refreshPatternRuntime();
@@ -436,9 +444,17 @@ async function loadProblems() {
     // dt.davis.impact_level is documented as a string, but some tenants may return an array.
     const IMPACT_RANK = { ENVIRONMENT: 95, APPLICATION: 75, SERVICE: 55, SERVICES: 55, INFRASTRUCTURE: 35, SYNTHETIC: 20 };
 
+    RAW_DQL_CATEGORY_AUDIT = records.map((r, i) => ({
+      id: String(r['event.id'] ?? r['display_id'] ?? `P-${String(i + 1).padStart(3, '0')}`),
+      displayId: String(r['display_id'] ?? r['event.id'] ?? `P-${String(i + 1).padStart(3, '0')}`),
+      rawCategory: String(r['event.category'] ?? 'UNKNOWN').toUpperCase() || 'UNKNOWN',
+      eventName: String(r['event.name'] ?? 'Unknown problem'),
+    }));
+
     PROBLEMS = records.map((r, i) => {
       const rawStatus = String(r['event.status'] ?? 'CLOSED').toUpperCase();
       const status = STATUS_MAP[rawStatus] ?? 'RESOLVED';
+      const rawEventCategory = String(r['event.category'] ?? 'UNKNOWN').toUpperCase() || 'UNKNOWN';
 
       const eventStartMs = toMs(r['event.start']);
       const start = eventStartMs ?? Date.now();
@@ -462,7 +478,8 @@ async function loadProblems() {
         title: String(r['event.name'] ?? 'Unknown problem'),
         biz: String(r['event.name'] ?? 'Unknown problem'),
         status,
-        sev: SEV_MAP[String(r['event.category'] ?? '').toUpperCase()] ?? 'CUSTOM_ALERT',
+        rawEventCategory,
+        sev: SEV_MAP[rawEventCategory] ?? 'CUSTOM_ALERT',
         start,
         hasOccurrenceTimestamp: eventStartMs !== null,
         end: toMs(r['event.end']),
@@ -484,12 +501,14 @@ async function loadProblems() {
 
     await loadMttrSummary(timeRange);
     DATA_SOURCE_STATE = 'live';
+    logDeveloperCategoryValidation(PROBLEMS, detectPatterns(PROBLEMS).patterns, 'live');
     refreshPatternRuntime();
   } catch (err) {
     console.warn('[OpInt] DQL fetch failed:', err.message ?? err);
     console.warn('[OpInt] cause:', err.cause);
     console.warn('[OpInt] full error:', err);
     PROBLEMS = [];
+    RAW_DQL_CATEGORY_AUDIT = [];
     MTTR_SUMMARY = null;
     DATA_SOURCE_STATE = 'error';
     DATA_SOURCE_ERROR = err?.message ? String(err.message) : 'Unable to retrieve DQL data';
@@ -562,6 +581,7 @@ let analysisPatternId=null;
 let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
 const remediationCache=new Map();
 let developerScopeOptions=[];
+let RAW_DQL_CATEGORY_AUDIT=[];
 /** @type {ToolDetectionRow[]} */
 let TOOL_DETECTION_ROWS=[];
 
@@ -3373,6 +3393,172 @@ function attrText(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
   }[ch]));
+}
+
+const RAW_CATEGORY_BUCKETS = ['ERROR','AVAILABILITY','SLOWDOWN','RESOURCE_CONTENTION','CUSTOM_ALERT','UNKNOWN'];
+const WORKSPACE_CATEGORY_BUCKETS = ['AVAILABILITY','ERROR','PERFORMANCE','RESOURCE_CONTENTION','CUSTOM_ALERT','UNKNOWN'];
+const DQL_TO_WORKSPACE_CATEGORY = {
+  ERROR: 'ERROR',
+  AVAILABILITY: 'AVAILABILITY',
+  SLOWDOWN: 'PERFORMANCE',
+  RESOURCE_CONTENTION: 'RESOURCE_CONTENTION',
+  CUSTOM_ALERT: 'CUSTOM_ALERT',
+  UNKNOWN: 'UNKNOWN',
+};
+
+function normalizeAuditCategory(value, buckets=RAW_CATEGORY_BUCKETS) {
+  const text = String(value || 'UNKNOWN').toUpperCase().trim();
+  return buckets.includes(text) ? text : 'UNKNOWN';
+}
+
+function countCategories(values, buckets) {
+  const counts = Object.fromEntries(buckets.map(bucket => [bucket, 0]));
+  values.forEach(value => { counts[normalizeAuditCategory(value, buckets)] += 1; });
+  return counts;
+}
+
+function categoryCountsToText(counts) {
+  return Object.entries(counts).map(([key, value]) => `${key}: ${value}`).join(' | ');
+}
+
+function expectedWorkspaceCategory(rawCategory) {
+  return DQL_TO_WORKSPACE_CATEGORY[normalizeAuditCategory(rawCategory)] || 'UNKNOWN';
+}
+
+function problemRawCategory(problem) {
+  const fromProblem = problem?.rawEventCategory || problem?.category;
+  if (fromProblem) return normalizeAuditCategory(fromProblem);
+  const raw = RAW_DQL_CATEGORY_AUDIT.find(row => row.id === problem?.id || row.displayId === problem?.displayId);
+  return normalizeAuditCategory(raw?.rawCategory);
+}
+
+function problemWorkspaceCategory(problem) {
+  return normalizeAuditCategory(problem?.sev, WORKSPACE_CATEGORY_BUCKETS);
+}
+
+function buildDeveloperCategoryValidation(ps, patterns) {
+  const rawDistribution = countCategories(RAW_DQL_CATEGORY_AUDIT.map(row => row.rawCategory), RAW_CATEGORY_BUCKETS);
+  const transformedDistribution = countCategories((ps || []).map(problemWorkspaceCategory), WORKSPACE_CATEGORY_BUCKETS);
+  const mappingRows = (ps || []).map(problem => {
+    const rawCategory = problemRawCategory(problem);
+    const expected = expectedWorkspaceCategory(rawCategory);
+    const transformed = problemWorkspaceCategory(problem);
+    return {
+      problemId: problem.displayId || problem.id,
+      eventName: problem.title || problem.biz || 'Unknown problem',
+      rawCategory,
+      expectedWorkspaceCategory: expected,
+      transformedCategory: transformed,
+      mismatch: expected !== transformed,
+    };
+  });
+  const mappingMismatches = mappingRows.filter(row => row.mismatch);
+  const patternRows = (patterns || []).map(pat => {
+    const rawCounts = countCategories((pat.problems || []).map(problemRawCategory), RAW_CATEGORY_BUCKETS);
+    const workspaceCounts = countCategories((pat.problems || []).map(problemWorkspaceCategory), WORKSPACE_CATEGORY_BUCKETS);
+    const heatmapCategory = developerFailureType(pat);
+    const presentWorkspaceCategories = Object.entries(workspaceCounts).filter(([, count]) => count > 0).map(([key]) => key);
+    const mixedCategories = presentWorkspaceCategories.length > 1;
+    const heatmapMismatch = presentWorkspaceCategories.length > 0 && !presentWorkspaceCategories.includes(heatmapCategory);
+    return {
+      patternId: pat.id,
+      patternName: pat.title,
+      problemCount: pat.problems?.length || 0,
+      rawCounts,
+      workspaceCounts,
+      heatmapCategory,
+      mixedCategories,
+      heatmapMismatch,
+    };
+  });
+  const heatmapRows = (patterns || []).map(pat => ({
+    heatmapRow: developerPrimaryService(pat),
+    heatmapColumn: developerFailureType(pat),
+    selectedPattern: pat.title,
+    patternId: pat.id,
+    patternCategories: categoryCountsToText(countCategories((pat.problems || []).map(problemWorkspaceCategory), WORKSPACE_CATEGORY_BUCKETS)),
+  }));
+  const rawNonZero = Object.entries(rawDistribution).filter(([, count]) => count > 0).map(([key]) => key);
+  const allRawError = rawNonZero.length === 1 && rawNonZero[0] === 'ERROR';
+  const collapsedToError = rawNonZero.length > 1 && patternRows.length > 0 && patternRows.every(row => row.heatmapCategory === 'ERROR');
+  const warnings = [
+    allRawError ? 'Raw data contains only ERROR problems for this time range.' : '',
+    mappingMismatches.length ? `${mappingMismatches.length} raw-to-transformed category mismatch(es) detected.` : '',
+    patternRows.some(row => row.mixedCategories) ? 'One or more patterns contain multiple event categories.' : '',
+    patternRows.some(row => row.heatmapMismatch) ? 'Heat map category source differs from transformed pattern categories.' : '',
+    collapsedToError ? 'Raw data contains multiple categories but heat map categories collapse to ERROR.' : '',
+  ].filter(Boolean);
+  return {
+    status: warnings.length ? 'WARNING' : 'PASS',
+    rawDistribution,
+    transformedDistribution,
+    mappingRows,
+    mappingMismatches,
+    patternRows,
+    heatmapRows,
+    warnings,
+  };
+}
+
+function logDeveloperCategoryValidation(ps, patterns, source) {
+  const report = buildDeveloperCategoryValidation(ps, patterns);
+  const summary = report.status === 'PASS'
+    ? 'PASS: category pipeline preserved current DQL categories through Developer heat map inputs.'
+    : `WARNING: ${report.warnings.join(' ')}`;
+  console.groupCollapsed(`[OpInt] Developer category validation (${source}) - ${report.status}`);
+  console.info(summary);
+  console.info('Raw DQL category distribution:', report.rawDistribution);
+  console.info('Transformed problem category distribution:', report.transformedDistribution);
+  if (report.mappingMismatches.length) console.table(report.mappingMismatches);
+  console.table(report.patternRows.map(row => ({
+    pattern: row.patternName,
+    problems: row.problemCount,
+    heatmapCategory: row.heatmapCategory,
+    rawCategories: categoryCountsToText(row.rawCounts),
+    workspaceCategories: categoryCountsToText(row.workspaceCounts),
+    mixedCategories: row.mixedCategories,
+    heatmapMismatch: row.heatmapMismatch,
+  })));
+  console.groupEnd();
+}
+
+function renderCategoryCounts(counts) {
+  return `<div class="validation-counts">${Object.entries(counts).map(([key, value]) => `<div><span>${key}</span><strong>${value}</strong></div>`).join('')}</div>`;
+}
+
+function renderDeveloperValidationReport() {
+  const ps = getFiltered();
+  const patterns = detectPatterns(ps).patterns;
+  const report = buildDeveloperCategoryValidation(ps, patterns);
+  const mappingRows = report.mappingMismatches.slice(0, 20).map(row => `<tr><td>${attrText(row.problemId)}</td><td>${attrText(row.rawCategory)}</td><td>${attrText(row.transformedCategory)}</td><td>${attrText(row.expectedWorkspaceCategory)}</td></tr>`).join('');
+  const patternRows = report.patternRows.map(row => `<tr><td>${attrText(row.patternName)}</td><td>${row.problemCount}</td><td>${attrText(categoryCountsToText(row.rawCounts))}</td><td>${attrText(categoryCountsToText(row.workspaceCounts))}</td><td>${attrText(row.heatmapCategory)}</td></tr>`).join('');
+  const heatRows = report.heatmapRows.map(row => `<tr><td>${attrText(row.heatmapRow)}</td><td>${attrText(row.heatmapColumn)}</td><td>${attrText(row.selectedPattern)}</td><td>${attrText(row.patternCategories)}</td></tr>`).join('');
+  return `<div class="validation-report">
+    <div class="validation-status ${report.status.toLowerCase()}">${report.status}</div>
+    <p>${report.warnings.length ? report.warnings.map(attrText).join(' ') : 'No category mismatches were detected in the current Developer scope.'}</p>
+    <h4>Raw DQL category distribution</h4>
+    ${renderCategoryCounts(report.rawDistribution)}
+    <h4>Transformed problem category distribution</h4>
+    ${renderCategoryCounts(report.transformedDistribution)}
+    <h4>Mapping inconsistencies</h4>
+    <table><thead><tr><th>Problem</th><th>Raw</th><th>Transformed</th><th>Expected</th></tr></thead><tbody>${mappingRows || '<tr><td colspan="4">No raw-to-transformed mismatches.</td></tr>'}</tbody></table>
+    <h4>Pattern category distribution</h4>
+    <table><thead><tr><th>Pattern</th><th>Problems</th><th>Raw categories</th><th>Workspace categories</th><th>Heat map column</th></tr></thead><tbody>${patternRows || '<tr><td colspan="5">No recurring patterns in current scope.</td></tr>'}</tbody></table>
+    <h4>Heat map consistency</h4>
+    <table><thead><tr><th>Row</th><th>Column</th><th>Pattern</th><th>Pattern categories</th></tr></thead><tbody>${heatRows || '<tr><td colspan="4">No heat map cells in current scope.</td></tr>'}</tbody></table>
+  </div>`;
+}
+
+function openDeveloperValidationReport() {
+  const modal = document.getElementById('validationModal');
+  const body = document.getElementById('validationModalBody');
+  if (!modal || !body) return;
+  body.innerHTML = renderDeveloperValidationReport();
+  modal.classList.remove('hidden');
+}
+
+function closeDeveloperValidationReport() {
+  document.getElementById('validationModal')?.classList.add('hidden');
 }
 
 function actFirstModel(pat, patterns) {
@@ -6679,7 +6865,11 @@ document.addEventListener('click', function(e) {
   switch (action) {
     // Header / persona
     case 'doRefresh': doRefresh(); break;
-    case 'downloadDqlNotebook': downloadDqlNotebook(); break;
+    case 'downloadDqlNotebook':
+      if (persona === 'developer') openDeveloperValidationReport();
+      else downloadDqlNotebook();
+      break;
+    case 'closeDeveloperValidationReport': closeDeveloperValidationReport(); break;
     case 'toggleCfg': toggleCfg(); break;
     case 'applyCfg': applyCfg(); break;
     case 'analyzeMulti': analyzeMulti(); break;
@@ -6801,6 +6991,9 @@ document.getElementById('extProvider').addEventListener('change', onProviderChan
 // Modal overlay: close only when clicking the overlay itself
 document.getElementById('awsModal').addEventListener('click', function(e) {
   if (e.target === this) closeAwsModal();
+});
+document.getElementById('validationModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDeveloperValidationReport();
 });
 
 // Checkbox change delegation (toggleSel uses checked state)
