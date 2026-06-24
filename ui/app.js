@@ -664,10 +664,12 @@ function syncDeveloperScopeFilter() {
   if (!select) return;
   if (persona !== 'developer') {
     select.style.display = 'none';
+    select.removeAttribute('aria-label');
     select.value = '';
     return;
   }
   select.style.display = '';
+  select.setAttribute('aria-label', 'Developer Scope');
   const current = select.value;
   developerScopeOptions = buildDeveloperScopeTaxonomy(PROBLEMS);
   if (!developerScopeOptions.length) {
@@ -676,9 +678,17 @@ function syncDeveloperScopeFilter() {
     return;
   }
   select.disabled = false;
-  select.innerHTML = '<option value="">All Developer Scope</option>' + developerScopeOptions
-    .map(scope => `<option value="${attrText(`${scope.type}|${scope.rawValue}`)}">${attrText(`${scope.label} - ${scope.count} problems`)}</option>`)
-    .join('');
+  const groups = ['service','endpoint','team','owner','namespace','application','environment'];
+  const groupedOptions = groups.map(group => {
+    const items = developerScopeOptions.filter(scope => scope.type === group);
+    if (!items.length) return '';
+    const groupLabel = group[0].toUpperCase() + group.slice(1) + 's';
+    return `<optgroup label="${groupLabel}">${items.map(scope => {
+      const value = `${scope.type}|${scope.rawValue}`;
+      return `<option value="${attrText(value)}">${attrText(`${scope.label} - ${scope.count} problems`)}</option>`;
+    }).join('')}</optgroup>`;
+  }).join('');
+  select.innerHTML = `<option value="">All Developer Scope</option>${groupedOptions}`;
   if ([...select.options].some(option => option.value === current)) select.value = current;
 }
 
@@ -5694,7 +5704,6 @@ function renderDeveloperWorkspace(patterns, ps) {
   const selectedView = developerAnalyticalView === 'explorer' ? renderConcisePatternTable(patterns) : renderDeveloperServiceHeatMap(patterns);
   document.getElementById('intelSummary').innerHTML = '';
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
-    ${renderDeveloperScopeControl()}
     ${renderDeveloperFocus(patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
