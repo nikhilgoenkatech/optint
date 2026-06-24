@@ -5084,7 +5084,7 @@ function renderConciseActFirstMap(patterns) {
       <div class="cx-map-q q1">Act Now</div><div class="cx-map-q q2">Plan And Fund</div><div class="cx-map-q q3">Deprioritize</div><div class="cx-map-q q4">Quick Win</div>
       ${bubbles}
     </div>
-    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="age-fresh"></b>7d <b class="age-aging"></b>14d <b class="age-old"></b>30d</span></div>
+    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="age-fresh"></b><em class="age-fresh-text">7d</em> <b class="age-aging"></b><em class="age-aging-text">14d</em> <b class="age-old"></b><em class="age-old-text">30d</em></span></div>
   </section>`;
 }
 
