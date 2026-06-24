@@ -558,6 +558,7 @@ let execClosedBubblePopupId=null;
 let execInfoPopoverId=null;
 let patternSearchTimer=null;
 let remediationPatternId=null;
+let analysisPatternId=null;
 let remediationState={ status:'empty', patternId:null, evidence:null, response:null, error:null };
 const remediationCache=new Map();
 let developerScopeOptions=[];
@@ -2390,10 +2391,11 @@ function deepAnalyze(pid){
 }
 
 async function analyzePattern(patternId) {
-  const pat = detectPatterns(getFiltered()).find(p => p.id === patternId);
+  const pat = findPatternById(patternId);
   if (!pat) return;
   patternExplorerState.selectedId = pat.id;
   if (persona === 'executive') execPatternSelectionMade = true;
+  analysisPatternId = pat.id;
   selectedIds.clear();
   (pat.problems || []).forEach(p => selectedIds.add(p.id));
   switchAISrc('davis');
@@ -4776,10 +4778,11 @@ function renderExecDisclosure(title, summary, body) {
 }
 
 function renderWorkspaceAnalysisBlock(pat, intro) {
-  if (aiState === 'loading') {
+  const isCurrent = analysisPatternId === pat.id;
+  if (isCurrent && aiState === 'loading') {
     return `<div class="cx-remediation-summary"><span>Generating analysis from Dynatrace Assist...</span></div>`;
   }
-  if (aiState === 'result' && lastAIResult) {
+  if (isCurrent && aiState === 'result' && lastAIResult) {
     const recs = Array.isArray(lastAIResult.recommendations) ? lastAIResult.recommendations : [];
     const patterns = Array.isArray(lastAIResult.patterns) ? lastAIResult.patterns : [];
     return `<div class="ai-compact"><div class="cx-eyebrow">Dynatrace Intelligence Analysis</div><p>${lastAIResult.summary || 'Analysis generated for the selected context.'}</p>${patterns.length ? `<ul>${patterns.slice(0,3).map(item => `<li>${typeof item === 'string' ? item : item.signal || item.title || item.description || 'Analysis signal'}</li>`).join('')}</ul>` : ''}${recs.length ? `<ul>${recs.slice(0,3).map(r => `<li>${typeof r === 'string' ? r : r.title || r.action || r.description || 'Recommended action'}</li>`).join('')}</ul>` : ''}</div>`;
@@ -5110,17 +5113,38 @@ function sreBlastRadiusScore(pat) {
   return clamp(Math.max(affected.size, pat.problems?.length || 0), 0, 100);
 }
 
+function sreScoreStatus(score) {
+  return score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low';
+}
+
+function sreRcaStatus(score) {
+  return score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low';
+}
+
+function renderSreStatusTile(label, value, explanation) {
+  const status = value;
+  const cls = String(status || '').toLowerCase();
+  return `<div class="sre-status-${cls}"><strong>${status}</strong><span>${label}</span><small>${explanation}</small></div>`;
+}
+
 function renderSreFocus(patterns) {
-  const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || patterns[0] || null;
-  if (!selected) return `<section class="cx-focus neutral"><div><div class="cx-eyebrow">Selected Focus</div><h2>No recurring reliability patterns</h2><p>No pattern is available in the selected period.</p></div></section>`;
+  const selected = patternExplorerState.selectedId
+    ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
+    : null;
+  if (!selected) {
+    return `<section class="cx-focus neutral">
+      <div><div class="cx-eyebrow">Selected Focus</div><h2>No reliability pattern selected</h2><p>Select a bubble from the Reliability Risk Matrix or a row from Operational Debt Explorer to inspect recurrence, automation opportunity, and prevention options.</p></div>
+    </section>`;
+  }
   const priority = sreReliabilityPriority(selected, patterns);
   const rcaConfidence = Math.round((selected.rcaConsistency || 0) * 100);
+  const rcaStatus = sreRcaStatus(rcaConfidence);
   return `<section class="cx-focus ${rcaConfidence < 25 ? 'risk' : ''}">
-    <div><div class="cx-eyebrow">Selected Focus</div><h2>${selected.title}</h2><p>${rcaConfidence < 25 ? 'RCA warning: ' : ''}RCA confidence is ${rcaConfidence}%. Prioritize evidence enrichment before automation or prevention work.</p></div>
+    <div><div class="cx-eyebrow">Selected Focus</div><h2>${selected.title}</h2><p>${rcaConfidence < 25 ? 'RCA warning: ' : ''}RCA confidence is ${rcaStatus}. Prioritize evidence enrichment before automation or prevention work.</p></div>
     <div class="cx-focus-actions">
       <div class="cx-focus-stat"><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
-      <div class="cx-focus-stat"><span>Reliability Priority</span><strong>${priority}/100</strong></div>
-      <div class="cx-focus-stat"><span>RCA Confidence</span><strong>${rcaConfidence}%</strong></div>
+      <div class="cx-focus-stat"><span>Reliability Priority</span><strong>${sreScoreStatus(priority)}</strong></div>
+      <div class="cx-focus-stat"><span>RCA Confidence</span><strong>${rcaStatus}</strong></div>
       <div class="cx-focus-stat"><span>Trend</span><strong>${selected.trend}</strong></div>
     </div>
   </section>`;
@@ -5192,14 +5216,23 @@ function renderSreContextPanel(pat, patterns) {
   const automation = sreAutomationOpportunity(pat);
   const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
   const blast = sreBlastRadiusScore(pat);
+  const priorityStatus = sreScoreStatus(priority);
+  const automationStatus = sreScoreStatus(automation);
+  const rcaStatus = sreRcaStatus(rcaConfidence);
+  const blastStatus = sreScoreStatus(blast);
   const selectedTab = srePanelTab;
   const repeatedRca = pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || 'RCA not consistently identified';
   const tabBody = selectedTab === 'analysis'
     ? renderWorkspaceAnalysisBlock(pat, 'Generate reliability-focused analysis to review recurring signals, recurrence drivers, automation opportunities, and prevention recommendations.')
     : selectedTab === 'remediation'
-      ? renderWorkspaceRemediationBlock(pat)
-      : `<div class="cx-detail-tiles"><div><strong>${priority}/100</strong><span>Reliability Priority</span></div><div><strong>${automation}/100</strong><span>Automation Opportunity</span></div><div><strong>${rcaConfidence}%</strong><span>RCA Confidence</span></div><div><strong>${blast}/100</strong><span>Blast Radius Score</span></div></div>
-        ${rcaConfidence < 25 ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Confidence Warning</div><strong>RCA confidence is ${rcaConfidence}%.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
+      ? renderWorkspaceRemediationBlock(pat) || `<div class="cx-complexity-summary"><span>Remediation</span><strong>Available on request</strong><p>Generate prevention and automation guidance for this selected reliability pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`
+      : `<div class="cx-detail-tiles sre-status-tiles">
+          ${renderSreStatusTile('Reliability Priority', priorityStatus, `Based on recurrence, impact, and RCA uncertainty.`)}
+          ${renderSreStatusTile('Automation Opportunity', automationStatus, `Based on recurrence, fixability, and RCA consistency.`)}
+          ${renderSreStatusTile('RCA Confidence', rcaStatus, `Based on repeated root-cause evidence across this pattern.`)}
+          ${renderSreStatusTile('Blast Radius', blastStatus, `Based on affected entities and grouped occurrence count.`)}
+        </div>
+        ${rcaConfidence < 25 ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Confidence Warning</div><strong>RCA confidence is Low.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
         <div class="cx-complexity-summary"><span>Reliability Signals</span><strong>${repeatedRca}</strong><p>${pat.occurrences} recurring incidents | ${pat.trend} trend | ${patternOpenCount(pat)} still open</p></div>
         <div class="cx-complexity-summary"><span>Automation Opportunity</span><strong>Candidate for workflow automation.</strong><p>Pattern has recurred ${pat.occurrences} times with ${repeatedRca}.</p></div>
         <div class="cx-complexity-summary"><span>Operational Debt Drivers</span><strong>Unresolved recurring reliability risk.</strong><p>${pat.occurrences} recurring incidents | RCA ${rcaConfidence ? 'partially identified' : 'incomplete'} | ownership or prevention path needs confirmation.</p></div>`;
@@ -5212,8 +5245,8 @@ function renderSreContextPanel(pat, patterns) {
 
 function renderSreWorkspace(patterns, ps) {
   const ranked = [...patterns].map(pat => ({ pat, score: sreReliabilityPriority(pat, patterns) })).sort((a, b) => b.score - a.score);
-  if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
-    patternExplorerState.selectedId = ranked[0]?.pat.id || null;
+  if (patternExplorerState.selectedId && !patterns.some(p => p.id === patternExplorerState.selectedId)) {
+    patternExplorerState.selectedId = null;
   }
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns) : renderSreRiskMatrix(patterns);
@@ -6581,7 +6614,16 @@ document.addEventListener('click', function(e) {
     case 'setDeveloperAnalyticalView': e.stopPropagation(); setDeveloperAnalyticalView(el.dataset.mode); break;
     case 'setDeveloperPanelTab': e.stopPropagation(); setDeveloperPanelTab(el.dataset.tab); break;
     case 'selectExecMetric': e.stopPropagation(); selectExecMetric(el.dataset.metric); break;
-    case 'clearPatternSelection': e.stopPropagation(); patternExplorerState.selectedId = null; execPatternSelectionMade = false; rerenderPatternsView(); break;
+    case 'clearPatternSelection':
+      e.stopPropagation();
+      patternExplorerState.selectedId = null;
+      execPatternSelectionMade = false;
+      if (persona === 'sre') {
+        analysisPatternId = null;
+        remediationPatternId = null;
+      }
+      rerenderPatternsView();
+      break;
     case 'openPatternAnalysis':
       e.stopPropagation();
       document.getElementById('aiCard')?.closest('details')?.setAttribute('open', '');
