@@ -4974,9 +4974,8 @@ function executiveBubbleAgeClass(pat) {
 function executiveBubbleAgeLabel(pat) {
   const firstSeen = Number(new Date(pat.firstSeen || pat.problems?.[0]?.start || Date.now()).getTime());
   const ageDays = Number.isFinite(firstSeen) ? Math.floor((Date.now() - firstSeen) / 86400000) : 0;
-  if (ageDays >= 15) return '30d';
-  if (ageDays >= 7) return '14d';
-  return '7d';
+  if (ageDays <= 0) return '<1d';
+  return `${ageDays}d`;
 }
 
 function renderDecisionDetailPanel(pat, patterns) {
@@ -5084,7 +5083,7 @@ function renderConciseActFirstMap(patterns) {
       <div class="cx-map-q q1">Act Now</div><div class="cx-map-q q2">Plan And Fund</div><div class="cx-map-q q3">Deprioritize</div><div class="cx-map-q q4">Quick Win</div>
       ${bubbles}
     </div>
-    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="age-fresh"></b><em class="age-fresh-text">7d</em> <b class="age-aging"></b><em class="age-aging-text">14d</em> <b class="age-old"></b><em class="age-old-text">30d</em></span></div>
+    <div class="cx-map-selection"><span>${execPatternSelectionMade ? 'Selected pattern is highlighted. Review its impact and recurrence timeline below.' : 'Select a bubble to see pattern details.'}</span><span class="cx-age-legend"><b class="age-fresh"></b><em class="age-fresh-text">&lt;7d</em> <b class="age-aging"></b><em class="age-aging-text">7-14d</em> <b class="age-old"></b><em class="age-old-text">15d+</em></span></div>
   </section>`;
 }
 
