@@ -741,10 +741,10 @@ function renderKPIs(ps){
       {lbl:'Median MTTR',val:fmtM(execMttr.median),sub:`p85: ${fmtM(execMttr.p85)} | ${execMttr.count} resolved`,c:'kc-teal',mode:'mttr',actionText:execKpiDetail==='mttr'?'Hide MTTR':'View MTTR drivers'},
     ],
     developer:[
-      {lbl:'Active Problems',val:ps.length,sub:`${open} open`,c:'kc-blue',mode:'dev-open',actionText:execKpiDetail==='dev-open'?'Hide details':'View details'},
-      {lbl:'Services Affected',val:svcs,sub:'unique entities',c:'kc-coral',mode:'dev-services',actionText:execKpiDetail==='dev-services'?'Hide details':'View details'},
-      {lbl:'Missing Root Cause',val:miss,sub:`${ps.length ? Math.round(miss/ps.length*100) : 0}% of total`,c:'kc-amber',mode:'dev-rca',actionText:execKpiDetail==='dev-rca'?'Hide details':'View details'},
-      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-green',mode:'dev-mttr',actionText:execKpiDetail==='dev-mttr'?'Hide details':'View details'},
+      {lbl:'Open Errors',val:open,sub:`${ps.length} total problems`,c:'kc-blue',mode:'dev-open',actionText:execKpiDetail==='dev-open'?'Hide details':'View details'},
+      {lbl:'Services Impacted',val:svcs,sub:'unique services / endpoints',c:'kc-coral',mode:'dev-services',actionText:execKpiDetail==='dev-services'?'Hide details':'View details'},
+      {lbl:'Needs Investigation',val:miss,sub:`${ps.length ? Math.round(miss/ps.length*100) : 0}% missing RCA`,c:'kc-amber',mode:'dev-rca',actionText:execKpiDetail==='dev-rca'?'Hide details':'View details'},
+      {lbl:'Median Resolution Time',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-green',mode:'dev-mttr',actionText:execKpiDetail==='dev-mttr'?'Hide details':'View details'},
     ],
     sre:[
       {lbl:'Operational Debt',val:ps.length,sub:`${open} open now`,c:'kc-blue',mode:'sre-total',actionText:execKpiDetail==='sre-total'?'Hide details':'View details'},
@@ -5372,9 +5372,9 @@ function renderDeveloperScopeControl() {
       return `<option value="${attrText(value)}" ${current === value ? 'selected' : ''}>${scope.label} (${scope.count})</option>`;
     }).join('')}</optgroup>`;
   }).join('');
-  return `<section class="cx-view-controls">
-    <div><div class="cx-eyebrow">Developer Scope</div><span>${label}</span></div>
-    <select class="hsel" data-action="setDeveloperScope">${developerScopeOptions.length ? `<option value="">All Developer Scope</option>${options}` : '<option value="">No developer scopes found</option>'}</select>
+  return `<section class="cx-view-controls dev-scope-control">
+    <div><div class="cx-eyebrow">Developer Scope</div><span>${label}</span><small>Filters service-pattern evidence before Developer grouping.</small></div>
+    <select class="hsel dev-scope-select" aria-label="Developer Scope" data-action="setDeveloperScope">${developerScopeOptions.length ? `<option value="">All Developer Scope</option>${options}` : '<option value="">No developer scopes found</option>'}</select>
   </section>`;
 }
 
@@ -5397,19 +5397,33 @@ function renderDeveloperServiceHeatMap(patterns) {
   const services = [...new Set(patterns.map(developerPrimaryService))].slice(0, 10);
   const maxOcc = Math.max(1, ...patterns.map(p => p.occurrences || 0));
   const rows = services.map(service => {
-    const cells = categories.map(cat => {
+    const cells = categories.map((cat, catIndex) => {
       const pat = patterns.find(p => developerPrimaryService(p) === service && developerFailureType(p) === cat);
-      if (!pat) return `<button class="heat-cell empty" aria-label="${service} ${cat} no recurring failures"></button>`;
+      if (!pat) return `<div class="heat-cell empty" aria-label="${service} ${cat} no recurring failures"></div>`;
       const intensity = clamp((pat.occurrences || 1) / maxOcc, 0.25, 1);
       const selected = pat.id === patternExplorerState.selectedId;
       const trend = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'stable';
+      const trendGlyph = pat.trend === 'INCREASING' ? '↑' : pat.trend === 'DECREASING' ? '↓' : '→';
+      const popupClosed = selected && execClosedBubblePopupId === pat.id;
+      const popupPos = catIndex >= categories.length - 2 ? 'left' : 'right';
       const tooltip = `${service} | ${cat} | ${pat.occurrences} occurrences | ${pat.trend}`;
-      return `<button class="heat-cell ${selected ? 'selected' : ''}" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}"><strong>${pat.occurrences}</strong><small>${trend}</small></button>`;
+      const popup = selected && !popupClosed ? `<div class="heat-popup ${popupPos}" role="dialog" aria-label="Selected developer pattern" data-stop-propagation>
+        <button class="cx-popup-close" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</button>
+        <div class="cx-eyebrow">Selected issue</div>
+        <strong>${service}</strong>
+        <div class="heat-popup-grid">
+          <div><span>Failure</span><b>${cat.replace('_',' ')}</b></div>
+          <div><span>Recurrence</span><b>${pat.occurrences}x</b></div>
+          <div><span>Trend</span><b>${trendGlyph} ${trend}</b></div>
+          <div><span>Confidence</span><b>${developerConfidenceStatus(pat)}</b></div>
+        </div>
+      </div>` : '';
+      return `<div class="heat-cell ${selected ? 'selected' : ''}" role="button" tabindex="0" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}"><strong>${pat.occurrences}</strong><small class="heat-trend ${trend}">${trendGlyph}</small>${popup}</div>`;
     }).join('');
     return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}</div>`;
   }).join('');
   return `<section class="cx-map dev-heat">
-    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="cx-muted">Darker = recurring more often</div></div>
+    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-legend"><span>Darker = recurring more often</span><b>↑ worsening</b><b>→ stable</b><b>↓ improving</b></div></div>
     <div class="heat-grid"><div class="heat-head"><span>Service / Endpoint</span>${categories.map(c => `<span>${c.replace('_',' ')}</span>`).join('')}</div>${rows || '<div class="exec-empty">No recurring service patterns available.</div>'}</div>
   </section>`;
 }
@@ -5420,13 +5434,14 @@ function renderDeveloperContextPanel(pat, patterns) {
   const service = developerPrimaryService(pat);
   const failureType = developerFailureType(pat);
   const rootCause = developerRootCauseStatus(pat);
+  const confidence = developerConfidenceStatus(pat);
+  const impactSummary = `${fmtC(patternCost(pat))} exposure`;
   const tabBody = selectedTab === 'analysis'
     ? renderWorkspaceAnalysisBlock(pat, 'Generate technical analysis to focus on likely root cause, affected service or runtime area, and next validation step.')
     : selectedTab === 'remediation'
       ? renderWorkspaceRemediationBlock(pat)
-      : `<div class="cx-detail-tiles"><div><strong>${service}</strong><span>Service / Endpoint</span></div><div><strong>${failureType}</strong><span>Failure Type</span></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div></div>
-        <div class="cx-complexity-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.occurrences} grouped occurrences | ${patternOpenCount(pat)} open incidents | confidence ${developerConfidenceStatus(pat)}</p><small>${developerConfidenceExplanation(pat)}</small></div>
-        <div class="cx-complexity-summary"><span>Impact Summary</span><strong>${fmtC(patternCost(pat))} exposure</strong><p>${pat.problems?.length || 0} scoped problems | ${patternAffectedEntities(pat).length} affected entities</p></div>
+      : `<div class="cx-detail-tiles dev-detail-tiles"><div><strong>${service}</strong><span>Service</span></div><div><strong>${failureType}</strong><span>Failure Type</span></div><div><strong>${confidence}</strong><span>Root Cause Confidence</span><small>${developerConfidenceExplanation(pat)}</small></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div><div><strong>${impactSummary}</strong><span>Impact Summary</span><small>${patternOpenCount(pat)} open | ${patternAffectedEntities(pat).length} affected</small></div></div>
+        <div class="cx-complexity-summary dev-rca-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${pat.problems?.length || 0} scoped problems in this selected Developer context.</p></div>
         ${renderExecDisclosure('Supporting evidence', `${pat.occurrences} grouped occurrences`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('')}</div>`)}
         ${renderExecDisclosure('Impacted entities', `${patternAffectedEntities(pat).length} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
   return `<aside class="cx-detail">
@@ -6782,6 +6797,15 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     toggleExecKpiDetail(card.dataset.mode);
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  const cell = e.target.closest('.heat-cell[role="button"][data-action="selectPatternRow"]');
+  if (!cell) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    if (cell.dataset.pid) selectPatternRow(cell.dataset.pid, { remediate:false });
   }
 });
 
