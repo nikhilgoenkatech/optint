@@ -5150,7 +5150,38 @@ function renderSreFocus(patterns) {
   </section>`;
 }
 
-function renderSreRiskMatrix(patterns) {
+function renderSreDqlProblemExplorer(ps, title='DQL problem records') {
+  const rows = (ps || []).slice(0, 80).map(p => {
+    const cost = calcCost(p).total;
+    const service = (p.svcs || []).find(Boolean) || p.rca || 'Service not identified';
+    const rca = p.hasRCA && p.rca ? p.rca : 'RCA not identified';
+    return `<tr>
+      <td><span class="exec-pat-chip ${p.status === 'OPEN' ? 'trend-up' : 'trend-stable'}">${p.status}</span></td>
+      <td><div class="cx-pat-name">${attrText(p.title)}</div><div class="cx-pat-meta">${attrText(service)} | ${attrText(rca)}</div></td>
+      <td>${attrText(p.sev || 'UNKNOWN')}</td>
+      <td>${fmtC(cost)}</td>
+      <td>${Number.isFinite(p.users) ? p.users.toLocaleString() : '-'}</td>
+      <td>${fmtM(p.dur)}</td>
+      <td>${fmtR(p.start)}</td>
+    </tr>`;
+  }).join('');
+  return `<section class="cx-table-card sre-dql-fallback">
+    <div class="cx-section-head">
+      <div><div class="cx-eyebrow">SRE DQL Records</div><h3>${title}</h3><div class="cx-muted">DQL returned ${(ps || []).length} problem record${(ps || []).length === 1 ? '' : 's'}, but no recurring pattern met the grouping threshold for this time range.</div></div>
+    </div>
+    <div class="cx-table-wrap">
+      <table class="cx-table">
+        <thead><tr><th>Status</th><th>Problem</th><th>Category</th><th>Exposure</th><th>Users</th><th>Duration</th><th>Seen</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="7"><div class="exec-empty">No DQL problem records are available for this period.</div></td></tr>`}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function renderSreRiskMatrix(patterns, ps=[]) {
+  if (!patterns.length && ps.length) {
+    return renderSreDqlProblemExplorer(ps, 'No recurring reliability patterns yet');
+  }
   const ranked = [...patterns].map(pat => ({ pat, score: sreReliabilityPriority(pat, patterns) }))
     .sort((a, b) => b.score - a.score);
   const bubbles = ranked.map(({ pat, score }, idx) => {
@@ -5200,7 +5231,10 @@ function renderSreRiskMatrix(patterns) {
   </section>`;
 }
 
-function renderSreDebtExplorer(patterns) {
+function renderSreDebtExplorer(patterns, ps=[]) {
+  if (!patterns.length && ps.length) {
+    return renderSreDqlProblemExplorer(ps, 'Operational debt records from DQL');
+  }
   return `<section class="cx-table-card"><div class="cx-section-head"><div><div class="cx-eyebrow">Operational Debt Explorer</div><h3>Recurring reliability work queue</h3></div></div>${renderConcisePatternTable(patterns)}</section>`;
 }
 
@@ -5273,7 +5307,7 @@ function renderSreWorkspace(patterns, ps) {
     patternExplorerState.selectedId = null;
   }
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
-  const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns) : renderSreRiskMatrix(patterns);
+  const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns, ps) : renderSreRiskMatrix(patterns, ps);
   document.getElementById('intelSummary').innerHTML = '';
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     ${renderSreDqlReport(ps, patterns)}
