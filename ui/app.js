@@ -702,6 +702,9 @@ function getFiltered(){
 
 function render(){
   syncDeveloperScopeFilter();
+  if ((persona === 'sre' || persona === 'developer') && currentView !== 'patterns') {
+    currentView = 'patterns';
+  }
   const ps=getFiltered();
   // persona bar
   const m=PMETA[persona];
@@ -6764,7 +6767,12 @@ function openTicket(url) {
 function switchPersona(p){
   persona=p;selectedIds.clear();expandedIds.clear();aiState='idle';lastAIResult=null;
   execKpiDetail=null;
+  if (p === 'sre' || p === 'developer') currentView = 'patterns';
   document.querySelectorAll('.pbtn').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
+  document.querySelectorAll('.view-tab').forEach(b=>b.classList.toggle('active',b.dataset.view===currentView));
+  document.getElementById('view-patterns').style.display=currentView==='patterns'?'':'none';
+  document.getElementById('view-explorer').style.display=currentView==='explorer'?'':'none';
+  document.getElementById('view-progress').style.display=currentView==='progress'?'':'none';
   document.documentElement.style.setProperty('--persona',PMETA[p].color);
   render();renderAIPanel(null);renderRemPanel();
 }

@@ -654,7 +654,8 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .workspace-persona .layout>.analysis-drawer:not([open]){display:none}
 .workspace-persona .layout>.analysis-drawer{margin-top:12px}
 .exec-persona .analysis-ai-drawer{display:none!important}
-.exec-persona .view-tabs,.exec-persona .oneoffs-section{display:none!important}
+.exec-persona .legacy-view-tab-shell,.sre-persona .legacy-view-tab-shell,.developer-persona .legacy-view-tab-shell{display:none!important}
+.exec-persona .view-tabs,.exec-persona .oneoffs-section,.sre-persona .oneoffs-section,.developer-persona .oneoffs-section{display:none!important}
 .cx-view{display:flex;flex-direction:column;gap:12px;grid-column:1/-1}
 .workspace-persona .cx-view{gap:var(--ws-gap)}
 .exec-persona .cx-view{gap:8px}
@@ -713,6 +714,13 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .exec-persona .cx-focus-stat span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
 .exec-persona .cx-focus-stat strong{display:block;margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--text-1)}
 .exec-persona .cx-focus-stat .exec-inline-highlight{margin-top:4px}
+.sre-persona .cx-focus{display:grid;grid-template-columns:minmax(0,1fr) minmax(410px,42%);align-items:center;padding:10px 12px;gap:12px}
+.sre-persona .cx-focus h2{font-size:16px;line-height:1.18}
+.sre-persona .cx-focus p{font-size:11px;line-height:1.45;max-width:760px}
+.sre-persona .cx-focus-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;min-width:0}
+.sre-persona .cx-focus-stat{min-width:0;padding:8px 9px;background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:var(--r)}
+.sre-persona .cx-focus-stat span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);white-space:nowrap}
+.sre-persona .cx-focus-stat strong{display:block;margin-top:2px;font-size:11px;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cx-metric-drilldown{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:14px;align-items:center;padding:13px 16px;background:var(--bg-1);border:1px solid rgba(77,184,255,.22);border-radius:var(--rl)}
 .cx-metric-drilldown.neutral{grid-template-columns:1fr;border-color:var(--border)}
 .cx-metric-drilldown h2{margin:3px 0 0;color:var(--text-1);font-size:16px}
@@ -1483,7 +1491,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
     <div class="col-left">
 
       <!-- VIEW TAB BAR -->
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="legacy-view-tab-shell" style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
         <div class="view-tabs">
           <button class="view-tab" data-view="patterns">
             Pattern Discovery <span class="tab-count" id="patternTabCount">-</span>
