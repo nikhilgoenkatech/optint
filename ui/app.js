@@ -4670,6 +4670,13 @@ function renderConciseFocusBanner(patterns) {
   </section>`;
 }
 
+function renderExecutiveMapCostControl() {
+  return `<div class="cx-map-cost-control">
+    <span>Bubble size = exposure</span>
+    <button class="exec-inline-highlight low" data-action="toggleCfg">Recovery model: ${Math.round(recoveryRate() * 100)}%</button>
+  </div>`;
+}
+
 function concisePatternStatus(pat) {
   if (!Object.prototype.hasOwnProperty.call(pat, 'status')) return null;
   return pat.status;
@@ -5077,7 +5084,7 @@ function renderConciseActFirstMap(patterns) {
   return `<section class="cx-map">
     <div class="cx-section-head">
       <div><div class="cx-eyebrow">Act-First Map</div><h3>Business impact x remediation effort</h3><div class="cx-map-helper">Click a bubble to inspect the pattern.</div></div>
-      <div class="cx-muted">Bubble size = exposure</div>
+      ${renderExecutiveMapCostControl()}
     </div>
     <div class="cx-map-plot">
       <div class="cx-map-axis y">Business Impact low to high</div>
@@ -5351,7 +5358,6 @@ function renderDecisionFirstExecView(patterns, ps) {
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
-        ${renderExecutiveCostModelIndicator()}
         ${renderConciseKpiRow(ps, patterns)}
         ${renderConciseFocusBanner(patterns)}
         <section class="cx-view-controls">
