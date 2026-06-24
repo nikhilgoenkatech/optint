@@ -4992,7 +4992,6 @@ function renderDecisionDetailPanel(pat, patterns) {
   const openCount = patternOpenCount(pat);
   const exposure = patternCost(pat);
   const recoverable = patternRecoverableValue(pat);
-  const costCalc = patternCostCalculation(pat);
   const services = patternServices(pat);
   const entities = patternAffectedEntities(pat);
   const rcaList = pat.dimensions?.rootCauseEntities || [];
@@ -5016,27 +5015,10 @@ function renderDecisionDetailPanel(pat, patterns) {
   const remediationPanel = renderWorkspaceRemediationBlock(pat);
   const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
   const timelineBody = renderExecutiveRecurrenceTimeline(pat);
-  const costTransparency = `<div class="cx-cost-transparency">
-    <div class="cx-cost-head"><span>Pattern Cost Calculation</span><button class="cx-cost-link" data-action="toggleCfg">Cost assumptions</button></div>
-    <div class="cx-cost-grid">
-      <div><span>Affected users</span><strong>${costCalc.affectedUsers.toLocaleString()}</strong></div>
-      <div><span>Avg duration</span><strong>${costCalc.duration ? fmtM(costCalc.duration) : '-'}</strong></div>
-      <div><span>Severity multiplier</span><strong>${costCalc.severityMultipliers.slice(0,2).join(', ') || '-'}</strong></div>
-      <div><span>Engineering impact</span><strong>${fmtC(costCalc.engineeringImpact)}</strong></div>
-      <div><span>User impact</span><strong>${fmtC(costCalc.userImpact)}</strong></div>
-      <div><span>Fallback impact</span><strong>${fmtC(costCalc.fallbackImpact)}</strong></div>
-      <div><span>Calculated exposure</span><strong>${fmtC(costCalc.exposure)}</strong></div>
-      <div><span>Recoverable value</span><strong>${fmtC(costCalc.recoverableValue)}</strong></div>
-    </div>
-    <div class="cx-cost-formula">Recovery Model: ${fmtC(costCalc.exposure)} x ${Math.round(recoveryRate()*100)}% = ${fmtC(costCalc.recoverableBase)}</div>
-    <div class="cx-cost-formula">Recoverable Now can also include modeled value-delivered savings: RCA ${fmtC(costCalc.valueDelivered.rcaSavings)}, grouping ${fmtC(costCalc.valueDelivered.groupingSavings)}, noise reduction ${fmtC(costCalc.valueDelivered.noiseReductionSavings)}.</div>
-    <div class="cx-cost-disclaimer">These values are modeled estimates based on configured assumptions and available Davis problem data.</div>
-  </div>`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection">Clear Selection</button></div></div>
-    <div class="cx-detail-label">Business Impact${infoPill('Exposure, recoverable value, and currently open incidents for the selected recurring pattern.', 'business-impact')}</div>
+    <div class="cx-detail-label cx-detail-label-row"><span>Business Impact${infoPill('Exposure, recoverable value, and currently open incidents for the selected recurring pattern. These values use the active cost model and available Davis problem data.', 'business-impact')}</span><button class="cx-cost-link" data-action="toggleCfg">Cost assumptions</button></div>
     <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
-    ${costTransparency}
     <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.', 'technical-actionability')}</div>
     <div class="cx-detail-tiles actionability"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidenceLabel(confidence)}</strong><span>Confidence</span></div><div><strong>${priority}</strong><span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
