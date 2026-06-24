@@ -5156,6 +5156,36 @@ function renderSreDebtExplorer(patterns) {
   return `<section class="cx-table-card"><div class="cx-section-head"><div><div class="cx-eyebrow">Operational Debt Explorer</div><h3>Recurring reliability work queue</h3></div></div>${renderConcisePatternTable(patterns)}</section>`;
 }
 
+function renderSreDqlReport(ps, patterns) {
+  const state = DATA_SOURCE_STATE;
+  const source = dataSourceLabel();
+  const message = state === 'live'
+    ? 'SRE reliability signals are calculated from live Davis problem records retrieved by DQL.'
+    : state === 'loading'
+      ? 'Waiting for DQL problem records before calculating reliability signals.'
+      : state === 'empty'
+        ? 'DQL returned no Davis problems for the selected period.'
+        : state === 'error'
+          ? 'DQL problem data is unavailable for this view.'
+          : 'SRE reliability signals are calculated from demo problem records.';
+  const error = state === 'error' && DATA_SOURCE_ERROR
+    ? `<span class="sre-dql-error">${attrText(DATA_SOURCE_ERROR)}</span>`
+    : '';
+  return `<section class="sre-dql-report ${state}" aria-label="SRE data source report">
+    <div class="sre-dql-copy">
+      <div class="cx-eyebrow">SRE Data Source</div>
+      <strong>${source}</strong>
+      <p>${message}</p>
+      ${error}
+    </div>
+    <div class="sre-dql-stats">
+      <div><span>Time range</span><strong>${getTimeLabel()}</strong></div>
+      <div><span>DQL records</span><strong>${ps.length}</strong></div>
+      <div><span>Patterns</span><strong>${patterns.length}</strong></div>
+    </div>
+  </section>`;
+}
+
 function renderSreContextPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty"><div class="exec-empty">Select a reliability pattern to inspect operational context, automation opportunities, and remediation.</div></aside>`;
   const priority = sreReliabilityPriority(pat, patterns);
@@ -5189,6 +5219,7 @@ function renderSreWorkspace(patterns, ps) {
   const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns) : renderSreRiskMatrix(patterns);
   document.getElementById('intelSummary').innerHTML = '';
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
+    ${renderSreDqlReport(ps, patterns)}
     ${renderSreFocus(patterns)}
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">

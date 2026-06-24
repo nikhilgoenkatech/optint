@@ -749,6 +749,19 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .cx-age-legend .seen-recent-text{color:var(--blue)}
 .cx-age-legend .seen-aging-text{color:var(--amber)}
 .cx-age-legend .seen-old-text{color:var(--coral)}
+.sre-dql-report{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid rgba(155,143,228,.22);background:rgba(155,143,228,.055);border-radius:var(--rl)}
+.sre-dql-report.live{border-color:rgba(61,214,140,.24);background:rgba(61,214,140,.045)}
+.sre-dql-report.loading{border-color:rgba(77,184,255,.24);background:rgba(77,184,255,.045)}
+.sre-dql-report.empty{border-color:rgba(245,197,24,.24);background:rgba(245,197,24,.045)}
+.sre-dql-report.error{border-color:rgba(255,103,112,.32);background:rgba(255,103,112,.065)}
+.sre-dql-copy strong{display:block;margin-top:2px;color:var(--text-1);font-size:13px}
+.sre-dql-copy p{margin:3px 0 0;font-size:10px;line-height:1.35;color:var(--text-3)}
+.sre-dql-error{display:block;margin-top:4px;font-size:10px;color:var(--coral)}
+.sre-dql-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;min-width:360px}
+.sre-dql-stats div{padding:6px 8px;border:1px solid var(--border);border-radius:var(--r);background:rgba(255,255,255,.025);min-width:0}
+.sre-dql-stats span{display:block;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);white-space:nowrap}
+.sre-dql-stats strong{display:block;margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:900px){.sre-dql-report{align-items:flex-start;flex-direction:column}.sre-dql-stats{min-width:0;width:100%}}
 .cx-table-wrap{max-height:390px;overflow:auto}
 .cx-table{width:100%;border-collapse:collapse;table-layout:auto}
 .cx-table th{position:sticky;top:0;z-index:4;background:var(--bg-2);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);padding:8px 10px;text-align:left;white-space:nowrap}
