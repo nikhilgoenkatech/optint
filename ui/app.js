@@ -31,6 +31,17 @@ let PROBLEMS = USE_DEMO_DATA ? MOCK_PROBLEMS : [];
 let MTTR_SUMMARY = null;
 let DATA_SOURCE_STATE = USE_DEMO_DATA ? 'demo' : 'loading';
 let DATA_SOURCE_ERROR = '';
+const DQL_VALIDATION = {
+  recurringRootCauses: {
+    queryName: 'recurringRootCausesQuery',
+    dql: '',
+    timeframe: '',
+    rowCount: 0,
+    lastRunTime: null,
+    records: [],
+    error: null,
+  },
+};
 
 // ============================================================
 // PERSONA CONFIG
@@ -383,6 +394,70 @@ function dataSourceLabel() {
   return 'DQL';
 }
 
+function recurringRootCausesQuery(timeRange) {
+  return `fetch dt.davis.problems, from: now()-${timeRange}
+| filter not(dt.davis.is_duplicate)
+| filter isNotNull(root_cause_entity_id) or isNotNull(root_cause_entity_name)
+| fieldsAdd affected_entity_count = arraySize(smartscape.affected_entity.ids)
+| summarize
+    problem_count = count(),
+    first_occurrence = min(event.start),
+    last_occurrence = max(event.start),
+    affected_entity_count = max(affected_entity_count),
+    by:{root_cause_entity_id, root_cause_entity_name}
+| sort problem_count desc
+| limit 200`;
+}
+
+function resetRecurringRootCauseValidation(timeRange, dql='', error=null) {
+  DQL_VALIDATION.recurringRootCauses = {
+    queryName: 'recurringRootCausesQuery',
+    dql,
+    timeframe: timeRange,
+    rowCount: 0,
+    lastRunTime: new Date().toISOString(),
+    records: [],
+    error,
+  };
+}
+
+async function loadRecurringRootCauseValidation(timeRange) {
+  const dql = recurringRootCausesQuery(timeRange);
+  if (USE_DEMO_DATA) {
+    resetRecurringRootCauseValidation(timeRange, dql, 'Not executed in demo mode.');
+    return;
+  }
+  try {
+    const result = await queryExecutionClient.queryExecute({
+      body: {
+        query: dql,
+        requestTimeoutMilliseconds: 15000,
+        fetchTimeoutSeconds: 60,
+      }
+    });
+    const records = Array.isArray(result?.result?.records) ? result.result.records : [];
+    DQL_VALIDATION.recurringRootCauses = {
+      queryName: 'recurringRootCausesQuery',
+      dql,
+      timeframe: timeRange,
+      rowCount: records.length,
+      lastRunTime: new Date().toISOString(),
+      records: records.map(row => ({
+        root_cause_entity_id: row.root_cause_entity_id ? String(row.root_cause_entity_id) : '',
+        root_cause_entity_name: row.root_cause_entity_name ? String(row.root_cause_entity_name) : '',
+        problem_count: Number(row.problem_count || 0),
+        first_occurrence: row.first_occurrence || null,
+        last_occurrence: row.last_occurrence || null,
+        affected_entity_count: Number(row.affected_entity_count || 0),
+      })),
+      error: null,
+    };
+  } catch (err) {
+    console.warn('[OpInt] recurringRootCausesQuery failed:', err.message ?? err);
+    resetRecurringRootCauseValidation(timeRange, dql, err?.message ? String(err.message) : 'Recurring root cause validation query failed.');
+  }
+}
+
 function refreshPatternRuntime() {
   patternInsights.clear();
   subBucketInsights.clear();
@@ -404,6 +479,7 @@ async function loadProblems() {
       eventName: p.title || p.biz || 'Demo problem',
     }));
     DATA_SOURCE_STATE = 'demo';
+    await loadRecurringRootCauseValidation(timeRange);
     logDeveloperCategoryValidation(PROBLEMS, detectPatterns(PROBLEMS).patterns, 'demo');
     refreshPatternRuntime();
     return;
@@ -417,7 +493,7 @@ async function loadProblems() {
 | filter dt.davis.is_duplicate == false
 | fields event.id, display_id, event.name, event.status, event.category, event.start, event.end,
          dt.davis.impact_level, dt.davis.is_frequent_event, dt.davis.is_duplicate, dt.davis.affected_users_count,
-         entity_tags, management_zones, root_cause_entity_name,
+         entity_tags, management_zones, root_cause_entity_id, root_cause_entity_name,
          cloud.provider, cloud.region, affected_entity_ids, resolved_problem_duration
 | sort event.start desc
 | limit 500`,
@@ -432,6 +508,7 @@ async function loadProblems() {
       RAW_DQL_CATEGORY_AUDIT = [];
       DATA_SOURCE_STATE = 'empty';
       await loadMttrSummary(timeRange);
+      await loadRecurringRootCauseValidation(timeRange);
       refreshPatternRuntime();
       return;
     }
@@ -467,6 +544,7 @@ async function loadProblems() {
       const mz = Array.isArray(r['management_zones']) ? r['management_zones'].map(String).filter(Boolean) : [];
       const tags = Array.isArray(r['entity_tags']) ? r['entity_tags'].map(String) : [];
       const entityIds = Array.isArray(r['affected_entity_ids']) ? r['affected_entity_ids'] : [];
+      const rcaId = r['root_cause_entity_id'] ? String(r['root_cause_entity_id']) : null;
       const rca = r['root_cause_entity_name'] ? String(r['root_cause_entity_name']) : null;
       const svcs = rca ? [rca] : entityIds.map(id => String(id).split('-')[0]).filter((v, i, a) => a.indexOf(v) === i);
       const cloud = Array.isArray(r['cloud.provider']) ? (r['cloud.provider'][0] ?? '') : (r['cloud.provider'] ?? '');
@@ -488,6 +566,7 @@ async function loadProblems() {
         mz: mz.length ? mz : ['Production'],
         tags,
         hasRCA: rca !== null,
+        rcaId,
         rca,
         svcs,
         affectedEntityIds: entityIds.map(String),
@@ -500,6 +579,7 @@ async function loadProblems() {
     });
 
     await loadMttrSummary(timeRange);
+    await loadRecurringRootCauseValidation(timeRange);
     DATA_SOURCE_STATE = 'live';
     logDeveloperCategoryValidation(PROBLEMS, detectPatterns(PROBLEMS).patterns, 'live');
     refreshPatternRuntime();
@@ -512,6 +592,7 @@ async function loadProblems() {
     MTTR_SUMMARY = null;
     DATA_SOURCE_STATE = 'error';
     DATA_SOURCE_ERROR = err?.message ? String(err.message) : 'Unable to retrieve DQL data';
+    resetRecurringRootCauseValidation(timeRange, recurringRootCausesQuery(timeRange), DATA_SOURCE_ERROR);
     refreshPatternRuntime();
   }
 }
@@ -3402,6 +3483,53 @@ function patternCostCalculation(pat) {
   };
 }
 
+function normalizeValidationKey(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function matchRecurringRootCauseValidation(problems, dimensions) {
+  const rows = DQL_VALIDATION.recurringRootCauses.records || [];
+  if (!rows.length) return null;
+  const rcaIds = uniqVals(problems.map(p => p.rcaId));
+  const rcaNames = uniqVals([
+    ...(dimensions?.rootCauseEntities || []),
+    ...problems.map(p => p.rca),
+  ]);
+  let match = rows.find(row => row.root_cause_entity_id && rcaIds.includes(row.root_cause_entity_id));
+  let matchType = match ? 'root_cause_entity_id' : '';
+  if (!match) {
+    const names = new Set(rcaNames.map(normalizeValidationKey));
+    match = rows.find(row => names.has(normalizeValidationKey(row.root_cause_entity_name)));
+    matchType = match ? 'root_cause_entity_name' : '';
+  }
+  if (!match) {
+    const eventNames = new Set(problems.map(p => normalizeValidationKey(p.title)));
+    const categories = new Set(problems.map(p => normalizeValidationKey(p.rawEventCategory || p.sev)));
+    match = rows.find(row => {
+      const name = normalizeValidationKey(row.root_cause_entity_name);
+      return name && ([...eventNames].some(eventName => eventName.includes(name) || name.includes(eventName)) || categories.has(name));
+    });
+    matchType = match ? 'event_name_category_fallback' : '';
+  }
+  if (!match) return null;
+  const jsCount = problems.length;
+  const dqlCount = Number(match.problem_count || 0);
+  const matchStatus = dqlCount === jsCount
+    ? 'MATCH'
+    : Math.abs(dqlCount - jsCount) <= Math.max(1, Math.round(jsCount * 0.25))
+      ? 'PARTIAL'
+      : 'NO_MATCH';
+  return {
+    match,
+    matchType,
+    matchStatus,
+    dqlRecurringRootCauseMatch: match.root_cause_entity_name || match.root_cause_entity_id || '',
+    dqlRecurringProblemCount: dqlCount,
+    dqlRecurringFirstSeen: match.first_occurrence,
+    dqlRecurringLastSeen: match.last_occurrence,
+  };
+}
+
 function attrText(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -3555,7 +3683,44 @@ function renderCategoryCounts(counts) {
   return `<div class="validation-counts">${Object.entries(counts).map(([key, value]) => `<div><span>${key}</span><strong>${value}</strong></div>`).join('')}</div>`;
 }
 
-function renderDeveloperValidationReport() {
+function renderRecurringRootCauseValidation(patterns) {
+  const state = DQL_VALIDATION.recurringRootCauses;
+  const rows = (patterns || []).map(pat => {
+    const status = pat.dqlRecurringMatchStatus || 'NO_MATCH';
+    return {
+      patternName: pat.title,
+      jsOccurrenceCount: pat.occurrences || 0,
+      dqlRootCause: pat.dqlRecurringRootCauseMatch || 'No DQL root-cause match',
+      dqlProblemCount: pat.dqlRecurringProblemCount ?? '-',
+      status,
+      firstSeen: pat.dqlRecurringFirstSeen || '',
+      lastSeen: pat.dqlRecurringLastSeen || '',
+      matchType: pat.dqlRecurringMatchType || '-',
+    };
+  });
+  const mismatchRows = rows.filter(row => row.status !== 'MATCH');
+  const tableRows = rows.map(row => `<tr>
+    <td>${attrText(row.patternName)}</td>
+    <td>${row.jsOccurrenceCount}</td>
+    <td>${attrText(row.dqlRootCause)}</td>
+    <td>${attrText(row.dqlProblemCount)}</td>
+    <td><span class="validation-status ${row.status === 'MATCH' ? 'pass' : 'warning'}">${row.status}</span></td>
+    <td>${attrText(row.matchType)}</td>
+  </tr>`).join('');
+  return `<h4>Recurring root cause validation</h4>
+    <p>Compares JavaScript pattern groups with DQL-derived recurring root causes. DQL does not overwrite JavaScript pattern output.</p>
+    <div class="validation-counts">
+      <div><span>Query</span><strong>${attrText(state.queryName)}</strong></div>
+      <div><span>Timeframe</span><strong>${attrText(state.timeframe || getTimeLabel())}</strong></div>
+      <div><span>DQL rows</span><strong>${state.rowCount || 0}</strong></div>
+    </div>
+    <p><strong>Last run:</strong> ${attrText(state.lastRunTime || 'Not run')}${state.error ? ` | <strong>Error:</strong> ${attrText(state.error)}` : ''}</p>
+    <details class="validation-dql"><summary>DQL used</summary><pre>${attrText(state.dql || recurringRootCausesQuery(document.getElementById('timeRange')?.value ?? '7d'))}</pre></details>
+    <table><thead><tr><th>JS pattern</th><th>JS occurrences</th><th>DQL matched root cause</th><th>DQL problem count</th><th>Status</th><th>Match path</th></tr></thead><tbody>${tableRows || '<tr><td colspan="6">No JavaScript recurring patterns in current scope.</td></tr>'}</tbody></table>
+    <p>${mismatchRows.length ? `${mismatchRows.length} DQL-vs-JS discrepancy row(s) are visible above for validation.` : 'No recurring root cause discrepancies detected for current recurring patterns.'}</p>`;
+}
+
+function renderValidationReport() {
   const ps = getFiltered();
   const patterns = detectPatterns(ps).patterns;
   const report = buildDeveloperCategoryValidation(ps, patterns);
@@ -3564,6 +3729,7 @@ function renderDeveloperValidationReport() {
   const heatRows = report.heatmapRows.map(row => `<tr><td>${attrText(row.heatmapRow)}</td><td>${attrText(row.heatmapColumn)}</td><td>${attrText(row.selectedPattern)}</td><td>${attrText(row.patternCategories)}</td></tr>`).join('');
   return `<div class="validation-report">
     <div class="validation-status ${report.status.toLowerCase()}">${report.status}</div>
+    ${renderRecurringRootCauseValidation(patterns)}
     <p>${report.warnings.length ? report.warnings.map(attrText).join(' ') : 'No category mismatches were detected in the current Developer scope.'}</p>
     <h4>Raw DQL category distribution</h4>
     ${renderCategoryCounts(report.rawDistribution)}
@@ -3576,6 +3742,10 @@ function renderDeveloperValidationReport() {
     <h4>Heat map consistency</h4>
     <table><thead><tr><th>Row</th><th>Column</th><th>Pattern</th><th>Pattern categories</th></tr></thead><tbody>${heatRows || '<tr><td colspan="4">No heat map cells in current scope.</td></tr>'}</tbody></table>
   </div>`;
+}
+
+function renderDeveloperValidationReport() {
+  return renderValidationReport();
 }
 
 function openDeveloperValidationReport() {
@@ -4067,6 +4237,7 @@ function buildPattern(problems) {
   // Spark data - one point per problem, value = cost
   const sparkData = problems.map(p => ({ t: p.start, v: calcCost(p).total }));
   const dimensions = buildPatternDimensions(problems);
+  const dqlRecurringValidation = matchRecurringRootCauseValidation(problems, dimensions);
 
   // ── Pattern quality score ──
   const rcaList        = problems.filter(p=>p.hasRCA&&p.rca).map(p=>p.rca);
@@ -4158,6 +4329,12 @@ function buildPattern(problems) {
     fixabilityScore,
     fixability,
     confidence: confidenceLevel(clamp(qualityScore/100 + clamp((problems.length-2)/8,0,0.15), 0, 1)),
+    dqlRecurringRootCauseMatch: dqlRecurringValidation?.dqlRecurringRootCauseMatch || '',
+    dqlRecurringProblemCount: dqlRecurringValidation?.dqlRecurringProblemCount || null,
+    dqlRecurringFirstSeen: dqlRecurringValidation?.dqlRecurringFirstSeen || null,
+    dqlRecurringLastSeen: dqlRecurringValidation?.dqlRecurringLastSeen || null,
+    dqlRecurringMatchStatus: dqlRecurringValidation?.matchStatus || 'NO_MATCH',
+    dqlRecurringMatchType: dqlRecurringValidation?.matchType || '',
     expanded: false,
   };
 }
@@ -6972,10 +7149,7 @@ document.addEventListener('click', function(e) {
   switch (action) {
     // Header / persona
     case 'doRefresh': doRefresh(); break;
-    case 'downloadDqlNotebook':
-      if (persona === 'developer') openDeveloperValidationReport();
-      else downloadDqlNotebook();
-      break;
+    case 'downloadDqlNotebook': openDeveloperValidationReport(); break;
     case 'closeDeveloperValidationReport': closeDeveloperValidationReport(); break;
     case 'toggleCfg': toggleCfg(); break;
     case 'applyCfg': applyCfg(); break;

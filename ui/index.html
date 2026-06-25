@@ -450,6 +450,9 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .validation-report th,.validation-report td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
 .validation-report th{font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);background:rgba(255,255,255,.025)}
 .validation-report td{font-size:10px;color:var(--text-2)}
+.validation-dql{border:1px solid var(--border);border-radius:var(--r);background:rgba(255,255,255,.02);overflow:hidden}
+.validation-dql summary{padding:8px 10px;cursor:pointer;color:var(--text-2);font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.validation-dql pre{margin:0;padding:10px;border-top:1px solid var(--border);white-space:pre-wrap;word-break:break-word;color:var(--text-2);font-size:10px;line-height:1.45}
 .aws-step{display:flex;gap:12px;margin-bottom:10px;padding:10px 12px;background:var(--bg-2);border-radius:var(--rm);border:1px solid var(--border)}
 .aws-step-num{width:22px;height:22px;border-radius:50%;background:rgba(255,153,0,.2);border:1px solid rgba(255,153,0,.35);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#ff9900;flex-shrink:0}
 .aws-step-body{font-size:12px;color:var(--text-2);line-height:1.5}
@@ -1634,7 +1637,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 <div class="modal-overlay hidden" id="validationModal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">Developer Category Validation Report</div>
+      <div class="modal-title">DQL Validation Report</div>
       <button class="modal-close" data-action="closeDeveloperValidationReport">x</button>
     </div>
     <div class="modal-body" id="validationModalBody"></div>
