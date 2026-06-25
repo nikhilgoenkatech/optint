@@ -645,6 +645,7 @@ let awsModalProblem=null;
 let davisConversationId=null; // unused, kept for backwards compat
 let execValueBreakdownOpen=false;
 let execKpiDetail=null;
+let _wsKpiHtml='';
 let patternExplorerState = { selectedId:null, sort:'priority', dir:'desc', search:'', filters:{}, offset:0 };
 let execAnalyticalView='map';
 let sreAnalyticalView='matrix';
@@ -908,6 +909,7 @@ function renderKPIs(ps){
       <div class="k-sub">${k.sub}${k.badge?`<span class="badge ${k.badge.cls}">${k.badge.t}</span>`:''}</div>
       ${k.mode?`<div class="k-action ${execKpiDetail===k.mode?'open':''}">${k.actionText}</div>`:''}
     </div>`).join('');
+  if (persona !== 'executive') _wsKpiHtml = document.getElementById('kpiRow').innerHTML;
   const kpiDetails = document.getElementById('kpiDetails');
   if (kpiDetails) {
     kpiDetails.innerHTML = execKpiDetail ? renderPersonaKpiDetail(persona, execKpiDetail, ps) : '';
@@ -3188,7 +3190,7 @@ function rerenderPatternsView() {
 function selectPatternRow(id, opts={}) {
   patternExplorerState.selectedId = id;
   if (persona === 'executive') execPatternSelectionMade = true;
-  if (persona === 'executive' || persona === 'sre') execClosedBubblePopupId = null;
+  if (persona === 'executive' || persona === 'sre' || persona === 'developer') execClosedBubblePopupId = null;
   renderTopPatternsSnapshot(getFiltered());
   rerenderPatternsView();
   if (opts.remediate !== false && !['executive','sre','developer'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
@@ -5861,20 +5863,12 @@ function renderSreWorkspaceHeader(patterns, ps) {
         <div><span>DQL records</span><strong>${ps.length}</strong></div>
         <div><span>Patterns</span><strong>${patterns.length}</strong></div>
       </div>`;
-  return `<section class="workspace-header">
-    <div class="workspace-header-copy">
-      <div class="cx-eyebrow">Reliability Workspace</div>
-      <h2>${selected ? selected.title : 'No reliability pattern selected'}</h2>
-      <p>${summary}</p>
-      <div class="workspace-header-source ${sourceClass}"><span>${source}</span><small>${getTimeLabel()} | ${ps.length} records | ${patterns.length} patterns</small></div>
+  return `<section class="cx-view-controls cx-toggle-strip">
+    <div class="cx-view-switch">
+      <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
+      <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
     </div>
-    <div class="workspace-header-side">
-      ${stats}
-      <div class="cx-view-switch">
-        <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
-        <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
-      </div>
-    </div>
+    <button class="snap-cta" data-action="toggleCfg">Configure</button>
   </section>`;
 }
 
@@ -5909,7 +5903,7 @@ function renderSreContextPanel(pat, patterns) {
         ${renderExecDisclosure('Supporting Evidence', `${pat.problems?.length || 0} grouped problems`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('') || '<span class="px-chip">No problem IDs available</span>'}</div>`)}`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Reliability Context</div><h3>${pat.title}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
-    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="details">Details</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="remediation">Remediation</button></div>
+    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="details">Context</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="remediation">Remediation</button></div>
     ${tabBody}
   </aside>`;
 }
@@ -5922,15 +5916,19 @@ function renderSreWorkspace(patterns, ps) {
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = sreAnalyticalView === 'explorer' ? renderSreDebtExplorer(patterns, ps) : renderSreRiskMatrix(patterns, ps);
   setIntelSummary('');
+  const _sreKpiHtml = _wsKpiHtml;
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view ${execPanelMaximized ? 'panel-maximized' : ''}">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${_sreKpiHtml ? `<div class="kpi-row kpi-row--inline">${_sreKpiHtml}</div>` : ''}
         ${renderSreWorkspaceHeader(patterns, ps)}
         <div class="cx-selected-view">${selectedView}</div>
       </div>
       ${renderSreContextPanel(selected, patterns)}
     </div>
   </div>`;
+  const _sreKpiRow = document.getElementById('kpiRow');
+  if (_sreKpiRow) _sreKpiRow.innerHTML = '';
 }
 
 function developerFailureType(pat) {
@@ -6022,20 +6020,12 @@ function renderDeveloperWorkspaceHeader(patterns) {
         <div><span>Scope</span><strong>${scopeLabel}</strong></div>
         <div><span>Patterns</span><strong>${patterns.length}</strong></div>
       </div>`;
-  return `<section class="workspace-header developer-workspace-header">
-    <div class="workspace-header-copy">
-      <div class="cx-eyebrow">Developer Workspace</div>
-      <h2>${title}</h2>
-      <p>${summary}</p>
-      <div class="workspace-header-source developer"><span>Developer Scope</span><small>${scopeLabel}</small></div>
+  return `<section class="cx-view-controls cx-toggle-strip">
+    <div class="cx-view-switch">
+      <button class="${developerAnalyticalView === 'heatmap' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="heatmap">Service Heat Map</button>
+      <button class="${developerAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="explorer">Error Patterns</button>
     </div>
-    <div class="workspace-header-side">
-      ${stats}
-      <div class="cx-view-switch">
-        <button class="${developerAnalyticalView === 'heatmap' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="heatmap">Service Heat Map</button>
-        <button class="${developerAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="explorer">Pattern Explorer</button>
-      </div>
-    </div>
+    <span class="cx-scope-label">${scopeLabel !== 'All Developer Scope' ? scopeLabel : ''}</span>
   </section>`;
 }
 
@@ -6053,9 +6043,8 @@ function renderDeveloperServiceHeatMap(patterns) {
     if (scaled >= 0.33) return 'moderate';
     return 'low';
   };
-  const rows = services.map(service => {
-    const rowSelected = patterns.some(p => p.id === patternExplorerState.selectedId && developerPrimaryService(p) === service);
-    const cells = categories.map((cat, catIndex) => {
+  const rows = services.map((service, rowIdx) => {
+    const cells = categories.map((cat) => {
       const pat = patterns.find(p => developerPrimaryService(p) === service && developerFailureType(p) === cat);
       if (!pat) return `<div class="heat-cell empty" aria-label="${service} ${cat} no recurring failures"></div>`;
       const intensity = clamp(((pat.occurrences || 0) - minOcc) / occurrenceSpread, 0.24, 1);
@@ -6063,26 +6052,24 @@ function renderDeveloperServiceHeatMap(patterns) {
       const selected = pat.id === patternExplorerState.selectedId;
       const trend = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'stable';
       const trendLabel = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'flat';
-      const popupClosed = selected && execClosedBubblePopupId === pat.id;
-      const popupPos = catIndex >= categories.length - 2 ? 'left' : 'right';
       const tooltip = `${service} | ${cat} | ${pat.occurrences} occurrences | ${pat.trend}`;
-      const popup = selected && !popupClosed ? `<div class="heat-popup ${popupPos}" role="dialog" aria-label="Selected developer pattern" data-stop-propagation>
-        <button class="cx-popup-close" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</button>
-        <div class="cx-eyebrow">Selected issue</div>
-        <strong>${service}</strong>
-        <div class="heat-popup-grid">
-          <div><span>Failure</span><b>${cat.replace('_',' ')}</b></div>
-          <div><span>Recurrence</span><b>${pat.occurrences}x</b></div>
-          <div><span>Trend</span><b>${trendLabel}</b></div>
-          <div><span>Confidence</span><b>${developerConfidenceStatus(pat)}</b></div>
-        </div>
+      const conf = developerConfidenceStatus(pat);
+      const popup = selected ? `<div class="heat-cell-popup" data-stop-propagation>
+        <div class="hcp-head"><span>${service}</span><button class="hcp-close" data-action="clearPatternSelection" aria-label="Close">×</button></div>
+        <div class="hcp-row"><span>FAILURE TYPE</span><strong>${cat.replace(/_/g,' ')} ${pat.occurrences}x</strong></div>
+        <div class="hcp-row"><span>TREND</span><strong>${trendLabel}</strong></div>
+        <div class="hcp-row"><span>CONFIDENCE</span><strong>${conf}</strong></div>
       </div>` : '';
-      return `<div class="heat-cell ${tier} ${selected ? 'selected' : ''}" role="button" tabindex="0" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}"><strong>${pat.occurrences}</strong><small class="heat-trend ${trend}">${trendLabel}</small>${popup}</div>`;
+      return `<div class="heat-cell ${tier} ${selected ? 'selected' : ''}" role="button" tabindex="0" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}">
+        <strong>${pat.occurrences}</strong>
+        <small class="heat-trend ${trend}">${trendLabel}</small>
+        ${popup}
+      </div>`;
     }).join('');
-    return `<div class="heat-row ${rowSelected ? 'selected' : ''}"><div class="heat-service">${service}</div>${cells}</div>`;
+    return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}</div>`;
   }).join('');
   return `<section class="cx-map dev-heat">
-    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-legend"><span><i class="heat-dot low"></i>Lower recurrence</span><span><i class="heat-dot moderate"></i>Moderate</span><span><i class="heat-dot high"></i>High</span><span><i class="heat-dot critical"></i>Critical / worsening</span><b>trend: up | flat | down</b></div></div>
+    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-controls"><div class="dev-heat-legend"><span><i class="heat-dot low"></i>Lower recurrence</span><span><i class="heat-dot moderate"></i>Moderate</span><span><i class="heat-dot high"></i>High</span><span><i class="heat-dot critical"></i>Critical / worsening</span><b>trend: up | flat | down</b></div><button class="snap-cta" data-action="toggleCfg">Configure</button></div></div>
     <div class="heat-grid"><div class="heat-head"><span>Service / Endpoint</span>${categories.map(c => `<span>${c.replace('_',' ')}</span>`).join('')}</div>${rows || '<div class="exec-empty">No recurring service patterns available.</div>'}</div>
   </section>`;
 }
@@ -6097,19 +6084,27 @@ function renderDeveloperContextPanel(pat, patterns) {
   const failureType = developerFailureType(pat);
   const rootCause = developerRootCauseStatus(pat);
   const confidence = developerConfidenceStatus(pat);
+  const openCount = patternOpenCount(pat);
+  const affectedCount = patternAffectedEntities(pat).length;
   const impactSummary = `${fmtC(patternCost(pat))} exposure`;
+  const trendStatus = pat.trend === 'INCREASING' ? 'High' : pat.trend === 'DECREASING' ? 'Low' : 'Medium';
+  const openStatus = openCount >= 3 ? 'High' : openCount >= 1 ? 'Medium' : 'Low';
   const tabBody = selectedTab === 'analysis'
     ? renderWorkspaceAnalysisBlock(pat, 'Generate technical analysis to focus on likely root cause, affected service or runtime area, and next validation step.')
     : selectedTab === 'remediation'
       ? renderWorkspaceRemediationBlock(pat)
-      : `<div class="dev-detail-hero"><span>Service / Endpoint</span><strong>${service}</strong><small>${failureType}</small></div>
-        <div class="cx-detail-tiles dev-detail-tiles"><div><strong>${confidence}</strong><span>Root Cause Confidence</span><small>${developerConfidenceExplanation(pat)}</small></div><div><strong>${pat.occurrences}x</strong><span>Recurrence</span></div><div><strong>${pat.trend}</strong><span>Trend</span></div></div>
-        <div class="cx-complexity-summary dev-rca-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${impactSummary} | ${patternOpenCount(pat)} open | ${patternAffectedEntities(pat).length} affected | ${pat.problems?.length || 0} scoped problems in this Developer context.</p></div>
+      : `<div class="cx-detail-tiles sre-status-tiles">
+          ${renderSreStatusTile('Root Cause Confidence', confidence, developerConfidenceExplanation(pat))}
+          ${renderSreStatusTile('Trend Signal', trendStatus, `${pat.trend.replace('_',' ').toLowerCase()} across ${pat.occurrences} occurrences`)}
+          ${renderSreStatusTile('Open Incidents', openStatus, `${openCount} open | ${affectedCount} affected`)}
+          ${renderSreStatusTile('Failure Type', 'Medium', `${failureType.replace(/_/g,' ')} category`)}
+        </div>
+        <div class="cx-complexity-summary"><span>Root Cause Signals</span><strong>${rootCause}</strong><p>${impactSummary} | ${openCount} open | ${affectedCount} affected | ${pat.problems?.length || 0} scoped problems in this Developer context.</p></div>
         ${renderExecDisclosure('Supporting evidence', `${pat.occurrences} grouped occurrences`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('')}</div>`)}
-        ${renderExecDisclosure('Impacted entities', `${patternAffectedEntities(pat).length} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
+        ${renderExecDisclosure('Impacted entities', `${affectedCount} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Technical Context</div><h3>${service}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
-    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="details">Details</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="analysis">Dynatrace Intelligence Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="remediation">Remediation Path</button></div>
+    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="details">Context</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="remediation">Remediation</button></div>
     ${tabBody}
   </aside>`;
 }
@@ -6122,15 +6117,19 @@ function renderDeveloperWorkspace(patterns, ps) {
   const selected = patterns.find(p => p.id === patternExplorerState.selectedId) || null;
   const selectedView = developerAnalyticalView === 'explorer' ? renderConcisePatternTable(patterns) : renderDeveloperServiceHeatMap(patterns);
   setIntelSummary('');
+  const _devKpiHtml = _wsKpiHtml;
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view cx-decision-view">
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
+        ${_devKpiHtml ? `<div class="kpi-row kpi-row--inline">${_devKpiHtml}</div>` : ''}
         ${renderDeveloperWorkspaceHeader(patterns)}
         <div class="cx-selected-view">${selectedView}</div>
       </div>
       ${renderDeveloperContextPanel(selected, patterns)}
     </div>
   </div>`;
+  const _devKpiRow = document.getElementById('kpiRow');
+  if (_devKpiRow) _devKpiRow.innerHTML = '';
 }
 
 function renderConciseExecView(patterns, ps) {
@@ -6142,7 +6141,6 @@ function renderConciseExecView(patterns, ps) {
   setIntelSummary('');
   document.getElementById('patternGrid').innerHTML = `<div class="cx-view">
     ${renderConciseKpiRow(ps, patterns)}
-    ${renderConciseFocusBanner(patterns)}
     <div class="cx-main-grid">
       <div class="cx-left">
         ${renderConciseActFirstMap(patterns)}
@@ -6164,9 +6162,7 @@ function renderDecisionFirstExecView(patterns, ps) {
     <div class="cx-decision-workspace">
       <div class="cx-decision-main">
         ${renderConciseKpiRow(ps, patterns)}
-        ${renderConciseFocusBanner(patterns)}
-        <section class="cx-view-controls">
-          <div><div class="cx-eyebrow">View Controls</div><span>Choose one prioritization view</span></div>
+        <section class="cx-view-controls cx-toggle-strip">
           <div class="cx-view-switch">
             <button class="${execAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="explorer">Pattern Explorer</button>
             <button class="${execAnalyticalView === 'map' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="map">Act-First Map</button>
@@ -7286,6 +7282,12 @@ This lightweight runtime export is intentionally additive and does not change ap
 }
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
+document.addEventListener('click',e=>{
+  if (persona === 'developer') return;
+  if (!patternExplorerState.selectedId || execClosedBubblePopupId === patternExplorerState.selectedId) return;
+  if (e.target.closest('.heat-cell,.cx-map-bubble')) return;
+  closeBubblePopup(patternExplorerState.selectedId);
+});
 document.addEventListener('change', function(e) {
   if (e.target?.id === 'cfgProfile') selectCostProfileDraft(e.target.value);
 });
@@ -7461,6 +7463,12 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     toggleExecKpiDetail(card.dataset.mode);
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && patternExplorerState.selectedId && execClosedBubblePopupId !== patternExplorerState.selectedId) {
+    closeBubblePopup(patternExplorerState.selectedId);
   }
 });
 
