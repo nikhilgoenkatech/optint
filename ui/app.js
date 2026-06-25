@@ -3490,8 +3490,9 @@ function normalizeValidationKey(value) {
 function recurringValidationCountDelta(jsCount, dqlCount) {
   const diff = Math.abs(Number(dqlCount || 0) - Number(jsCount || 0));
   const pct = jsCount > 0 ? Math.round((diff / jsCount) * 100) : (dqlCount > 0 ? 100 : 0);
-  const threshold = Math.max(1, Math.ceil((jsCount || 0) * 0.2));
-  return { diff, pct, threshold, aligned: diff <= threshold };
+  const threshold = Math.max(1, Math.floor((jsCount || 0) * 0.2));
+  const aligned = diff === 0 || (diff <= 1 && jsCount >= 5 && pct <= 20);
+  return { diff, pct, threshold, aligned };
 }
 
 function matchRecurringRootCauseValidation(problems, dimensions) {
@@ -3552,10 +3553,14 @@ function matchRecurringRootCauseValidation(problems, dimensions) {
   const matchStatus = exactRootCauseMatch && delta.aligned && !mixedRootCauses ? 'MATCH' : 'PARTIAL';
   const reasonParts = [];
   if (matchStatus === 'MATCH') {
-    reasonParts.push(`Matched by ${matchType} and count difference ${delta.diff} is within threshold ${delta.threshold}.`);
+    reasonParts.push(delta.diff === 0
+      ? `Exact RCA match by ${matchType} and JS/DQL counts are identical.`
+      : `Exact RCA match by ${matchType}; count difference ${delta.diff} is within the high-confidence threshold for ${jsCount} JS occurrences.`);
   } else {
-    if (matchType === 'event_name_category_fallback') reasonParts.push('Matched only by event name/category fallback.');
-    if (!delta.aligned) reasonParts.push(`DQL count differs from JS count by ${delta.diff} (${delta.pct}%), above threshold ${delta.threshold}.`);
+    if (matchType === 'event_name_category_fallback') reasonParts.push('Matched only by event/category fallback, not RCA identity.');
+    if (exactRootCauseMatch && !delta.aligned && delta.diff > 0) reasonParts.push(`Exact RCA match, but count differs by ${delta.pct}%, so marked PARTIAL.`);
+    if (!delta.aligned && dqlCount > 0 && jsCount > dqlCount) reasonParts.push('DQL confirms recurrence for one RCA, but JS pattern scope appears broader.');
+    if (!delta.aligned && dqlCount > jsCount) reasonParts.push('DQL confirms a broader recurring RCA than the current JS pattern scope.');
     if (mixedRootCauses) reasonParts.push('JS pattern groups multiple root-cause names.');
     if (missingJsRootCause) reasonParts.push('JS pattern has missing root-cause id/name fields.');
     if (!reasonParts.length) reasonParts.push(`Matched by ${matchType}, but evidence is not strong enough for a full match.`);
@@ -3780,7 +3785,7 @@ function renderRecurringRootCauseValidation(patterns) {
       <p><b>MATCH</b>: same root cause entity id or exact normalized root cause entity name, with DQL count aligned to JS occurrences.</p>
       <p><b>PARTIAL</b>: some evidence aligns, but the match used fallback evidence, count drift is high, root causes are mixed, or root-cause fields are missing on one side.</p>
       <p><b>NO_MATCH</b>: no reliable DQL validation row was found for the JS pattern.</p>
-      <p><b>Threshold</b>: count aligned if difference is <= 20% of JS occurrences or <= 1 occurrence.</p>
+      <p><b>Threshold</b>: count aligned only when counts are exact, or absolute difference is <= 1, JS occurrences are >= 5, and percentage difference is <= 20%.</p>
     </div>
     <p><strong>Last run:</strong> ${attrText(state.lastRunTime || 'Not run')}${state.error ? ` | <strong>Error:</strong> ${attrText(state.error)}` : ''}</p>
     <details class="validation-dql"><summary>DQL used</summary><pre>${attrText(state.dql || recurringRootCausesQuery(document.getElementById('timeRange')?.value ?? '7d'))}</pre></details>
