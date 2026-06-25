@@ -3487,9 +3487,28 @@ function normalizeValidationKey(value) {
   return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function recurringValidationCountDelta(jsCount, dqlCount) {
+  const diff = Math.abs(Number(dqlCount || 0) - Number(jsCount || 0));
+  const pct = jsCount > 0 ? Math.round((diff / jsCount) * 100) : (dqlCount > 0 ? 100 : 0);
+  const threshold = Math.max(1, Math.ceil((jsCount || 0) * 0.2));
+  return { diff, pct, threshold, aligned: diff <= threshold };
+}
+
 function matchRecurringRootCauseValidation(problems, dimensions) {
   const rows = DQL_VALIDATION.recurringRootCauses.records || [];
-  if (!rows.length) return null;
+  if (!rows.length) {
+    return {
+      matchStatus: 'NO_MATCH',
+      matchType: 'none',
+      matchReason: 'No recurring root-cause rows were returned by DQL for this timeframe.',
+      dqlRecurringRootCauseMatch: '',
+      dqlRecurringProblemCount: null,
+      countDifference: null,
+      countDifferencePct: null,
+      countThreshold: Math.max(1, Math.ceil((problems.length || 0) * 0.2)),
+      countAligned: false,
+    };
+  }
   const rcaIds = uniqVals(problems.map(p => p.rcaId));
   const rcaNames = uniqVals([
     ...(dimensions?.rootCauseEntities || []),
@@ -3511,22 +3530,49 @@ function matchRecurringRootCauseValidation(problems, dimensions) {
     });
     matchType = match ? 'event_name_category_fallback' : '';
   }
-  if (!match) return null;
+  if (!match) {
+    return {
+      matchStatus: 'NO_MATCH',
+      matchType: 'none',
+      matchReason: 'No reliable DQL row matched this JS pattern by root cause id, normalized root cause name, or fallback event/category evidence.',
+      dqlRecurringRootCauseMatch: '',
+      dqlRecurringProblemCount: null,
+      countDifference: null,
+      countDifferencePct: null,
+      countThreshold: Math.max(1, Math.ceil((problems.length || 0) * 0.2)),
+      countAligned: false,
+    };
+  }
   const jsCount = problems.length;
   const dqlCount = Number(match.problem_count || 0);
-  const matchStatus = dqlCount === jsCount
-    ? 'MATCH'
-    : Math.abs(dqlCount - jsCount) <= Math.max(1, Math.round(jsCount * 0.25))
-      ? 'PARTIAL'
-      : 'NO_MATCH';
+  const delta = recurringValidationCountDelta(jsCount, dqlCount);
+  const exactRootCauseMatch = matchType === 'root_cause_entity_id' || matchType === 'root_cause_entity_name';
+  const mixedRootCauses = (dimensions?.rootCauseEntities || []).length > 1;
+  const missingJsRootCause = !rcaIds.length && !rcaNames.length;
+  const matchStatus = exactRootCauseMatch && delta.aligned && !mixedRootCauses ? 'MATCH' : 'PARTIAL';
+  const reasonParts = [];
+  if (matchStatus === 'MATCH') {
+    reasonParts.push(`Matched by ${matchType} and count difference ${delta.diff} is within threshold ${delta.threshold}.`);
+  } else {
+    if (matchType === 'event_name_category_fallback') reasonParts.push('Matched only by event name/category fallback.');
+    if (!delta.aligned) reasonParts.push(`DQL count differs from JS count by ${delta.diff} (${delta.pct}%), above threshold ${delta.threshold}.`);
+    if (mixedRootCauses) reasonParts.push('JS pattern groups multiple root-cause names.');
+    if (missingJsRootCause) reasonParts.push('JS pattern has missing root-cause id/name fields.');
+    if (!reasonParts.length) reasonParts.push(`Matched by ${matchType}, but evidence is not strong enough for a full match.`);
+  }
   return {
     match,
     matchType,
     matchStatus,
+    matchReason: reasonParts.join(' '),
     dqlRecurringRootCauseMatch: match.root_cause_entity_name || match.root_cause_entity_id || '',
     dqlRecurringProblemCount: dqlCount,
     dqlRecurringFirstSeen: match.first_occurrence,
     dqlRecurringLastSeen: match.last_occurrence,
+    countDifference: delta.diff,
+    countDifferencePct: delta.pct,
+    countThreshold: delta.threshold,
+    countAligned: delta.aligned,
   };
 }
 
@@ -3695,17 +3741,27 @@ function renderRecurringRootCauseValidation(patterns) {
       status,
       firstSeen: pat.dqlRecurringFirstSeen || '',
       lastSeen: pat.dqlRecurringLastSeen || '',
-      matchType: pat.dqlRecurringMatchType || '-',
+      matchType: pat.dqlRecurringMatchType || 'none',
+      matchReason: pat.dqlRecurringMatchReason || 'No reliable DQL validation found for this JS pattern.',
+      difference: pat.dqlRecurringCountDifference ?? '-',
+      differencePct: pat.dqlRecurringCountDifferencePct ?? '-',
     };
   });
+  const statusCounts = rows.reduce((acc, row) => {
+    acc[row.status] = (acc[row.status] || 0) + 1;
+    return acc;
+  }, { MATCH:0, PARTIAL:0, NO_MATCH:0 });
   const mismatchRows = rows.filter(row => row.status !== 'MATCH');
   const tableRows = rows.map(row => `<tr>
     <td>${attrText(row.patternName)}</td>
     <td>${row.jsOccurrenceCount}</td>
     <td>${attrText(row.dqlRootCause)}</td>
     <td>${attrText(row.dqlProblemCount)}</td>
+    <td>${attrText(row.difference)}</td>
+    <td>${row.differencePct === '-' ? '-' : `${row.differencePct}%`}</td>
     <td><span class="validation-status ${row.status === 'MATCH' ? 'pass' : 'warning'}">${row.status}</span></td>
     <td>${attrText(row.matchType)}</td>
+    <td>${attrText(row.matchReason)}</td>
   </tr>`).join('');
   return `<h4>Recurring root cause validation</h4>
     <p>Compares JavaScript pattern groups with DQL-derived recurring root causes. DQL does not overwrite JavaScript pattern output.</p>
@@ -3714,9 +3770,21 @@ function renderRecurringRootCauseValidation(patterns) {
       <div><span>Timeframe</span><strong>${attrText(state.timeframe || getTimeLabel())}</strong></div>
       <div><span>DQL rows</span><strong>${state.rowCount || 0}</strong></div>
     </div>
+    <div class="validation-counts">
+      <div><span>Match</span><strong>${statusCounts.MATCH || 0}</strong></div>
+      <div><span>Partial</span><strong>${statusCounts.PARTIAL || 0}</strong></div>
+      <div><span>No match</span><strong>${statusCounts.NO_MATCH || 0}</strong></div>
+    </div>
+    <div class="validation-definition">
+      <strong>Status definitions</strong>
+      <p><b>MATCH</b>: same root cause entity id or exact normalized root cause entity name, with DQL count aligned to JS occurrences.</p>
+      <p><b>PARTIAL</b>: some evidence aligns, but the match used fallback evidence, count drift is high, root causes are mixed, or root-cause fields are missing on one side.</p>
+      <p><b>NO_MATCH</b>: no reliable DQL validation row was found for the JS pattern.</p>
+      <p><b>Threshold</b>: count aligned if difference is <= 20% of JS occurrences or <= 1 occurrence.</p>
+    </div>
     <p><strong>Last run:</strong> ${attrText(state.lastRunTime || 'Not run')}${state.error ? ` | <strong>Error:</strong> ${attrText(state.error)}` : ''}</p>
     <details class="validation-dql"><summary>DQL used</summary><pre>${attrText(state.dql || recurringRootCausesQuery(document.getElementById('timeRange')?.value ?? '7d'))}</pre></details>
-    <table><thead><tr><th>JS pattern</th><th>JS occurrences</th><th>DQL matched root cause</th><th>DQL problem count</th><th>Status</th><th>Match path</th></tr></thead><tbody>${tableRows || '<tr><td colspan="6">No JavaScript recurring patterns in current scope.</td></tr>'}</tbody></table>
+    <table><thead><tr><th>JS pattern</th><th>JS occurrences</th><th>DQL matched root cause</th><th>DQL problem count</th><th>Diff</th><th>Diff %</th><th>Status</th><th>Matched by</th><th>Match reason</th></tr></thead><tbody>${tableRows || '<tr><td colspan="9">No JavaScript recurring patterns in current scope.</td></tr>'}</tbody></table>
     <p>${mismatchRows.length ? `${mismatchRows.length} DQL-vs-JS discrepancy row(s) are visible above for validation.` : 'No recurring root cause discrepancies detected for current recurring patterns.'}</p>`;
 }
 
@@ -4335,6 +4403,11 @@ function buildPattern(problems) {
     dqlRecurringLastSeen: dqlRecurringValidation?.dqlRecurringLastSeen || null,
     dqlRecurringMatchStatus: dqlRecurringValidation?.matchStatus || 'NO_MATCH',
     dqlRecurringMatchType: dqlRecurringValidation?.matchType || '',
+    dqlRecurringMatchReason: dqlRecurringValidation?.matchReason || 'No reliable DQL validation found for this JS pattern.',
+    dqlRecurringCountDifference: dqlRecurringValidation?.countDifference ?? null,
+    dqlRecurringCountDifferencePct: dqlRecurringValidation?.countDifferencePct ?? null,
+    dqlRecurringCountThreshold: dqlRecurringValidation?.countThreshold ?? Math.max(1, Math.ceil(problems.length * 0.2)),
+    dqlRecurringCountAligned: dqlRecurringValidation?.countAligned || false,
     expanded: false,
   };
 }
