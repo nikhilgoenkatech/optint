@@ -3571,6 +3571,8 @@ function matchRecurringRootCauseValidation(problems, dimensions) {
     matchStatus,
     matchReason: reasonParts.join(' '),
     dqlRecurringRootCauseMatch: match.root_cause_entity_name || match.root_cause_entity_id || '',
+    dqlRecurringRootCauseId: match.root_cause_entity_id || '',
+    dqlRecurringRootCauseName: match.root_cause_entity_name || '',
     dqlRecurringProblemCount: dqlCount,
     dqlRecurringFirstSeen: match.first_occurrence,
     dqlRecurringLastSeen: match.last_occurrence,
@@ -3734,11 +3736,89 @@ function renderCategoryCounts(counts) {
   return `<div class="validation-counts">${Object.entries(counts).map(([key, value]) => `<div><span>${key}</span><strong>${value}</strong></div>`).join('')}</div>`;
 }
 
+function validationProblemId(problem) {
+  return String(problem?.displayId || problem?.id || '').trim();
+}
+
+function validationProblemCategory(problem) {
+  return problemRawCategory(problem) || problemWorkspaceCategory(problem) || 'UNKNOWN';
+}
+
+function validationProblemStart(problem) {
+  const start = Number(problem?.start);
+  if (!Number.isFinite(start) || start <= 0) return '-';
+  try {
+    return new Date(start).toISOString();
+  } catch {
+    return '-';
+  }
+}
+
+function renderValidationProblemTable(title, problems, emptyText) {
+  const rows = (problems || []).map(problem => `<tr>
+    <td>${attrText(validationProblemId(problem) || '-')}</td>
+    <td>${attrText(problem?.title || problem?.biz || '-')}</td>
+    <td>${attrText(validationProblemCategory(problem))}</td>
+    <td>${attrText(problem?.rca || '-')}</td>
+    <td>${attrText(problem?.rcaId || '-')}</td>
+    <td>${attrText(validationProblemStart(problem))}</td>
+  </tr>`).join('');
+  return `<h5>${attrText(title)}</h5>
+    <table class="validation-evidence-table"><thead><tr><th>Problem ID</th><th>Event name</th><th>Category</th><th>RCA entity name</th><th>RCA entity ID</th><th>Start time</th></tr></thead><tbody>${rows || `<tr><td colspan="6">${attrText(emptyText)}</td></tr>`}</tbody></table>`;
+}
+
+function problemIdsOnlyIn(left, right) {
+  const rightIds = new Set((right || []).map(validationProblemId).filter(Boolean));
+  return (left || []).map(validationProblemId).filter(Boolean).filter(id => !rightIds.has(id));
+}
+
+function problemIdsInBoth(left, right) {
+  const rightIds = new Set((right || []).map(validationProblemId).filter(Boolean));
+  return (left || []).map(validationProblemId).filter(Boolean).filter(id => rightIds.has(id));
+}
+
+function renderProblemIdList(ids, emptyText='None') {
+  return ids.length
+    ? `<div class="validation-id-list">${ids.map(id => `<span>${attrText(id)}</span>`).join('')}</div>`
+    : `<span class="validation-empty">${attrText(emptyText)}</span>`;
+}
+
+function dqlMatchedProblemsForPattern(pattern) {
+  const matchId = String(pattern?.dqlRecurringRootCauseId || '').trim();
+  const matchName = normalizeValidationKey(pattern?.dqlRecurringRootCauseName || pattern?.dqlRecurringRootCauseMatch || '');
+  if (!matchId && !matchName) return [];
+  return (PROBLEMS || []).filter(problem => {
+    if (matchId && String(problem?.rcaId || '').trim() === matchId) return true;
+    return matchName && normalizeValidationKey(problem?.rca) === matchName;
+  });
+}
+
+function renderRecurringProblemEvidence(pattern) {
+  const jsProblems = pattern?.problems || [];
+  const dqlProblems = dqlMatchedProblemsForPattern(pattern);
+  const onlyJs = problemIdsOnlyIn(jsProblems, dqlProblems);
+  const onlyDql = problemIdsOnlyIn(dqlProblems, jsProblems);
+  const both = problemIdsInBoth(jsProblems, dqlProblems);
+  return `<details class="validation-row-details">
+    <summary>Problem-level evidence</summary>
+    <div class="validation-evidence-note">The recurring root-cause DQL query is aggregate-only, so the DQL group problem list is reconstructed from loaded problem rows that share the matched RCA id/name.</div>
+    ${renderValidationProblemTable('JS pattern problems', jsProblems, 'No JS pattern problems available.')}
+    ${renderValidationProblemTable('DQL matched RCA group problems', dqlProblems, 'No loaded problem rows matched the DQL RCA group.')}
+    <h5>Difference summary</h5>
+    <div class="validation-diff-grid">
+      <div><span>Problem IDs only in JS</span>${renderProblemIdList(onlyJs)}</div>
+      <div><span>Problem IDs only in DQL</span>${renderProblemIdList(onlyDql)}</div>
+      <div><span>Problem IDs in both</span>${renderProblemIdList(both)}</div>
+    </div>
+  </details>`;
+}
+
 function renderRecurringRootCauseValidation(patterns) {
   const state = DQL_VALIDATION.recurringRootCauses;
   const rows = (patterns || []).map(pat => {
     const status = pat.dqlRecurringMatchStatus || 'NO_MATCH';
     return {
+      pattern: pat,
       patternName: pat.title,
       jsOccurrenceCount: pat.occurrences || 0,
       dqlRootCause: pat.dqlRecurringRootCauseMatch || 'No DQL root-cause match',
@@ -3766,7 +3846,7 @@ function renderRecurringRootCauseValidation(patterns) {
     <td>${row.differencePct === '-' ? '-' : `${row.differencePct}%`}</td>
     <td><span class="validation-status ${row.status === 'MATCH' ? 'pass' : 'warning'}">${row.status}</span></td>
     <td>${attrText(row.matchType)}</td>
-    <td>${attrText(row.matchReason)}</td>
+    <td>${attrText(row.matchReason)}${renderRecurringProblemEvidence(row.pattern)}</td>
   </tr>`).join('');
   return `<h4>Recurring root cause validation</h4>
     <p>Compares JavaScript pattern groups with DQL-derived recurring root causes. DQL does not overwrite JavaScript pattern output.</p>
@@ -4403,6 +4483,8 @@ function buildPattern(problems) {
     fixability,
     confidence: confidenceLevel(clamp(qualityScore/100 + clamp((problems.length-2)/8,0,0.15), 0, 1)),
     dqlRecurringRootCauseMatch: dqlRecurringValidation?.dqlRecurringRootCauseMatch || '',
+    dqlRecurringRootCauseId: dqlRecurringValidation?.dqlRecurringRootCauseId || '',
+    dqlRecurringRootCauseName: dqlRecurringValidation?.dqlRecurringRootCauseName || '',
     dqlRecurringProblemCount: dqlRecurringValidation?.dqlRecurringProblemCount || null,
     dqlRecurringFirstSeen: dqlRecurringValidation?.dqlRecurringFirstSeen || null,
     dqlRecurringLastSeen: dqlRecurringValidation?.dqlRecurringLastSeen || null,
