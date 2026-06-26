@@ -7261,8 +7261,8 @@ function applyCfg(){
   render();
 }
 function doRefresh(){const b=document.querySelector('[data-action="doRefresh"]');if(b){b.textContent='Refreshing...';b.disabled=true;}loadProblems().finally(()=>{render();if(b){b.textContent='Refresh';b.disabled=false;}});}
-function downloadTextFile(filename, content) {
-  const blob = new Blob([content], { type:'text/markdown;charset=utf-8' });
+function downloadTextFile(filename, content, mimeType='text/markdown;charset=utf-8') {
+  const blob = new Blob([content], { type:mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -7298,6 +7298,46 @@ This lightweight runtime export is intentionally additive and does not change ap
     console.info('[OpInt] DQL validation notebook fetch unavailable; downloading access note instead.', err.message || err);
     downloadTextFile('opint-dql-validation-notebook-access.md', fallback);
   }
+}
+function downloadValidationReport() {
+  const generatedAt = new Date();
+  const filenameStamp = generatedAt.toISOString().replace(/[:.]/g, '-');
+  const reportHtml = renderValidationReport();
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>OpInt DQL Validation Report</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#0b1117;color:#d8e2ef;margin:24px;line-height:1.45}
+    h1{font-size:22px;margin:0 0 6px}
+    h4{margin:22px 0 8px;text-transform:uppercase;letter-spacing:.08em;color:#8fa6c1;font-size:12px}
+    h5{margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em;color:#8fa6c1;font-size:11px}
+    p{color:#9fb0c3}
+    table{width:100%;border-collapse:collapse;margin:8px 0 14px;border:1px solid #263445}
+    th,td{padding:8px;border-bottom:1px solid #263445;text-align:left;vertical-align:top;font-size:12px}
+    th{background:#121a23;color:#8fa6c1;text-transform:uppercase;font-size:10px}
+    details{border:1px solid #263445;border-radius:6px;margin:8px 0;background:#101820}
+    summary{cursor:pointer;padding:8px 10px;color:#6bb9ff;font-weight:700}
+    pre{white-space:pre-wrap;word-break:break-word;background:#071018;padding:12px;border-top:1px solid #263445}
+    .validation-counts,.validation-diff-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}
+    .validation-counts div,.validation-diff-grid>div,.validation-definition{border:1px solid #263445;border-radius:6px;padding:8px;background:#101820}
+    .validation-counts span,.validation-diff-grid>div>span{display:block;color:#8fa6c1;text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+    .validation-counts strong{display:block;margin-top:4px;color:#f2f7ff}
+    .validation-status{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800}
+    .validation-status.pass{color:#3dd68c;border:1px solid #2d7d57;background:#123425}
+    .validation-status.warning{color:#f5c518;border:1px solid #806b1c;background:#332b12}
+    .validation-id-list{display:flex;flex-wrap:wrap;gap:4px}
+    .validation-id-list span{border:1px solid #263445;border-radius:999px;padding:3px 6px;background:#121a23}
+  </style>
+</head>
+<body>
+  <h1>OpInt DQL Validation Report</h1>
+  <p>Generated ${attrText(generatedAt.toISOString())} | Time range: ${attrText(document.getElementById('timeRange')?.value || getTimeLabel())} | Persona: ${attrText(persona)}</p>
+  ${reportHtml}
+</body>
+</html>`;
+  downloadTextFile(`opint-dql-validation-report-${filenameStamp}.html`, html, 'text/html;charset=utf-8');
 }
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
@@ -7336,6 +7376,7 @@ document.addEventListener('click', function(e) {
     // Header / persona
     case 'doRefresh': doRefresh(); break;
     case 'downloadDqlNotebook': openDeveloperValidationReport(); break;
+    case 'downloadValidationReport': downloadValidationReport(); break;
     case 'closeDeveloperValidationReport': closeDeveloperValidationReport(); break;
     case 'toggleCfg': toggleCfg(); break;
     case 'applyCfg': applyCfg(); break;

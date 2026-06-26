@@ -431,6 +431,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .modal{background:var(--bg-1);border:1px solid var(--border-hi);border-radius:var(--rl);width:min(1180px,96vw);max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 16px 64px rgba(0,0,0,.8)}
 .modal-header{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
 .modal-title{font-size:15px;font-weight:700;flex:1}
+.modal-download{padding:7px 10px;font-size:11px}
 .modal-close{background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer;padding:4px;border-radius:4px;font-family:var(--font)}
 .modal-close:hover{color:var(--text-1);background:var(--bg-3)}
 .modal-body{padding:20px;overflow-x:auto}
@@ -1687,6 +1688,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">DQL Validation Report</div>
+      <button class="btn btn-ghost modal-download" data-action="downloadValidationReport">Download Report</button>
       <button class="modal-close" data-action="closeDeveloperValidationReport">x</button>
     </div>
     <div class="modal-body" id="validationModalBody"></div>
