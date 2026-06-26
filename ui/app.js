@@ -31,6 +31,7 @@ let PROBLEMS = USE_DEMO_DATA ? MOCK_PROBLEMS : [];
 let MTTR_SUMMARY = null;
 let DATA_SOURCE_STATE = USE_DEMO_DATA ? 'demo' : 'loading';
 let DATA_SOURCE_ERROR = '';
+let activeObjective = 'cost_impact';
 const DQL_VALIDATION = {
   recurringRootCauses: {
     queryName: 'recurringRootCausesQuery',
@@ -2289,7 +2290,7 @@ function openAgentModal(pid, agentId) {
       steps: [
         { n: 1, title: 'Dynatrace OpInt', body: `Root cause identified: <strong>${p.rca || 'Unknown'}</strong><br><span style="color:var(--text-3);font-size:11px">Problem: ${p.title}</span>` },
         { n: 2, title: 'Davis CoPilot', body: `Generated remediation runbook for <strong>${infra.region || 'your region'}</strong><br><span style="color:var(--text-3);font-size:11px">Confidence: ${p.hasRCA ? '85%' : '45%'}</span>` },
-        { n: 3, title: 'AWS DevOps Agent', body: `Executes via <strong>EventBridge -> Systems Manager</strong> in ${infra.region || 'ap-southeast-2'}<br><span style="color:var(--text-3);font-size:11px">No human approval required - confidence threshold met</span>` },
+        { n: 3, title: 'AWS DevOps Agent', body: `Executes via <strong>EventBridge -> Systems Manager</strong> in ${infra.region || 'ap-southeast-2'}<br><span style="color:var(--text-3);font-size:11px">No human approval required - observed policy conditions met</span>` },
       ],
       runbook: getRunbook(p, 'aws'),
       confirmLabel: '🟠 Trigger Autonomous Remediation',
@@ -3447,6 +3448,210 @@ function patternPriorityScore(pat, allPatterns=[]) {
   return Math.round((costShare * 35 + recurrence * 25 + impact * 20 + open * 15 + fix * 5));
 }
 
+const TIER_ORDER = { Low:1, Medium:2, High:3, Critical:4 };
+const TIER_LABELS = ['Low','Medium','High','Critical'];
+
+function tierAtLeast(value, minimum) {
+  return (TIER_ORDER[value] || 0) >= (TIER_ORDER[minimum] || 0);
+}
+
+function compareTierDesc(a, b) {
+  return (TIER_ORDER[b] || 0) - (TIER_ORDER[a] || 0);
+}
+
+function compareTierAsc(a, b) {
+  return (TIER_ORDER[a] || 0) - (TIER_ORDER[b] || 0);
+}
+
+function fallbackTier(value, thresholds) {
+  const n = Number(value || 0);
+  if (n <= thresholds[0]) return 'Low';
+  if (n <= thresholds[1]) return 'Medium';
+  if (n <= thresholds[2]) return 'High';
+  return 'Critical';
+}
+
+function cohortTier(value, cohortValues, fallbackThresholds, dataCoverage, key) {
+  const values = (cohortValues || []).map(Number).filter(Number.isFinite);
+  const n = Number(value || 0);
+  const distinct = new Set(values).size;
+  if (values.length >= 4 && distinct >= 3) {
+    const lessOrEqual = values.filter(v => v <= n).length;
+    const pct = lessOrEqual / values.length;
+    dataCoverage.present.push(`${key}: cohort-relative`);
+    if (pct <= 0.25) return 'Low';
+    if (pct <= 0.5) return 'Medium';
+    if (pct <= 0.75) return 'High';
+    return 'Critical';
+  }
+  dataCoverage.present.push(`${key}: simple thresholds`);
+  dataCoverage.fallbacks.push(`${key} tier used simple thresholds because cohort size is too small.`);
+  return fallbackTier(n, fallbackThresholds);
+}
+
+function maxTier(...tiers) {
+  return tiers.filter(Boolean).sort((a, b) => compareTierDesc(a, b))[0] || 'Low';
+}
+
+function observedAffectedEntityIds(pattern) {
+  return uniqVals((pattern?.problems || []).flatMap(problem => problem.affectedEntityIds || []));
+}
+
+function observedAffectedUsers(pattern) {
+  const values = (pattern?.problems || []).map(problem => problem.users).filter(Number.isFinite);
+  return {
+    present: values.length > 0,
+    total: values.reduce((sum, value) => sum + Math.max(0, value || 0), 0),
+  };
+}
+
+function patternMedianDuration(pattern) {
+  const durations = (pattern?.problems || []).map(problem => problem.dur).filter(value => Number.isFinite(value) && value > 0);
+  return {
+    present: durations.length > 0,
+    coverage: (pattern?.problems?.length || 0) ? durations.length / pattern.problems.length : 0,
+    median: durations.length ? arrPercentile(durations, 0.5) : null,
+  };
+}
+
+function observedRootCauseEntity(pattern) {
+  const values = uniqVals((pattern?.problems || []).filter(problem => problem.hasRCA && problem.rca).map(problem => problem.rca));
+  return values[0] || null;
+}
+
+function observedSeverityTier(pattern) {
+  const sevOrder = { CUSTOM_ALERT:'Low', INFO:'Low', LOW:'Low', PERFORMANCE:'Medium', RESOURCE_CONTENTION:'Medium', ERROR:'High', AVAILABILITY:'Critical' };
+  const severities = uniqVals((pattern?.problems || []).map(problem => problem.sev));
+  return maxTier(...severities.map(sev => sevOrder[String(sev || '').toUpperCase()] || 'Medium'));
+}
+
+function extractPatternSignals(pattern, allPatterns=[]) {
+  const dataCoverage = { present:[], missing:[], fallbacks:[] };
+  const drivers = [];
+  const cohort = allPatterns && allPatterns.length ? allPatterns : [pattern];
+  const occurrences = pattern?.occurrences || pattern?.problems?.length || 0;
+  const recurrenceTier = cohortTier(occurrences, cohort.map(p => p.occurrences || p.problems?.length || 0), [1, 3, 7], dataCoverage, 'recurrence');
+  const cost = patternCost(pattern);
+  const costTier = cohortTier(cost, cohort.map(patternCost), [0, 1000, 10000], dataCoverage, 'cost');
+  const entityIds = observedAffectedEntityIds(pattern);
+  const affectedEntityCount = entityIds.length;
+  const affectedUsersInfo = observedAffectedUsers(pattern);
+  const affectedUsers = affectedUsersInfo.present ? affectedUsersInfo.total : null;
+  const userTier = affectedUsersInfo.present
+    ? cohortTier(affectedUsers, cohort.map(p => observedAffectedUsers(p).total), [0, 100, 1000], dataCoverage, 'affected users')
+    : null;
+  const entityTier = affectedEntityCount > 0
+    ? cohortTier(affectedEntityCount, cohort.map(p => observedAffectedEntityIds(p).length), [1, 3, 8], dataCoverage, 'affected entities')
+    : null;
+  const severityTier = observedSeverityTier(pattern);
+  dataCoverage.present.push(`severity: ${uniqVals((pattern?.problems || []).map(problem => problem.sev)).join(', ') || 'UNKNOWN'}`);
+  const impactTier = maxTier(userTier, entityTier, severityTier);
+  const scopeTier = maxTier(userTier, entityTier);
+  if (!affectedUsersInfo.present) dataCoverage.missing.push('affected users');
+  if (!affectedEntityCount) dataCoverage.missing.push('affected entities');
+  const duration = patternMedianDuration(pattern);
+  const durationTier = duration.present
+    ? cohortTier(duration.median, cohort.map(p => patternMedianDuration(p).median).filter(Number.isFinite), [15, 60, 240], dataCoverage, 'duration')
+    : 'Low';
+  if (!duration.present || duration.coverage < 0.5) dataCoverage.missing.push('duration');
+  const rootCauseEntity = observedRootCauseEntity(pattern);
+  const rcaAvailability = rootCauseEntity ? 'Present' : 'Missing';
+  dataCoverage[rcaAvailability === 'Present' ? 'present' : 'missing'].push('RCA');
+  const recommendationType = pattern?.recommendation?.type || null;
+  if (recommendationType) dataCoverage.present.push(`recommendation type: ${recommendationType}`);
+  else dataCoverage.missing.push('recommendation type');
+  const trend = pattern?.trend || null;
+  if (trend) dataCoverage.present.push(`trend: ${trend}`);
+  else dataCoverage.missing.push('trend');
+  const noiseReasons = [];
+  if (recommendationType === 'ADD_TIME_WINDOW') noiseReasons.push('ADD_TIME_WINDOW recommendation');
+  if (duration.present && duration.median <= 15) noiseReasons.push(`Short-lived duration: median ${fmtM(duration.median)}`);
+  const severities = uniqVals((pattern?.problems || []).map(problem => String(problem.sev || '').toUpperCase()));
+  const lowSeverity = severities.some(sev => ['LOW','INFO','CUSTOM_ALERT'].includes(sev));
+  if (lowSeverity) noiseReasons.push(`Low severity category: ${severities.filter(sev => ['LOW','INFO','CUSTOM_ALERT'].includes(sev)).join(', ')}`);
+  if ((affectedUsers === 0 || affectedUsers === null) && lowSeverity) noiseReasons.push('Low user impact with low severity');
+  const noiseLikelihood = noiseReasons.length >= 3 ? 'High' : noiseReasons.length >= 2 ? 'Medium' : 'Low';
+  if (tierAtLeast(recurrenceTier, 'High')) drivers.push(`${recurrenceTier} recurrence`);
+  else drivers.push(`Recurrence tier: ${recurrenceTier}`);
+  drivers.push(`Cost tier: ${costTier}`);
+  drivers.push(`Impact tier: ${impactTier}`);
+  drivers.push(`Duration tier: ${duration.present ? durationTier : 'Unavailable'}`);
+  drivers.push(`RCA Availability: ${rcaAvailability}`);
+  if (rootCauseEntity) drivers.push(`Root Cause Entity: ${rootCauseEntity}`);
+  drivers.push(`Affected entities: ${affectedEntityCount}`);
+  drivers.push(affectedUsers === null ? 'Affected users: unavailable' : `Affected users: ${affectedUsers}`);
+  drivers.push(`Scope tier: ${scopeTier}`);
+  noiseReasons.forEach(reason => drivers.push(reason));
+  return {
+    recurrenceTier,
+    costTier,
+    impactTier,
+    durationTier,
+    rcaAvailability,
+    rootCauseEntity,
+    affectedEntityCount,
+    affectedUsers,
+    scopeTier,
+    noiseLikelihood,
+    trend,
+    dataCoverage,
+    drivers,
+  };
+}
+
+function isAlertOptimizationCandidate(pattern, signals) {
+  return tierAtLeast(signals.recurrenceTier, 'Medium')
+    && (
+      tierAtLeast(signals.noiseLikelihood, 'Medium')
+      || signals.impactTier === 'Low'
+    )
+    && !tierAtLeast(signals.costTier, 'High');
+}
+
+function compareAlertOptimizationCandidates(a, b) {
+  return compareTierDesc(a.signals.noiseLikelihood, b.signals.noiseLikelihood)
+    || compareTierDesc(a.signals.recurrenceTier, b.signals.recurrenceTier)
+    || compareTierAsc(a.signals.impactTier, b.signals.impactTier)
+    || compareTierAsc(a.signals.durationTier, b.signals.durationTier)
+    || compareTierAsc(a.signals.costTier, b.signals.costTier)
+    || String(a.pat.title || '').localeCompare(String(b.pat.title || ''));
+}
+
+function explainAlertOptimizationQualification(pattern, signals) {
+  const qualificationDrivers = [];
+  const nonQualificationReasons = [];
+  if (tierAtLeast(signals.recurrenceTier, 'Medium')) qualificationDrivers.push('recurrenceTier >= Medium');
+  else nonQualificationReasons.push('recurrenceTier below Medium');
+  if (tierAtLeast(signals.noiseLikelihood, 'Medium')) qualificationDrivers.push('noiseLikelihood >= Medium');
+  else if (signals.impactTier === 'Low') qualificationDrivers.push('impactTier is Low');
+  else nonQualificationReasons.push('noiseLikelihood below Medium and impactTier is not Low');
+  if (!tierAtLeast(signals.costTier, 'High')) qualificationDrivers.push('costTier below High');
+  else nonQualificationReasons.push('costTier is High or Critical');
+  return {
+    objective: 'alert_optimization',
+    qualified: isAlertOptimizationCandidate(pattern, signals),
+    patternTitle: pattern.title,
+    signals,
+    qualificationDrivers,
+    nonQualificationReasons,
+    missingData: signals.dataCoverage.missing,
+  };
+}
+
+function rankPatterns(patterns, objective = activeObjective) {
+  const enriched = (patterns || []).map((pat) => ({
+    pat,
+    signals: extractPatternSignals(pat, patterns || []),
+  }));
+  if (objective === 'alert_optimization') {
+    return enriched
+      .filter(({ pat, signals }) => isAlertOptimizationCandidate(pat, signals))
+      .sort(compareAlertOptimizationCandidates)
+      .map(({ pat }) => pat);
+  }
+  return [...(patterns || [])].sort((a, b) => patternPriorityScore(b) - patternPriorityScore(a));
+}
+
 function patternFixabilityScore(pat) {
   const confidence = clamp(patternConfidenceScore(pat) / 100, 0, 1);
   const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.62 : 0.28;
@@ -3564,7 +3769,7 @@ function matchRecurringRootCauseValidation(problems, dimensions) {
   if (matchStatus === 'MATCH') {
     reasonParts.push(delta.diff === 0
       ? `Exact RCA match by ${matchType} and JS/DQL counts are identical.`
-      : `Exact RCA match by ${matchType}; count difference ${delta.diff} is within the high-confidence threshold for ${jsCount} JS occurrences.`);
+      : `Exact RCA match by ${matchType}; count difference ${delta.diff} is within the strict match threshold for ${jsCount} JS occurrences.`);
   } else {
     if (matchType === 'event_name_category_fallback') reasonParts.push('Matched only by event/category fallback, not RCA identity.');
     if (exactRootCauseMatch && !delta.aligned && delta.diff > 0) reasonParts.push(`Exact RCA match, but count differs by ${delta.pct}%, so marked PARTIAL.`);
@@ -3836,7 +4041,7 @@ function renderRecurringRootCauseValidation(patterns) {
       firstSeen: pat.dqlRecurringFirstSeen || '',
       lastSeen: pat.dqlRecurringLastSeen || '',
       matchType: pat.dqlRecurringMatchType || 'none',
-      matchReason: pat.dqlRecurringMatchReason || 'No reliable DQL validation found for this JS pattern.',
+      matchReason: pat.dqlRecurringMatchReason || 'No reliable DQL comparison found for this JS pattern.',
       difference: pat.dqlRecurringCountDifference ?? '-',
       differencePct: pat.dqlRecurringCountDifferencePct ?? '-',
     };
@@ -3857,8 +4062,8 @@ function renderRecurringRootCauseValidation(patterns) {
     <td>${attrText(row.matchType)}</td>
     <td>${attrText(row.matchReason)}${renderRecurringProblemEvidence(row.pattern)}</td>
   </tr>`).join('');
-  return `<h4>Recurring root cause validation</h4>
-    <p>Compares JavaScript pattern groups with DQL-derived recurring root causes. DQL does not overwrite JavaScript pattern output.</p>
+  return `<h4>Recurring root cause comparison</h4>
+    <p>Compares JavaScript pattern groups with DQL-derived recurring root-cause facts. This does not validate RCA correctness or overwrite JavaScript pattern output.</p>
     <div class="validation-counts">
       <div><span>Query</span><strong>${attrText(state.queryName)}</strong></div>
       <div><span>Timeframe</span><strong>${attrText(state.timeframe || getTimeLabel())}</strong></div>
@@ -3873,13 +4078,72 @@ function renderRecurringRootCauseValidation(patterns) {
       <strong>Status definitions</strong>
       <p><b>MATCH</b>: same root cause entity id or exact normalized root cause entity name, with DQL count aligned to JS occurrences.</p>
       <p><b>PARTIAL</b>: some evidence aligns, but the match used fallback evidence, count drift is high, root causes are mixed, or root-cause fields are missing on one side.</p>
-      <p><b>NO_MATCH</b>: no reliable DQL validation row was found for the JS pattern.</p>
+      <p><b>NO_MATCH</b>: no reliable DQL comparison row was found for the JS pattern.</p>
       <p><b>Threshold</b>: count aligned only when counts are exact, or absolute difference is <= 1, JS occurrences are >= 5, and percentage difference is <= 20%.</p>
     </div>
     <p><strong>Last run:</strong> ${attrText(state.lastRunTime || 'Not run')}${state.error ? ` | <strong>Error:</strong> ${attrText(state.error)}` : ''}</p>
     <details class="validation-dql"><summary>DQL used</summary><pre>${attrText(state.dql || recurringRootCausesQuery(document.getElementById('timeRange')?.value ?? '7d'))}</pre></details>
     <table><thead><tr><th>JS pattern</th><th>JS occurrences</th><th>DQL matched root cause</th><th>DQL problem count</th><th>Diff</th><th>Diff %</th><th>Status</th><th>Matched by</th><th>Match reason</th></tr></thead><tbody>${tableRows || '<tr><td colspan="9">No JavaScript recurring patterns in current scope.</td></tr>'}</tbody></table>
-    <p>${mismatchRows.length ? `${mismatchRows.length} DQL-vs-JS discrepancy row(s) are visible above for validation.` : 'No recurring root cause discrepancies detected for current recurring patterns.'}</p>`;
+    <p>${mismatchRows.length ? `${mismatchRows.length} DQL-vs-JS discrepancy row(s) are visible above for inspection.` : 'No recurring root cause discrepancies detected for current recurring patterns.'}</p>`;
+}
+
+function renderObjectiveDebugPatternDetails(pattern, signals, debug=null) {
+  const coverage = signals.dataCoverage || { present:[], missing:[], fallbacks:[] };
+  return `<details class="objective-debug-details">
+    <summary>Observed signals and drivers</summary>
+    <div class="objective-debug-grid">
+      <div><span>Recurrence</span><strong>${signals.recurrenceTier}</strong></div>
+      <div><span>Cost</span><strong>${signals.costTier}</strong></div>
+      <div><span>Impact</span><strong>${signals.impactTier}</strong></div>
+      <div><span>Duration</span><strong>${signals.durationTier}</strong></div>
+      <div><span>RCA Availability</span><strong>${signals.rcaAvailability}</strong></div>
+      <div><span>Scope Tier</span><strong>${signals.scopeTier}</strong></div>
+      <div><span>Noise Likelihood</span><strong>${signals.noiseLikelihood}</strong></div>
+      <div><span>Trend</span><strong>${signals.trend || 'Unavailable'}</strong></div>
+      <div><span>Affected Entity Count</span><strong>${signals.affectedEntityCount}</strong></div>
+      <div><span>Affected Users</span><strong>${signals.affectedUsers === null ? 'Unavailable' : signals.affectedUsers}</strong></div>
+    </div>
+    <p><strong>Root Cause Entity:</strong> ${attrText(signals.rootCauseEntity || 'Unavailable')}</p>
+    <p><strong>Pattern Drivers:</strong> ${attrText((signals.drivers || []).join(' | ') || 'No drivers available')}</p>
+    ${debug ? `<p><strong>Why this qualifies:</strong> ${attrText((debug.qualificationDrivers || []).join(' | ') || 'Does not qualify')}</p>
+      <p><strong>Why this does not qualify:</strong> ${attrText((debug.nonQualificationReasons || []).join(' | ') || 'No blocking reasons')}</p>` : ''}
+    <p><strong>Data Coverage Present:</strong> ${attrText((coverage.present || []).join(' | ') || 'None')}</p>
+    <p><strong>Missing Data:</strong> ${attrText((coverage.missing || []).join(' | ') || 'None')}</p>
+    <p><strong>Coverage Notes:</strong> ${attrText((coverage.fallbacks || []).join(' | ') || 'None')}</p>
+  </details>`;
+}
+
+function renderObjectiveRankingDebug(patterns) {
+  const costRanked = rankPatterns(patterns, 'cost_impact').slice(0, 5);
+  const alertRanked = rankPatterns(patterns, 'alert_optimization').slice(0, 5);
+  const costRows = costRanked.map((pat, idx) => {
+    const signals = extractPatternSignals(pat, patterns);
+    return `<tr><td>${idx + 1}</td><td>${attrText(pat.title)}</td><td>${signals.costTier}</td><td>${signals.recurrenceTier}</td><td>${signals.impactTier}</td><td>${renderObjectiveDebugPatternDetails(pat, signals)}</td></tr>`;
+  }).join('');
+  const alertRows = alertRanked.map((pat, idx) => {
+    const signals = extractPatternSignals(pat, patterns);
+    const debug = explainAlertOptimizationQualification(pat, signals);
+    return `<tr><td>${idx + 1}</td><td>${attrText(pat.title)}</td><td>${signals.noiseLikelihood}</td><td>${signals.recurrenceTier}</td><td>${signals.impactTier}</td><td>${signals.durationTier}</td><td>${signals.costTier}</td><td>${renderObjectiveDebugPatternDetails(pat, signals, debug)}</td></tr>`;
+  }).join('');
+  const qualificationRows = (patterns || []).map(pat => {
+    const signals = extractPatternSignals(pat, patterns);
+    const debug = explainAlertOptimizationQualification(pat, signals);
+    return `<tr>
+      <td>${attrText(pat.title)}</td>
+      <td>${debug.qualified ? 'QUALIFIES' : 'DOES NOT QUALIFY'}</td>
+      <td>${attrText((debug.qualificationDrivers || []).join(' | ') || '-')}</td>
+      <td>${attrText((debug.nonQualificationReasons || []).join(' | ') || '-')}</td>
+      <td>${attrText((debug.missingData || []).join(' | ') || 'None')}</td>
+    </tr>`;
+  }).join('');
+  return `<h4>Objective-aware ranking debug</h4>
+    <p>Debug-only comparison. Current Cost Impact behavior remains the default. Alert Optimization uses tiered observed signals and lexicographic ordering only.</p>
+    <h4>Top Cost Impact patterns</h4>
+    <table><thead><tr><th>Rank</th><th>Pattern</th><th>Cost Tier</th><th>Recurrence Tier</th><th>Impact Tier</th><th>Observed Signals</th></tr></thead><tbody>${costRows || '<tr><td colspan="6">No patterns available.</td></tr>'}</tbody></table>
+    <h4>Top Alert Optimization candidates</h4>
+    <table><thead><tr><th>Rank</th><th>Pattern</th><th>Noise Likelihood</th><th>Recurrence Tier</th><th>Impact Tier</th><th>Duration Tier</th><th>Cost Tier</th><th>Observed Signals</th></tr></thead><tbody>${alertRows || '<tr><td colspan="8">No alert optimization candidates for current scope.</td></tr>'}</tbody></table>
+    <h4>Alert Optimization qualification</h4>
+    <table><thead><tr><th>Pattern</th><th>Status</th><th>Why this qualifies</th><th>Why this does not qualify</th><th>Missing data</th></tr></thead><tbody>${qualificationRows || '<tr><td colspan="5">No patterns available.</td></tr>'}</tbody></table>`;
 }
 
 function renderValidationReport() {
@@ -3892,6 +4156,7 @@ function renderValidationReport() {
   return `<div class="validation-report">
     <div class="validation-status ${report.status.toLowerCase()}">${report.status}</div>
     ${renderRecurringRootCauseValidation(patterns)}
+    ${renderObjectiveRankingDebug(patterns)}
     <p>${report.warnings.length ? report.warnings.map(attrText).join(' ') : 'No category mismatches were detected in the current Developer scope.'}</p>
     <h4>Raw DQL category distribution</h4>
     ${renderCategoryCounts(report.rawDistribution)}
@@ -4499,7 +4764,7 @@ function buildPattern(problems) {
     dqlRecurringLastSeen: dqlRecurringValidation?.dqlRecurringLastSeen || null,
     dqlRecurringMatchStatus: dqlRecurringValidation?.matchStatus || 'NO_MATCH',
     dqlRecurringMatchType: dqlRecurringValidation?.matchType || '',
-    dqlRecurringMatchReason: dqlRecurringValidation?.matchReason || 'No reliable DQL validation found for this JS pattern.',
+    dqlRecurringMatchReason: dqlRecurringValidation?.matchReason || 'No reliable DQL comparison found for this JS pattern.',
     dqlRecurringCountDifference: dqlRecurringValidation?.countDifference ?? null,
     dqlRecurringCountDifferencePct: dqlRecurringValidation?.countDifferencePct ?? null,
     dqlRecurringCountThreshold: dqlRecurringValidation?.countThreshold ?? Math.max(1, Math.ceil(problems.length * 0.2)),
@@ -5685,6 +5950,14 @@ function sreRcaStatus(score) {
   return score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low';
 }
 
+function patternRcaAvailability(pattern) {
+  return observedRootCauseEntity(pattern) ? 'Present' : 'Missing';
+}
+
+function patternRootCauseEntityLabel(pattern) {
+  return observedRootCauseEntity(pattern) || 'Unavailable';
+}
+
 function renderSreStatusTile(label, value, explanation) {
   const status = value;
   const cls = String(status || '').toLowerCase();
@@ -5701,14 +5974,13 @@ function renderSreFocus(patterns) {
     </section>`;
   }
   const priority = sreReliabilityPriority(selected, patterns);
-  const rcaConfidence = Math.round((selected.rcaConsistency || 0) * 100);
-  const rcaStatus = sreRcaStatus(rcaConfidence);
-  return `<section class="cx-focus ${rcaConfidence < 25 ? 'risk' : ''}">
-    <div><div class="cx-eyebrow">Selected Focus</div><h2>${selected.title}</h2><p>${rcaConfidence < 25 ? 'RCA warning: ' : ''}RCA confidence is ${rcaStatus}. Prioritize evidence enrichment before automation or prevention work.</p></div>
+  const rcaAvailability = patternRcaAvailability(selected);
+  return `<section class="cx-focus ${rcaAvailability === 'Missing' ? 'risk' : ''}">
+    <div><div class="cx-eyebrow">Selected Focus</div><h2>${selected.title}</h2><p>RCA Availability: ${rcaAvailability}. ${rcaAvailability === 'Missing' ? 'Prioritize evidence enrichment before automation or prevention work.' : `Root Cause Entity: ${attrText(patternRootCauseEntityLabel(selected))}.`}</p></div>
     <div class="cx-focus-actions">
       <div class="cx-focus-stat"><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
       <div class="cx-focus-stat"><span>Reliability Priority</span><strong>${sreScoreStatus(priority)}</strong></div>
-      <div class="cx-focus-stat"><span>RCA Confidence</span><strong>${rcaStatus}</strong></div>
+      <div class="cx-focus-stat"><span>RCA Availability</span><strong>${rcaAvailability}</strong></div>
       <div class="cx-focus-stat"><span>Trend</span><strong>${selected.trend}</strong></div>
     </div>
   </section>`;
@@ -5768,7 +6040,7 @@ function renderSreRiskMatrix(patterns, ps=[]) {
     const selected = pat.id === patternExplorerState.selectedId;
     const automation = sreAutomationOpportunity(pat);
     const blast = sreBlastRadiusScore(pat);
-    const rca = Math.round((pat.rcaConsistency || 0) * 100);
+    const rcaAvailability = patternRcaAvailability(pat);
     const priorityStatus = sreScoreStatus(score);
     const priorityClass = priorityStatus.toLowerCase();
     const tooltip = `${pat.title} | Reliability priority ${sreScoreStatus(score)} | Automation opportunity ${sreScoreStatus(automation)} | Blast radius ${sreScoreStatus(blast)}`;
@@ -5786,12 +6058,12 @@ function renderSreRiskMatrix(patterns, ps=[]) {
         <div class="cx-pop-grid">
           <div><small>Priority</small><strong class="sre-status-${sreScoreStatus(score).toLowerCase()}">${sreScoreStatus(score)}</strong></div>
           <div><small>Automation</small><strong class="sre-status-${sreScoreStatus(automation).toLowerCase()}">${sreScoreStatus(automation)}</strong></div>
-          <div><small>RCA Confidence</small><strong class="sre-status-${sreRcaStatus(rca).toLowerCase()}">${sreRcaStatus(rca)}</strong></div>
+          <div><small>RCA Availability</small><strong>${rcaAvailability}</strong></div>
           <div><small>Blast Radius</small><strong class="sre-status-${sreScoreStatus(blast).toLowerCase()}">${sreScoreStatus(blast)}</strong></div>
           <div><small>Recurrence</small><strong>${pat.occurrences}x</strong></div>
           <div><small>Open</small><strong>${patternOpenCount(pat)}</strong></div>
         </div>
-        <p>${pat.trend} trend | ${pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || 'RCA not consistently identified'}</p>
+        <p>${pat.trend} trend | Root Cause Entity: ${attrText(patternRootCauseEntityLabel(pat))}</p>
       </div>
     </button>`;
   }).join('');
@@ -5851,18 +6123,18 @@ function renderSreWorkspaceHeader(patterns, ps) {
   const selected = patternExplorerState.selectedId
     ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
     : null;
-  const rcaConfidence = selected ? Math.round((selected.rcaConsistency || 0) * 100) : null;
+  const rcaAvailability = selected ? patternRcaAvailability(selected) : null;
   const priority = selected ? sreReliabilityPriority(selected, patterns) : null;
   const source = dataSourceLabel();
   const sourceClass = DATA_SOURCE_STATE || 'demo';
   const summary = selected
-    ? `${rcaConfidence < 25 ? 'RCA warning: ' : ''}RCA confidence is ${sreRcaStatus(rcaConfidence)}. Prioritize evidence enrichment before automation or prevention work.`
+    ? `RCA Availability: ${rcaAvailability}. ${rcaAvailability === 'Missing' ? 'Prioritize evidence enrichment before automation or prevention work.' : `Root Cause Entity: ${patternRootCauseEntityLabel(selected)}.`}`
     : 'Select a bubble from the Reliability Risk Matrix or a row from Operational Debt Explorer to inspect recurrence, automation opportunity, and prevention options.';
   const stats = selected
     ? `<div class="workspace-header-stats">
         <div><span>Recurrence</span><strong>${selected.occurrences}x</strong></div>
         <div><span>Reliability Priority</span><strong>${sreScoreStatus(priority)}</strong></div>
-        <div><span>RCA Confidence</span><strong>${sreRcaStatus(rcaConfidence)}</strong></div>
+        <div><span>RCA Availability</span><strong>${rcaAvailability}</strong></div>
         <div><span>Trend</span><strong>${selected.trend}</strong></div>
       </div>`
     : `<div class="workspace-header-stats compact">
@@ -5886,11 +6158,10 @@ function renderSreContextPanel(pat, patterns) {
   </aside>`;
   const priority = sreReliabilityPriority(pat, patterns);
   const automation = sreAutomationOpportunity(pat);
-  const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
+  const rcaAvailability = patternRcaAvailability(pat);
   const blast = sreBlastRadiusScore(pat);
   const priorityStatus = sreScoreStatus(priority);
   const automationStatus = sreScoreStatus(automation);
-  const rcaStatus = sreRcaStatus(rcaConfidence);
   const blastStatus = sreScoreStatus(blast);
   const selectedTab = srePanelTab;
   const repeatedRca = pat.dimensions?.rootCauseEntities?.[0] || pat.dimensions?.rootCauses?.[0] || 'RCA not consistently identified';
@@ -5899,14 +6170,14 @@ function renderSreContextPanel(pat, patterns) {
     : selectedTab === 'remediation'
       ? renderWorkspaceRemediationBlock(pat) || `<div class="cx-complexity-summary"><span>Remediation</span><strong>Available on request</strong><p>Generate prevention and automation guidance for this selected reliability pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`
       : `<div class="cx-detail-tiles sre-status-tiles">
-          ${renderSreStatusTile('Reliability Priority', priorityStatus, `Based on recurrence, impact, and RCA uncertainty.`)}
-          ${renderSreStatusTile('Automation Opportunity', automationStatus, `Based on recurrence, fixability, and RCA consistency.`)}
-          ${renderSreStatusTile('RCA Confidence', rcaStatus, `Based on repeated root-cause evidence across this pattern.`)}
+          ${renderSreStatusTile('Reliability Priority', priorityStatus, `Based on recurrence, impact, and open incidents.`)}
+          ${renderSreStatusTile('Automation Opportunity', automationStatus, `Based on recurrence, recommendation type, and remediation effort.`)}
+          ${renderSreStatusTile('RCA Availability', rcaAvailability, `Root Cause Entity: ${patternRootCauseEntityLabel(pat)}.`)}
           ${renderSreStatusTile('Blast Radius', blastStatus, `Based on affected entities and grouped occurrence count.`)}
         </div>
-        ${rcaConfidence < 25 ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Confidence Warning</div><strong>RCA confidence is Low.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
+        ${rcaAvailability === 'Missing' ? `<div class="cx-action-block low"><div class="cx-eyebrow">RCA Availability Notice</div><strong>RCA Availability: Missing.</strong><p>Prioritize evidence enrichment, ownership validation, and scoped analysis before automation or prevention work.</p></div>` : ''}
         <div class="cx-complexity-summary"><span>Reliability Signals</span><strong>${repeatedRca}</strong><p>${pat.occurrences} recurring incidents | ${pat.trend} trend | ${patternOpenCount(pat)} still open</p></div>
-        <div class="cx-complexity-summary"><span>Operational Debt Drivers</span><strong>Unresolved recurring reliability risk.</strong><p>${pat.occurrences} recurring incidents | RCA ${rcaConfidence ? 'partially identified' : 'incomplete'} | ownership or prevention path needs confirmation.</p></div>
+        <div class="cx-complexity-summary"><span>Operational Debt Drivers</span><strong>Unresolved recurring reliability risk.</strong><p>${pat.occurrences} recurring incidents | RCA Availability: ${rcaAvailability} | ownership or prevention path needs confirmation.</p></div>
         ${renderExecDisclosure('Supporting Evidence', `${pat.problems?.length || 0} grouped problems`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('') || '<span class="px-chip">No problem IDs available</span>'}</div>`)}`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Reliability Context</div><h3>${pat.title}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
@@ -6071,8 +6342,8 @@ function renderDeveloperServiceHeatMap(patterns) {
     }).join('');
     let popup = '';
     if (popupPat) {
-      const conf = developerConfidenceStatus(popupPat);
-      const confCls = conf === 'High' ? 'hcp-high' : conf === 'Low' ? 'hcp-low' : 'hcp-med';
+      const rcaAvailability = patternRcaAvailability(popupPat);
+      const rcaCls = rcaAvailability === 'Present' ? 'hcp-low' : 'hcp-high';
       const cat = developerFailureType(popupPat);
       const trendRaw = popupPat.trend === 'INCREASING' ? 'up' : popupPat.trend === 'DECREASING' ? 'down' : 'flat';
       const trendCls = popupPat.trend === 'INCREASING' ? 'hcp-high' : popupPat.trend === 'DECREASING' ? 'hcp-low' : 'hcp-med';
@@ -6082,7 +6353,7 @@ function renderDeveloperServiceHeatMap(patterns) {
         <div class="hcp-head"><span>${service}</span><button class="hcp-close" data-action="closeHeatPopup" aria-label="Close">×</button></div>
         <div class="hcp-row"><span>FAILURE TYPE</span><strong>${cat.replace(/_/g,' ')} ${popupPat.occurrences}x</strong></div>
         <div class="hcp-row"><span>TREND</span><strong class="${trendCls}">● ${trendRaw}</strong></div>
-        <div class="hcp-row"><span>CONFIDENCE</span><strong class="${confCls}">● ${conf}</strong></div>
+        <div class="hcp-row"><span>RCA</span><strong class="${rcaCls}">* ${rcaAvailability}</strong></div>
       </div>`;
     }
     return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}${popup}</div>`;
@@ -6102,7 +6373,7 @@ function renderDeveloperContextPanel(pat, patterns) {
   const service = developerPrimaryService(pat);
   const failureType = developerFailureType(pat);
   const rootCause = developerRootCauseStatus(pat);
-  const confidence = developerConfidenceStatus(pat);
+  const rcaAvailability = patternRcaAvailability(pat);
   const openCount = patternOpenCount(pat);
   const affectedCount = patternAffectedEntities(pat).length;
   const impactSummary = `${fmtC(patternCost(pat))} exposure`;
@@ -6113,7 +6384,7 @@ function renderDeveloperContextPanel(pat, patterns) {
     : selectedTab === 'remediation'
       ? renderWorkspaceRemediationBlock(pat)
       : `<div class="cx-detail-tiles sre-status-tiles">
-          ${renderSreStatusTile('Root Cause Confidence', confidence, developerConfidenceExplanation(pat))}
+          ${renderSreStatusTile('RCA Availability', rcaAvailability, `Root Cause Entity: ${patternRootCauseEntityLabel(pat)}.`)}
           ${renderSreStatusTile('Trend Signal', trendStatus, `${pat.trend.replace('_',' ').toLowerCase()} across ${pat.occurrences} occurrences`)}
           ${renderSreStatusTile('Open Incidents', openStatus, `${openCount} open | ${affectedCount} affected`)}
           ${renderSreStatusTile('Failure Type', 'Medium', `${failureType.replace(/_/g,' ')} category`)}
@@ -7329,6 +7600,10 @@ function downloadValidationReport() {
     .validation-status.warning{color:#f5c518;border:1px solid #806b1c;background:#332b12}
     .validation-id-list{display:flex;flex-wrap:wrap;gap:4px}
     .validation-id-list span{border:1px solid #263445;border-radius:999px;padding:3px 6px;background:#121a23}
+    .objective-debug-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:8px 0}
+    .objective-debug-grid div{border:1px solid #263445;border-radius:6px;padding:6px;background:#101820}
+    .objective-debug-grid span{display:block;color:#8fa6c1;text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+    .objective-debug-grid strong{display:block;margin-top:3px;color:#f2f7ff}
   </style>
 </head>
 <body>
@@ -7578,3 +7853,4 @@ render();
 switchView('patterns');
 loadProblems();
 export {};
+
