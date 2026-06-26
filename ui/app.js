@@ -652,6 +652,7 @@ let sreAnalyticalView='matrix';
 let srePanelTab='details';
 let developerAnalyticalView='heatmap';
 let developerPanelTab='details';
+let developerHeatPopupId=null;
 let execPatternSelectionMade=false;
 let execMetricDrilldown=null;
 let execPanelMaximized=false;
@@ -3191,9 +3192,15 @@ function selectPatternRow(id, opts={}) {
   patternExplorerState.selectedId = id;
   if (persona === 'executive') execPatternSelectionMade = true;
   if (persona === 'executive' || persona === 'sre' || persona === 'developer') execClosedBubblePopupId = null;
+  if (persona === 'developer') developerHeatPopupId = id;
   renderTopPatternsSnapshot(getFiltered());
   rerenderPatternsView();
   if (opts.remediate !== false && !['executive','sre','developer'].includes(persona)) void getPatternRemediation(id, { openDrawers:true, scroll:false });
+}
+
+function closeHeatPopup() {
+  developerHeatPopupId = null;
+  rerenderPatternsView();
 }
 
 function closeBubblePopup(id) {
@@ -6044,29 +6051,41 @@ function renderDeveloperServiceHeatMap(patterns) {
     return 'low';
   };
   const rows = services.map((service, rowIdx) => {
-    const cells = categories.map((cat) => {
+    let popupCatIdx = -1;
+    let popupPat = null;
+    const cells = categories.map((cat, catIdx) => {
       const pat = patterns.find(p => developerPrimaryService(p) === service && developerFailureType(p) === cat);
       if (!pat) return `<div class="heat-cell empty" aria-label="${service} ${cat} no recurring failures"></div>`;
       const intensity = clamp(((pat.occurrences || 0) - minOcc) / occurrenceSpread, 0.24, 1);
       const tier = recurrenceTier(pat);
       const selected = pat.id === patternExplorerState.selectedId;
+      const popupOpen = pat.id === developerHeatPopupId;
+      if (popupOpen) { popupCatIdx = catIdx; popupPat = pat; }
       const trend = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'stable';
       const trendLabel = pat.trend === 'INCREASING' ? 'up' : pat.trend === 'DECREASING' ? 'down' : 'flat';
       const tooltip = `${service} | ${cat} | ${pat.occurrences} occurrences | ${pat.trend}`;
-      const conf = developerConfidenceStatus(pat);
-      const popup = selected ? `<div class="heat-cell-popup" data-stop-propagation>
-        <div class="hcp-head"><span>${service}</span><button class="hcp-close" data-action="clearPatternSelection" aria-label="Close">×</button></div>
-        <div class="hcp-row"><span>FAILURE TYPE</span><strong>${cat.replace(/_/g,' ')} ${pat.occurrences}x</strong></div>
-        <div class="hcp-row"><span>TREND</span><strong>${trendLabel}</strong></div>
-        <div class="hcp-row"><span>CONFIDENCE</span><strong>${conf}</strong></div>
-      </div>` : '';
       return `<div class="heat-cell ${tier} ${selected ? 'selected' : ''}" role="button" tabindex="0" data-action="selectPatternRow" data-pid="${pat.id}" title="${attrText(tooltip)}" style="--heat:${intensity}">
         <strong>${pat.occurrences}</strong>
         <small class="heat-trend ${trend}">${trendLabel}</small>
-        ${popup}
       </div>`;
     }).join('');
-    return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}</div>`;
+    let popup = '';
+    if (popupPat) {
+      const conf = developerConfidenceStatus(popupPat);
+      const confCls = conf === 'High' ? 'hcp-high' : conf === 'Low' ? 'hcp-low' : 'hcp-med';
+      const cat = developerFailureType(popupPat);
+      const trendRaw = popupPat.trend === 'INCREASING' ? 'up' : popupPat.trend === 'DECREASING' ? 'down' : 'flat';
+      const trendCls = popupPat.trend === 'INCREASING' ? 'hcp-high' : popupPat.trend === 'DECREASING' ? 'hcp-low' : 'hcp-med';
+      // Position popup below the selected cell column (~150px service col + catIdx * 86px cell col)
+      const leftPx = 150 + popupCatIdx * 86;
+      popup = `<div class="heat-cell-popup" style="left:${leftPx}px" role="dialog" aria-label="Pattern details">
+        <div class="hcp-head"><span>${service}</span><button class="hcp-close" data-action="closeHeatPopup" aria-label="Close">×</button></div>
+        <div class="hcp-row"><span>FAILURE TYPE</span><strong>${cat.replace(/_/g,' ')} ${popupPat.occurrences}x</strong></div>
+        <div class="hcp-row"><span>TREND</span><strong class="${trendCls}">● ${trendRaw}</strong></div>
+        <div class="hcp-row"><span>CONFIDENCE</span><strong class="${confCls}">● ${conf}</strong></div>
+      </div>`;
+    }
+    return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}${popup}</div>`;
   }).join('');
   return `<section class="cx-map dev-heat">
     <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-controls"><div class="dev-heat-legend"><span><i class="heat-dot low"></i>Lower recurrence</span><span><i class="heat-dot moderate"></i>Moderate</span><span><i class="heat-dot high"></i>High</span><span><i class="heat-dot critical"></i>Critical / worsening</span><b>trend: up | flat | down</b></div><button class="snap-cta" data-action="toggleCfg">Configure</button></div></div>
@@ -7283,7 +7302,12 @@ This lightweight runtime export is intentionally additive and does not change ap
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
 document.addEventListener('click',e=>{
-  if (persona === 'developer') return;
+  if (persona === 'developer') {
+    if (!developerHeatPopupId) return;
+    if (e.target.closest('.heat-cell-popup') || e.target.closest('.heat-cell')) return;
+    closeHeatPopup();
+    return;
+  }
   if (!patternExplorerState.selectedId || execClosedBubblePopupId === patternExplorerState.selectedId) return;
   if (e.target.closest('.heat-cell,.cx-map-bubble')) return;
   closeBubblePopup(patternExplorerState.selectedId);
@@ -7365,6 +7389,7 @@ document.addEventListener('click', function(e) {
     case 'toggleExecPanelMaximize': e.stopPropagation(); toggleExecPanelMaximize(); break;
     case 'setSreAnalyticalView': e.stopPropagation(); setSreAnalyticalView(el.dataset.mode); break;
     case 'setSrePanelTab': e.stopPropagation(); setSrePanelTab(el.dataset.tab); break;
+    case 'closeHeatPopup': e.stopPropagation(); closeHeatPopup(); break;
     case 'setDeveloperAnalyticalView': e.stopPropagation(); setDeveloperAnalyticalView(el.dataset.mode); break;
     case 'setDeveloperPanelTab': e.stopPropagation(); setDeveloperPanelTab(el.dataset.tab); break;
     case 'selectExecMetric': e.stopPropagation(); selectExecMetric(el.dataset.metric); break;
@@ -7467,8 +7492,11 @@ document.addEventListener('keydown', function(e) {
 });
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape' && patternExplorerState.selectedId && execClosedBubblePopupId !== patternExplorerState.selectedId) {
-    closeBubblePopup(patternExplorerState.selectedId);
+  if (e.key === 'Escape') {
+    if (persona === 'developer' && developerHeatPopupId) { closeHeatPopup(); return; }
+    if (patternExplorerState.selectedId && execClosedBubblePopupId !== patternExplorerState.selectedId) {
+      closeBubblePopup(patternExplorerState.selectedId);
+    }
   }
 });
 
