@@ -217,12 +217,6 @@ function costConfidence(p) {
 function patternConfidence(pattern) {
   return clamp((pattern.qualityScore||0)/100 + clamp((pattern.occurrences-2)/8,0,0.15), 0, 1);
 }
-function rcaConfidence(p, pattern) {
-  if(!p.hasRCA) return 0.15;
-  if(!pattern)  return 0.55;
-  const c = pattern.rcaConsistency??0;
-  return c>=0.8 ? 0.90 : c>=0.5 ? 0.65 : 0.35;
-}
 function confidenceLevel(score) {
   return score >= 0.75 ? 'HIGH' : score >= 0.5 ? 'MEDIUM' : 'LOW';
 }
@@ -240,11 +234,6 @@ function calculateCostConfidence(pattern) {
   if (!problems.length) return 'LOW';
   return confidenceLevel(arrMean(problems.map(p => costConfidence(p))));
 }
-function calculateRCAConfidence(pattern) {
-  const problems = pattern.problems || [];
-  if (!problems.length) return 'LOW';
-  return confidenceLevel(arrMean(problems.map(p => rcaConfidence(p, pattern))));
-}
 function scoreLabel(score) {
   return score >= 0.65 ? 'HIGH' : score >= 0.40 ? 'MEDIUM' : 'LOW';
 }
@@ -259,10 +248,10 @@ function calculateConcentration(pattern) {
 function calculateFixability(pattern) {
   if (pattern.fixability) return pattern.fixability;
   if (pattern.fixabilityRaw != null) return scoreLabel(pattern.fixabilityRaw);
-  const rca = pattern.rcaConsistency ?? 0;
   const stability = pattern.recurrenceStability ?? 0;
   const purity = pattern.clusterPurity ?? 0;
-  return scoreLabel(clamp(rca * 0.5 + stability * 0.3 + purity * 0.2, 0, 1));
+  const rcaAvailabilitySignal = patternRcaAvailability(pattern) === 'Present' ? 0.25 : 0.05;
+  return scoreLabel(clamp(stability * 0.45 + purity * 0.30 + rcaAvailabilitySignal, 0, 1));
 }
 function calculateSystemDirection(costTrend, recurrenceTrend, mttrTrend) {
   const score =
@@ -272,9 +261,9 @@ function calculateSystemDirection(costTrend, recurrenceTrend, mttrTrend) {
   return score >= 1 ? 'DEGRADING' : score <= -1 ? 'IMPROVING' : 'STABLE';
 }
 function subBucketConfidence(sb) {
-  const rcaFrac  = sb.problems.filter(p=>p.hasRCA).length/sb.problems.length;
   const sizeFac  = clamp(sb.problems.length/5,0.2,1.0);
-  return clamp(rcaFrac*0.7+sizeFac*0.3,0.10,0.95);
+  const dataFac  = sb.problems.some(p => p.dur > 0 || p.users > 0) ? 0.75 : 0.45;
+  return clamp(sizeFac*0.55+dataFac*0.45,0.10,0.95);
 }
 function confClass(score) {
   return score>=0.75?'conf-high':score>=0.50?'conf-med':score>=0.25?'conf-low':'conf-vlow';
@@ -1626,7 +1615,9 @@ function renderAssistRemediationResponse(response, evidence=null) {
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, ch => ch.toUpperCase());
-  const recs = Array.isArray(response.recommendations) ? response.recommendations : [];
+  const recs = Array.isArray(response.recommendations) ? response.recommendations
+    : Array.isArray(response.recommendedActions) ? response.recommendedActions
+      : [];
   const phaseRecs = recs.length ? recs : [
     response.immediateRemediation ? { priority:'IMMEDIATE', title:'Immediate remediation', description:response.immediateRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
     response.shortTermRemediation ? { priority:'SHORT_TERM', title:'Short-term remediation', description:response.shortTermRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
@@ -1637,9 +1628,9 @@ function renderAssistRemediationResponse(response, evidence=null) {
     SHORT_TERM: { tier:'short', label:'Short term', time:'Days', cls:'act-semi', recommended:false },
     STRATEGIC: { tier:'strategic', label:'Strategic', time:'Weeks', cls:'act-manual', recommended:false },
   };
-  const confText = String(response.confidenceLevel || response.confidence_level || 'MEDIUM').toUpperCase();
-  const confPct = confText === 'HIGH' ? 85 : confText === 'MEDIUM' ? 60 : 35;
-  const confColor = confPct >= 75 ? 'var(--green)' : confPct >= 50 ? 'var(--amber)' : 'var(--coral)';
+  const strengthText = String(response.recommendationStrength || recs[0]?.recommendationStrength || 'Evidence status').toUpperCase();
+  const strengthTone = strengthText.includes('EVIDENCE') ? 'var(--green)' : strengthText.includes('CANDIDATE') ? 'var(--amber)' : strengthText.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
+  const strengthPct = strengthText.includes('EVIDENCE') ? 85 : strengthText.includes('CANDIDATE') ? 60 : strengthText.includes('DATA') ? 35 : 50;
   const recCards = phaseRecs.map((rec, idx) => {
     const pri = String(rec.priority || (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC')).toUpperCase();
     const meta = priMeta[pri] || priMeta.STRATEGIC;
@@ -1653,11 +1644,13 @@ function renderAssistRemediationResponse(response, evidence=null) {
         <span class="rem-opt-time">${meta.time}</span>
       </div>
       <div class="rem-conf">
-        <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${confPct}%;background:${confColor}"></div></div>
-        <span class="rem-conf-pct" style="color:${confColor}">${confText}</span>
+        <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${strengthPct}%;background:${strengthTone}"></div></div>
+        <span class="rem-conf-pct" style="color:${strengthTone}">${strengthText}</span>
       </div>
       <div class="ai-rec-footer">
         ${rec.estimatedImpact ? `<span class="ai-rec-impact">${renderInlineValue(rec.estimatedImpact)}</span>` : ''}
+        ${rec.capabilityReason ? `<span class="ai-rec-impact">${renderInlineValue(rec.capabilityReason)}</span>` : ''}
+        ${rec.personaFit ? `<span class="ai-rec-impact">${renderInlineValue(rec.personaFit)}</span>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1677,7 +1670,7 @@ function renderAssistRemediationResponse(response, evidence=null) {
     ['Recurrence', `${evidence.occurrenceCount || evidence.groupedProblemCount || 0} occurrences`],
     ['Cost impact', fmtC(evidence.operationalCost || 0)],
     ['Open incidents', evidence.openProblemCount || 0],
-    ['RCA confidence', `${evidence.rcaConfidence ?? evidence.confidenceScore ?? 0}%`],
+    ['RCA availability', evidence.rcaAvailability || (evidence.rootCauseEntity ? 'Present' : 'Missing')],
     ['Trend', evidence.trend || 'Not available'],
   ] : [];
   return `
@@ -1686,7 +1679,7 @@ function renderAssistRemediationResponse(response, evidence=null) {
       <h3>${attrText(evidence?.patternName || 'Selected pattern')}</h3>
       <div class="rem-exec-grid">
         <div><span>Expected cost reduction</span><strong>${renderInlineValue(expectedReduction)}</strong></div>
-        <div><span>Confidence</span><strong>${confText}</strong></div>
+        <div><span>Recommendation strength</span><strong>${strengthText}</strong></div>
         <div><span>Effort / horizon</span><strong>${renderInlineValue(effort)}</strong></div>
       </div>
       <div class="rem-next-step"><span>Recommended next step</span><strong>${renderInlineValue(recommendedNext)}</strong></div>
@@ -1694,8 +1687,11 @@ function renderAssistRemediationResponse(response, evidence=null) {
     </div>
     ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Remediation Path</div><div class="rem-options">${recCards}</div></div>` : ''}
     ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
+    ${disclosure('Drivers', response.drivers)}
+    ${disclosure('Remediation context', response.remediationContext)}
+    ${disclosure('Risks', response.risks)}
+    ${disclosure('Data gaps', response.dataGaps || response.missingEvidence || response.missingEvidenceOrNextValidationSteps || response.missing_evidence_or_next_validation_steps)}
     ${disclosure('Supporting evidence', response.supportingEvidence || response.supporting_evidence_used)}
-    ${disclosure('Missing evidence / next validation steps', response.missingEvidenceOrNextValidationSteps || response.missing_evidence_or_next_validation_steps)}
     ${executivePromptDisclosure}
   `;
 }
@@ -1762,8 +1758,8 @@ function buildExecutiveEvidenceGate(evidence) {
     ['potentialSavings', evidence.potentialSavings],
     ['affectedServices', evidence.affectedServices?.sample],
     ['affectedEntities', evidence.affectedEntities?.sample],
-    ['rootCauseSummary', evidence.rootCauseSummary],
-    ['rcaConfidence', evidence.rcaConfidence],
+    ['rootCauseEntity', evidence.rootCauseEntity || evidence.rootCauseSummary],
+    ['rcaAvailability', evidence.rcaAvailability],
     ['timeClustering', evidence.timeClustering],
     ['mttr', evidence.mttr],
     ['userImpact', evidence.userImpact],
@@ -1783,11 +1779,6 @@ function buildExecutiveEvidenceGate(evidence) {
 }
 
 function buildCompactExecutiveEvidence(request) {
-  const confidenceInputs = {
-    patternConfidence: request.confidenceScore,
-    rcaConfidence: request.rcaConfidence,
-    priorityScore: request.priorityScore,
-  };
   const evidence = {
     patternId: request.patternId || null,
     patternName: truncateForExecutiveEvidence(request.patternName, 120),
@@ -1798,12 +1789,13 @@ function buildCompactExecutiveEvidence(request) {
     potentialSavings: Number.isFinite(Number(request.potentialSavings)) ? Math.round(Number(request.potentialSavings)) : null,
     affectedServices: executiveArraySummary(request.affectedServices, 5),
     affectedEntities: executiveArraySummary(request.affectedEntities, 5),
-    rootCauseSummary: truncateForExecutiveEvidence(request.rootCauseSummary, 180),
-    rcaConfidence: Number.isFinite(Number(request.rcaConfidence)) ? Math.round(Number(request.rcaConfidence)) : null,
+    affectedEntityCount: Number.isFinite(Number(request.affectedEntityCount)) ? Math.round(Number(request.affectedEntityCount)) : null,
+    scopeTier: truncateForExecutiveEvidence(request.scopeTier, 40),
+    rootCauseEntity: truncateForExecutiveEvidence(request.rootCauseEntity || request.rootCauseSummary, 180),
+    rcaAvailability: request.rcaAvailability || (request.rootCauseEntity || request.rootCauseSummary ? 'Present' : 'Missing'),
     timeClustering: truncateForExecutiveEvidence(request.timeClustering, 180),
     mttr: truncateForExecutiveEvidence(request.mttr, 80),
     userImpact: Number.isFinite(Number(request.userImpact)) ? Math.round(Number(request.userImpact)) : null,
-    confidenceInputs,
     trend: truncateForExecutiveEvidence(request.trend, 60),
     priority: Number.isFinite(Number(request.priorityScore)) ? Math.round(Number(request.priorityScore)) : null,
     problemIds: Array.isArray(request.problemIds) ? request.problemIds.filter(Boolean).slice(0, 8) : [],
@@ -1882,7 +1874,8 @@ function buildExecutivePatternPrompt(request) {
       problemIds: evidence.problemIds.slice(0, 3),
       affectedServices: executiveArraySummary(evidence.affectedServices?.sample || [], 3),
       affectedEntities: executiveArraySummary(evidence.affectedEntities?.sample || [], 3),
-      rootCauseSummary: truncateForExecutiveEvidence(evidence.rootCauseSummary, 100),
+      rootCauseEntity: truncateForExecutiveEvidence(evidence.rootCauseEntity || evidence.rootCauseSummary, 100),
+      rcaAvailability: evidence.rcaAvailability,
       timeClustering: truncateForExecutiveEvidence(evidence.timeClustering, 100),
       missingEvidence: (evidence.missingEvidence || []).slice(0, 6),
     };
@@ -1897,8 +1890,10 @@ function buildExecutivePatternPrompt(request) {
       openProblemCount: evidence.openProblemCount,
       operationalCost: evidence.operationalCost,
       potentialSavings: evidence.potentialSavings,
-      rootCauseSummary: evidence.rootCauseSummary,
-      rcaConfidence: evidence.rcaConfidence,
+      rootCauseEntity: evidence.rootCauseEntity,
+      rcaAvailability: evidence.rcaAvailability,
+      affectedEntityCount: evidence.affectedEntityCount,
+      scopeTier: evidence.scopeTier,
       mttr: evidence.mttr,
       userImpact: evidence.userImpact,
       trend: evidence.trend,
@@ -1914,6 +1909,137 @@ function buildExecutivePatternPrompt(request) {
     window.__OPINT_LAST_EXECUTIVE_PROMPT_LENGTH__ = prompt.length;
   }
   console.log('[OpInt Davis] executive prompt length:', prompt.length);
+  return prompt;
+}
+
+function compactObservedAssistEvidence(request) {
+  const list = value => uniqVals((Array.isArray(value) ? value : [value]).flat().filter(Boolean)).slice(0, 8);
+  return {
+    pattern_id: request.patternId || null,
+    pattern_name: request.patternName || null,
+    problem_ids: list(request.problemIds).slice(0, 10),
+    event_type: request.eventType || request.severity || null,
+    event_category: request.eventType || request.severity || null,
+    event_name: request.eventName || request.patternName || null,
+    occurrence_count: Number.isFinite(Number(request.occurrenceCount)) ? Number(request.occurrenceCount) : null,
+    alert_event_count: Number.isFinite(Number(request.groupedProblemCount)) ? Number(request.groupedProblemCount) : Number.isFinite(Number(request.occurrenceCount)) ? Number(request.occurrenceCount) : null,
+    open_problem_count: Number.isFinite(Number(request.openProblemCount)) ? Number(request.openProblemCount) : null,
+    grouped_problem_count: Number.isFinite(Number(request.groupedProblemCount)) ? Number(request.groupedProblemCount) : null,
+    operational_cost: Number.isFinite(Number(request.operationalCost)) ? Math.round(Number(request.operationalCost)) : null,
+    potential_savings: Number.isFinite(Number(request.potentialSavings)) ? Math.round(Number(request.potentialSavings)) : null,
+    affected_users: Number.isFinite(Number(request.userImpact)) ? Math.round(Number(request.userImpact)) : null,
+    affected_entity_count: Number.isFinite(Number(request.affectedEntityCount)) ? Math.round(Number(request.affectedEntityCount)) : null,
+    affected_services: list(request.affectedServices),
+    affected_entities: list(request.affectedEntities),
+    scope_tier: request.scopeTier || null,
+    trend: request.trend || null,
+    avg_duration: request.avgDuration ? fmtM(request.avgDuration) : null,
+    median_mttr: request.mttr ? fmtM(request.mttr) : null,
+    recommendation_type: request.recommendationType || null,
+    rca_availability: request.rcaAvailability || (request.rootCauseEntity || request.rootCauseSummary ? 'Present' : 'Missing'),
+    root_cause_entity: request.rootCauseEntity || request.rootCauseSummary || null,
+    time_clustering: request.timeClustering || null,
+    deployment_correlation: request.deploymentCorrelation || null,
+    selected_scope: request.selectedScope || null,
+    owner_team: request.ownerTeam || null,
+  };
+}
+
+function meaningfulSignalCount(evidence) {
+  return Object.entries(evidence || {}).filter(([, value]) => {
+    if (value == null || value === '') return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.values(value).some(v => v != null && v !== '' && (!Array.isArray(v) || v.length));
+    return true;
+  }).length;
+}
+
+function buildObjectiveAwareAssistPrompt(request) {
+  const evidence = compactObservedAssistEvidence(request || {});
+  const personaLabel = persona || 'executive';
+  const objective = activeObjective || 'cost_impact';
+  const prompt = `You are OpInt Assist. A recurring pattern has been identified by OpInt.
+Recommend practical next actions for the active persona and objective
+using only the supplied signals. Everything must trace to supplied evidence.
+
+CONSTRAINTS
+- Use only supplied signal values. Absent signal -> data gap, not assumption.
+- RCA is observed fact only: Present or Missing. Never score or validate it.
+- Scope = observed counts only. Never infer hidden dependencies.
+- Do not invent outcomes, savings, or MTTR improvements not in the evidence.
+- Only recommend a Dynatrace capability when a specific supplied signal justifies it.
+- Only Evidence-backed actions may be IMMEDIATE.
+- Fewer than 3 meaningful signals -> return {"error":"Insufficient signal data."}
+
+RECOMMENDATION STRENGTH
+Evidence-backed: directly supported by supplied signals
+Candidate: plausible but depends on missing evidence
+Data-gap: clarify missing evidence before acting
+
+PERSONA: ${personaLabel}
+OBJECTIVE: ${objective}
+
+Executive -> business cost, customer impact, risk. No implementation detail.
+SRE -> reliability, MTTR, runbooks, SLOs, alert quality, investigation friction.
+Developer -> affected service, debugging path, release validation, code ownership.
+
+cost_impact -> reduce recurring cost, customer impact, and engineering effort.
+
+alert_optimization -> alert tuning only. Threshold review, suppression windows,
+routing, event filter refinement. Not service fix.
+Use "short-lived" not "auto-resolved".
+
+remediation -> identify what to fix and how hard. For each action assess whether
+remediation effort is proportionate to recurrence and cost signals.
+Default high-effort actions to STRATEGIC unless evidence demands otherwise.
+Rank by effort-to-value ratio, not severity alone.
+
+Apply persona and objective simultaneously.
+
+SIGNALS
+${JSON.stringify(evidence, null, 2)}
+
+Available signal names:
+occurrence_count - alert_event_count - operational_cost - potential_savings -
+affected_users - affected_entity_count - affected_services - event_category -
+scope_tier - trend - avg_duration - recommendation_type -
+rca_availability - root_cause_entity
+
+Return valid JSON only:
+
+{
+  "objectiveAssessment": "2-3 sentences. Supplied signal values only.",
+  "drivers": [
+    {
+      "signal": "",
+      "value": "",
+      "whyItMatters": "reference the active objective directly"
+    }
+  ],
+  "recommendedActions": [
+    {
+      "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
+      "title": "",
+      "recommendationStrength": "Evidence-backed | Candidate | Data-gap",
+      "reason": "name the signal that justifies this action",
+      "dynatraceCapability": "",
+      "effort": "Low | Medium | High | Unknown",
+      "personaFit": ""
+    }
+  ],
+  "remediationContext": {
+    "include only when objective = remediation": "",
+    "horizon": "IMMEDIATE | SHORT_TERM | STRATEGIC",
+    "effortJustification": "why this effort level given the evidence",
+    "blockers": ["what must be true before remediation can start"]
+  },
+  "risks": ["unresolved evidence only - no future inference"],
+  "dataGaps": ["absent or insufficient signal"]
+}`;
+  if (typeof window !== 'undefined') {
+    window.__OPINT_LAST_ASSIST_EVIDENCE__ = evidence;
+    window.__OPINT_LAST_ASSIST_MEANINGFUL_SIGNAL_COUNT__ = meaningfulSignalCount(evidence);
+  }
   return prompt;
 }
 
@@ -1971,7 +2097,8 @@ Pattern metadata:
 ${JSON.stringify({
   occurrenceCount: request.occurrenceCount,
   openProblemCount: request.openProblemCount,
-  rcaConfidence: request.rcaConfidence,
+  rcaAvailability: request.rcaAvailability,
+  rootCauseEntity: request.rootCauseEntity || request.rootCauseSummary,
   trend: request.trend,
   timeClustering: request.timeClustering,
   deploymentCorrelation: request.deploymentCorrelation,
@@ -2002,9 +2129,7 @@ Return valid JSON only matching this schema:
 }
 
 function buildPatternAssistPrompt(request) {
-  if (persona === 'developer') return buildDeveloperRemediationPrompt(request);
-  if (persona === 'sre') return buildSreRemediationPrompt(request);
-  return buildExecutivePatternPrompt(request);
+  return buildObjectiveAwareAssistPrompt(request);
 }
 
 function normalizeActionList(items, priority, owner, capabilityFallback) {
@@ -2025,7 +2150,11 @@ function normalizeActionList(items, priority, owner, capabilityFallback) {
       title: item.title || item.action || `Recommended action ${idx + 1}`,
       description: item.description || item.reason || item.action || 'Validate this action against the selected problem evidence.',
       dynatraceFeature: item.dynatraceFeature || item.dynatraceCapability || capabilityFallback,
-      estimatedImpact: item.estimatedImpact || item.expectedBenefit || 'Reduce recurrence and improve resolution confidence',
+      estimatedImpact: item.estimatedImpact || item.expectedBenefit || item.recommendationStrength || item.effort || 'Evidence-based action',
+      recommendationStrength: item.recommendationStrength || null,
+      capabilityReason: item.capabilityReason || null,
+      personaFit: item.personaFit || null,
+      effort: item.effort || null,
       owner: item.owner || owner,
     };
   });
@@ -2037,6 +2166,7 @@ function personaRemediationRecommendations(response, request) {
   const defaultCapability = persona === 'developer' ? 'Application Observability' : persona === 'sre' ? 'Workflows' : 'Davis AI';
   const next = response.recommendedNextAction;
   const recommendations = [];
+  recommendations.push(...normalizeActionList(response.recommendedActions, 'SHORT_TERM', owner, 'Not specified'));
   if (next && typeof next === 'object') {
     recommendations.push({
       priority: 'IMMEDIATE',
@@ -2106,6 +2236,48 @@ function normalizePatternAssistResponse(response, request) {
       recommendations: [
         { priority:'IMMEDIATE', title:'Stabilize the highest-cost recurring issue', description:`Contain the pattern now because it represents ${fallbackCost} in estimated cost exposure.`, dynatraceFeature:'Dynatrace Assist', estimatedImpact:`Reduce exposure against ${fallbackCost}`, owner:request.ownerTeam || 'Operations leadership' },
       ],
+      generatedBy:'davis-copilot',
+      latencyMs:0,
+    };
+  }
+  if (response.error) {
+    return {
+      summary: response.error,
+      patterns: [],
+      costNarrative: response.error,
+      recommendations: [],
+      recommendedRemediationPath: response.error,
+      immediateRemediation: null,
+      whySuggested: response.error,
+      supportingEvidence: [],
+      missingEvidenceOrNextValidationSteps: Array.isArray(response.dataGaps) ? response.dataGaps : [],
+      recommendationStrength: 'Data-gap',
+      generatedBy:'davis-copilot',
+      latencyMs:0,
+    };
+  }
+  if (Array.isArray(response.recommendedActions) || response.signalsSummary || response.objectiveAssessment) {
+    const owner = persona === 'developer' ? (request.ownerTeam || 'Service owner') : persona === 'sre' ? 'SRE team' : (request.ownerTeam || 'Operations leadership');
+    const recommendations = normalizeActionList(response.recommendedActions, 'SHORT_TERM', owner, 'Not specified');
+    const first = recommendations[0] || {};
+    return {
+      summary: response.objectiveAssessment || `${request.patternName} has ${request.occurrenceCount} occurrences and ${fallbackCost} estimated cost exposure.`,
+      patterns: Array.isArray(response.drivers) ? response.drivers.map(driver => `${driver.signal}: ${driver.value} - ${driver.whyItMatters}`) : [],
+      costNarrative: response.objectiveAssessment || `${request.groupedProblemCount} grouped problems create ${fallbackCost} in recurring cost exposure.`,
+      recommendations,
+      recommendedActions: response.recommendedActions || [],
+      recommendedRemediationPath: first.title || response.objectiveAssessment || 'Review the observed signals and data gaps before action.',
+      immediateRemediation: first.priority === 'IMMEDIATE' ? first.title : null,
+      whySuggested: first.description || response.objectiveAssessment || null,
+      estimatedImplementationEffort: first.effort || 'Unknown',
+      expectedOperationalCostReduction: request.potentialSavings ? fmtC(request.potentialSavings) : null,
+      supportingEvidence: response.drivers || [],
+      remediationContext: response.remediationContext || null,
+      risks: response.risks || [],
+      dataGaps: response.dataGaps || [],
+      signalsSummary: response.signalsSummary || {},
+      missingEvidenceOrNextValidationSteps: response.dataGaps || [],
+      recommendationStrength: first.recommendationStrength || response.recommendationStrength || 'Evidence status',
       generatedBy:'davis-copilot',
       latencyMs:0,
     };
@@ -3653,10 +3825,10 @@ function rankPatterns(patterns, objective = activeObjective) {
 }
 
 function patternFixabilityScore(pat) {
-  const confidence = clamp(patternConfidenceScore(pat) / 100, 0, 1);
   const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.62 : 0.28;
-  const rca = pat.rcaSummary && pat.rcaSummary !== 'RCA not identified' ? 0.18 : 0;
-  return clamp((fix * 0.7) + (confidence * 0.3) + rca, 0.08, 1);
+  const recurrence = clamp((pat.recurrenceStability ?? 0) * 0.35 + clamp((pat.occurrences || 0) / 8, 0, 1) * 0.20, 0, 0.55);
+  const rcaAvailabilitySignal = patternRcaAvailability(pat) === 'Present' ? 0.15 : 0.03;
+  return clamp((fix * 0.45) + recurrence + rcaAvailabilitySignal, 0.08, 1);
 }
 
 function patternRecoverableValue(pat) {
@@ -4258,6 +4430,11 @@ function buildRemediationRequest(pat, allPatterns=[]) {
   const clouds = uniqVals(problems.map(p => p.cloud).filter(Boolean).filter(c => c !== 'unknown'));
   const users = problems.reduce((s, p) => s + (p.users || 0), 0);
   const rcaList = pat.dimensions?.rootCauseEntities || problems.map(p => p.rca).filter(Boolean);
+  const rootCauseEntity = rcaList[0] || null;
+  const rcaAvailability = rootCauseEntity ? 'Present' : 'Missing';
+  const affectedEntities = patternAffectedEntities(pat);
+  const affectedEntityCount = affectedEntities.length;
+  const scopeTier = extractPatternSignals(pat, allPatterns).scopeTier;
   const scope = persona === 'developer' ? selectedDeveloperScope() : null;
   const req = {
     patternId: pat.id,
@@ -4271,15 +4448,19 @@ function buildRemediationRequest(pat, allPatterns=[]) {
     operationalCost,
     potentialSavings: recoverableFromCost(operationalCost),
     affectedServices: services,
-    affectedEntities: patternAffectedEntities(pat),
+    affectedEntities,
+    affectedEntityCount,
+    scopeTier,
     environment: envs.join(', ') || 'unknown',
     cloudProvider: clouds[0] || null,
-    rootCauseSummary: rcaList.length ? rcaList.join(', ') : null,
-    rcaConfidence: Math.round((pat.rcaConsistency || 0) * 100),
+    rootCauseEntity,
+    rootCauseSummary: rootCauseEntity,
+    rcaAvailability,
     deploymentCorrelation: tags.some(t => /deploy|release|version|build/i.test(t)) ? 'deployment-related tags present' : 'not available from current evidence',
     changeCorrelation: tags.some(t => /change|deploy|release|version|build/i.test(t)) ? 'change-related tags present' : 'not available from current evidence',
     timeClustering: pat.hasTimeCluster ? `clusters around ${String(pat.dominantHour).padStart(2, '0')}:00 UTC` : 'no strong time cluster detected',
     mttr: resolved.length ? Math.round(arrMean(resolved.map(p => p.dur))) : null,
+    avgDuration: Math.round(pat.avgDur || 0) || null,
     userImpact: users,
     logsEvidenceSummary: 'not available in current pattern evidence package',
     tracesEvidenceSummary: 'not available in current pattern evidence package',
@@ -4292,8 +4473,7 @@ function buildRemediationRequest(pat, allPatterns=[]) {
       rawValue: scope.rawValue,
     } : null,
     ownerTeam: primaryTeamFromPattern(pat),
-    confidenceScore: patternConfidenceScore(pat),
-    fixabilityScore: Math.round((pat.fixabilityRaw || 0) * 100),
+    recommendationType: pat.recommendation?.type || null,
     trend: pat.trend,
     priorityScore: patternPriorityScore(pat, allPatterns),
   };
@@ -4388,7 +4568,6 @@ function renderSelectOptions(values, selected, label) {
 /**
  * @typedef {Object} InvestigationComplexity
  * @property {number} score
- * @property {number} rcaConfidence
  * @property {"low"|"medium"|"high"} evidenceFragmentation
  * @property {number} toolCount
  * @property {number} signalSourceCount
@@ -4518,33 +4697,29 @@ function mapDetectedToolsFromDqlRows(rows) {
  */
 function buildInvestigationComplexity({ pattern, toolRows }) {
   const detectedTools = mapDetectedToolsFromDqlRows(toolRows);
-  const rcaConfidence = Math.round((pattern.rcaConsistency || 0) * 100);
   const toolCount = detectedTools.length;
   const signalSourceCount = uniqVals(detectedTools.flatMap(tool => tool.purposes)).length;
-  const fragmentedEvidence = toolCount > 1 && rcaConfidence < 70;
+  const fragmentedEvidence = toolCount > 1 || signalSourceCount > 2;
   const evidenceFragmentation = fragmentedEvidence
     ? toolCount > 2 ? 'high' : 'medium'
     : 'low';
   const score = Math.round(clamp(
-    (100 - rcaConfidence) * 0.6
-      + Math.min(25, Math.max(0, toolCount - 1) * 12)
-      + Math.min(15, Math.max(0, signalSourceCount - 1) * 4),
+    Math.min(60, Math.max(0, toolCount - 1) * 20)
+      + Math.min(40, Math.max(0, signalSourceCount - 1) * 10),
     0,
     100,
   ));
   const narrative = fragmentedEvidence
-    ? `Root cause confidence is ${rcaConfidence}% and investigation evidence is distributed across ${toolCount} tools. This may increase context-switching during incident response and contribute to longer resolution cycles.`
-    : rcaConfidence < 70
-      ? `Root cause confidence is ${rcaConfidence}%. This is a potential signal of investigation friction observed across affected entities.`
-      : `Root cause confidence is ${rcaConfidence}%. No evidence-fragmentation warning is indicated by the currently detected tool data.`;
-  return { score, rcaConfidence, evidenceFragmentation, toolCount, signalSourceCount, detectedTools, narrative };
+    ? `Investigation evidence is distributed across ${toolCount} tools and ${signalSourceCount} signal sources. This may increase context-switching during incident response.`
+    : `Current evidence is concentrated in ${toolCount} detected tool${toolCount === 1 ? '' : 's'} and ${signalSourceCount} signal source${signalSourceCount === 1 ? '' : 's'}.`;
+  return { score, evidenceFragmentation, toolCount, signalSourceCount, detectedTools, narrative };
 }
 
 function renderInvestigationComplexityCard(pat, patterns=[]) {
   const patternToolRows = matchToolDetectionRowsToPattern(pat, TOOL_DETECTION_ROWS);
   const insight = buildInvestigationComplexity({ pattern:pat, toolRows:patternToolRows });
-  if (insight.rcaConfidence >= 70 && insight.toolCount <= 1) return '';
-  const caution = insight.toolCount > 1 && insight.rcaConfidence < 70;
+  if (insight.toolCount <= 1 && insight.signalSourceCount <= 1) return '';
+  const caution = insight.evidenceFragmentation !== 'low';
   const vendors = insight.detectedTools.map(tool => tool.vendor);
   const purposes = uniqVals(insight.detectedTools.flatMap(tool => tool.purposes));
   return `<div class="investigation-complexity ${caution ? 'caution' : ''}">
@@ -4556,8 +4731,8 @@ function renderInvestigationComplexityCard(pat, patterns=[]) {
     </div>
     <div class="ic-metrics">
       <div><strong>${insight.score}</strong><span>Complexity score</span></div>
-      <div><strong>${insight.rcaConfidence}%</strong><span>RCA confidence</span></div>
       <div><strong>${insight.toolCount}</strong><span>Tools detected</span></div>
+      <div><strong>${insight.signalSourceCount}</strong><span>Signal sources</span></div>
     </div>
     ${vendors.length ? `<div class="ic-chip-row">${vendors.map(vendor => `<span class="ic-tool-chip">${attrText(vendor)}</span>`).join('')}</div>` : ''}
     ${purposes.length ? `<div class="ic-chip-row">${purposes.map(purpose => `<span class="ic-purpose-chip">${attrText(purpose)}</span>`).join('')}</div>` : ''}
@@ -4608,9 +4783,9 @@ function renderPatternDetailPane(pat, patterns) {
     <div class="px-section">
       <div class="px-section-title">Root-cause indicators</div>
       <div class="px-chip-list">
-        ${rca.slice(0, 10).map(r => `<span class="px-chip">RCA: ${r}</span>`).join('') || '<span class="px-chip">Root cause not consistently identified</span>'}
+        ${rca.slice(0, 10).map(r => `<span class="px-chip">RCA: ${r}</span>`).join('') || '<span class="px-chip">RCA Availability: Missing</span>'}
         <span class="px-chip">Fixability: ${pat.fixability}</span>
-        <span class="px-chip">RCA consistency: ${Math.round((pat.rcaConsistency || 0) * 100)}%</span>
+        <span class="px-chip">RCA Availability: ${patternRcaAvailability(pat)}</span>
       </div>
     </div>
     <div class="px-section">
@@ -4633,6 +4808,8 @@ function buildPattern(problems) {
   const hasRCA   = problems.some(p => p.hasRCA);
   const rcaValues = [...new Set(problems.filter(p => p.hasRCA && p.rca).map(p => p.rca))];
   const consistentRCA = rcaValues.length === 1;
+  const rootCauseEntity = rcaValues[0] || null;
+  const rcaAvailability = rootCauseEntity ? 'Present' : 'Missing';
 
   // Time cluster detection - do events genuinely cluster at the same UTC hour?
   // Only valid timestamps (not NaN from bad parses) are counted.
@@ -4667,11 +4844,6 @@ function buildPattern(problems) {
   const dqlRecurringValidation = matchRecurringRootCauseValidation(problems, dimensions);
 
   // ── Pattern quality score ──
-  const rcaList        = problems.filter(p=>p.hasRCA&&p.rca).map(p=>p.rca);
-  const topRca         = arrMode(rcaList);
-  const rcaConsistency = rcaList.length>0
-    ? rcaList.filter(r=>r===topRca).length/problems.filter(p=>p.hasRCA).length
-    : 0;
   const uniqueTitles   = new Set(problems.map(p=>p.title)).size;
   const clusterPurity  = clamp(1-((uniqueTitles-1)/problems.length),0,1);
   const gaps           = times.slice(1).map((t,i)=>t-times[i]);
@@ -4684,11 +4856,10 @@ function buildPattern(problems) {
   const costConsistency= clamp(1 - costCV, 0, 1);
   const dimensionPurity= dimensions.dimensionPurity;
   const qualityScore   = Math.round(
-    clusterPurity      *25 +
-    rcaConsistency     *30 +
-    recurrenceStability*15 +
-    costConsistency    *15 +
-    dimensionPurity    *15
+    clusterPurity      *30 +
+    recurrenceStability*25 +
+    costConsistency    *25 +
+    dimensionPurity    *20
   );
 
   // Concentration: how tightly cost + entities cluster (high = one entity dominates)
@@ -4697,8 +4868,9 @@ function buildPattern(problems) {
   const concentration = scoreLabel(concentrationRaw);
   const concentrationScore = concentration[0] + concentration.slice(1).toLowerCase();
 
-  // Fixability: how actionable is this pattern (high = consistent RCA + stable recurrence + tight cluster)
-  const fixabilityRaw   = clamp(rcaConsistency * 0.45 + recurrenceStability * 0.25 + clusterPurity * 0.15 + dimensionPurity * 0.15, 0, 1);
+  // Fixability uses observed RCA availability plus recurrence regularity; it does not validate RCA correctness.
+  const rcaAvailabilitySignal = rcaAvailability === 'Present' ? 0.20 : 0.05;
+  const fixabilityRaw   = clamp(recurrenceStability * 0.35 + clusterPurity * 0.25 + dimensionPurity * 0.20 + rcaAvailabilitySignal, 0, 1);
   const fixability = scoreLabel(fixabilityRaw);
   const fixabilityScore = fixability[0] + fixability.slice(1).toLowerCase();
 
@@ -4713,7 +4885,7 @@ function buildPattern(problems) {
     dominantHour,
     hasRCA,
     consistentRCA,
-    rcaLabel: rcaValues[0] || null,
+    rcaLabel: rootCauseEntity,
     frequency: problems.length,
     trend,
     totalCost,
@@ -4738,13 +4910,14 @@ function buildPattern(problems) {
     dominantHour,
     hasRCA,
     consistentRCA,
-    rcaLabel: rcaValues[0] || null,
+    rcaLabel: rootCauseEntity,
+    rootCauseEntity,
+    rcaAvailability,
     autoResolveRate: autoResolves / problems.length,
     severity: problems[0].sev,
     sparkData,
     recommendation: rec,
     qualityScore,
-    rcaConsistency,
     clusterPurity,
     dimensionPurity,
     interArrivalCV,
@@ -4790,11 +4963,11 @@ function recommendAction(p) {
     };
   }
 
-  // 2. Recurring with consistent root cause - engineering problem, not alerting problem
-  if (p.hasRCA && p.consistentRCA && p.frequency >= 3) {
+  // 2. Recurring with an observed Davis root cause entity.
+  if (p.hasRCA && p.frequency >= 3) {
     return {
       type: 'FIX_ROOT_CAUSE', confidence: 91,
-      text: `Same root cause (${p.rcaLabel}) identified across ${p.frequency} occurrences - alerting is surfacing unresolved technical debt.`,
+      text: `Davis reports root cause entity ${p.rcaLabel} in this recurring pattern across ${p.frequency} occurrences.`,
       config: `problem.root_cause="${p.rcaLabel}" // assign to owning team for permanent fix`,
     };
   }
@@ -4802,7 +4975,7 @@ function recommendAction(p) {
   // 3. Default - investigate before taking action
   return {
     type: 'INVESTIGATE_FIRST', confidence: 88,
-    text: `Occurred ${p.frequency}x ${p.hasRCA ? 'with inconsistent root cause' : 'with no root cause documented'}. Attach Live Debugger to the next occurrence to capture state.`,
+    text: `Occurred ${p.frequency}x with RCA Availability: ${p.hasRCA ? 'Present' : 'Missing'}. Review the next occurrence with scoped evidence.`,
     config: `live_debugger.arm(trigger="next_occurrence", capture=["variables","stack","request"])`,
   };
 }
@@ -5557,8 +5730,8 @@ function renderConciseDetailPanel(pat, patterns) {
   const services = patternServices(pat);
   const entities = patternAffectedEntities(pat);
   const rcaList = pat.dimensions?.rootCauseEntities || [];
-  const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
-  const hasActionableRca = rcaList.length > 0 && rcaConfidence > 0;
+  const rcaAvailability = patternRcaAvailability(pat);
+  const hasObservedRca = rcaAvailability === 'Present';
   return `<aside class="cx-detail">
     <div class="cx-section-head compact">
       <div><div class="cx-eyebrow">Pattern Details</div><h3>${pat.title}</h3></div>
@@ -5581,17 +5754,17 @@ function renderConciseDetailPanel(pat, patterns) {
       <div class="cx-eyebrow">Evidence</div>
       <div class="px-evidence">
         <div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div>
-        <div class="px-evidence-row"><span>Confidence</span><strong>${patternConfidenceScore(pat)} / 100 | RCA consistency ${rcaConfidence}%</strong></div>
+        <div class="px-evidence-row"><span>Signal quality</span><strong>${patternConfidenceScore(pat)} / 100 | RCA Availability: ${rcaAvailability}</strong></div>
         <div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div>
         <div class="px-evidence-row"><span>Cost</span><strong>${fmtC(exposure)} exposure | ${fmtC(recoverable)} recoverable</strong></div>
       </div>
     </div>
     ${renderInvestigationComplexityCard(pat, patterns)}
-    <div class="cx-action-block ${hasActionableRca ? '' : 'low'}">
+    <div class="cx-action-block ${hasObservedRca ? '' : 'low'}">
       <div class="cx-eyebrow">Root cause / recommended action</div>
-      ${hasActionableRca
+      ${hasObservedRca
         ? `<strong>${rcaList.slice(0, 2).join(', ')}</strong><p>${pat.recommendation?.text || 'Use the existing remediation path to validate the corrective action before automation.'}</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button>`
-        : `<strong>RCA not consistently identified</strong><p>Consistency is ${rcaConfidence}%, so this should remain in investigation until the root cause is validated.</p>`}
+        : `<strong>RCA Availability: Missing</strong><p>Continue investigation with scoped evidence before selecting a remediation path.</p>`}
     </div>
   </aside>`;
 }
@@ -5833,22 +6006,22 @@ function renderDecisionDetailPanel(pat, patterns) {
   const services = patternServices(pat);
   const entities = patternAffectedEntities(pat);
   const rcaList = pat.dimensions?.rootCauseEntities || [];
-  const rcaConfidence = Math.round((pat.rcaConsistency || 0) * 100);
+  const rcaAvailability = patternRcaAvailability(pat);
   const confidence = patternConfidenceScore(pat);
   const priority = executivePriorityLevel(pat, patterns);
   const effort = remediationEffortLabel(pat.fixability);
-  const hasActionableRca = rcaList.length > 0 && rcaConfidence > 0;
+  const hasObservedRca = rcaAvailability === 'Present';
   const totalExposure = patterns.reduce((sum, pattern) => sum + patternCost(pattern), 0);
   const exposureShare = totalExposure ? Math.round(exposure / totalExposure * 100) : 0;
   const affected = executiveAffectedAreas(pat);
   const complexity = buildInvestigationComplexity({ pattern:pat, toolRows:matchToolDetectionRowsToPattern(pat, TOOL_DETECTION_ROWS) });
   const resolved = (pat.problems || []).filter(p => p.status === 'RESOLVED' && p.dur);
   const avgMttr = resolved.length ? arrMean(resolved.map(p => p.dur)) : 0;
-  const recommendedAction = hasActionableRca
+  const recommendedAction = hasObservedRca
     ? pat.recommendation?.text || 'Validate the identified root cause and initiate the remediation path.'
-    : 'Continue investigation until the root cause is consistently identified.';
-  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources | RCA confidence ${confidenceLabel(complexity.rcaConfidence)}`;
-  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA confidence</span><strong>${confidenceLabel(rcaConfidence)}</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidenceLabel(confidence)} | concentration ${pat.concentration}</strong></div></div>`;
+    : 'Continue investigation until Davis reports a root cause entity for this recurring pattern.';
+  const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources`;
+  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA Availability</span><strong>${rcaAvailability}</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidenceLabel(confidence)} | concentration ${pat.concentration}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
   const remediationPanel = renderWorkspaceRemediationBlock(pat);
   const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
@@ -5860,10 +6033,10 @@ function renderDecisionDetailPanel(pat, patterns) {
     <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.', 'technical-actionability')}</div>
     <div class="cx-detail-tiles actionability"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidenceLabel(confidence)}</strong><span>Confidence</span></div><div><strong>${priority}</strong><span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
     <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
-    <div class="cx-action-block ${hasActionableRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
+    <div class="cx-action-block ${hasObservedRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
     ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
-    ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences | ${pat.trend.toLowerCase()} | RCA confidence ${rcaConfidence}%`, evidenceBody)}
+    ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences | ${pat.trend.toLowerCase()} | RCA Availability: ${rcaAvailability}`, evidenceBody)}
     ${renderExecDisclosure('Investigation Complexity', complexitySummary, renderInvestigationComplexityCard(pat, patterns) || `<p>${complexity.narrative}</p>`)}
   </aside>`;
 }
@@ -5925,21 +6098,27 @@ function renderConciseActFirstMap(patterns) {
 
 function sreReliabilityPriority(pat, patterns) {
   const base = patternPriorityScore(pat, patterns);
-  const rcaPenalty = Math.max(0, 25 - Math.round((pat.rcaConsistency || 0) * 100));
-  return clamp(Math.round(base + rcaPenalty), 0, 100);
+  const rcaAvailabilityPenalty = patternRcaAvailability(pat) === 'Missing' ? 10 : 0;
+  return clamp(Math.round(base + rcaAvailabilityPenalty), 0, 100);
 }
 
 function sreAutomationOpportunity(pat) {
   const fix = patternFixabilityScore(pat);
   const rec = clamp((pat.occurrences || 0) * 8, 0, 40);
-  const rca = Math.round((pat.rcaConsistency || 0) * 25);
-  return clamp(Math.round(fix * 0.45 + rec + rca), 0, 100);
+  const rcaAvailabilitySignal = patternRcaAvailability(pat) === 'Present' ? 12 : 0;
+  return clamp(Math.round(fix * 0.45 + rec + rcaAvailabilitySignal), 0, 100);
 }
 
 function sreBlastRadiusScore(pat) {
   const affected = new Set();
-  (pat.problems || []).forEach(p => (p.entities || []).forEach(e => affected.add(e)));
-  return clamp(Math.max(affected.size, pat.problems?.length || 0), 0, 100);
+  (pat.problems || []).forEach(p => {
+    (Array.isArray(p.affectedEntityIds) ? p.affectedEntityIds : []).forEach(e => affected.add(e));
+    (Array.isArray(p.entities) ? p.entities : []).forEach(e => affected.add(e));
+  });
+  const affectedUsers = (pat.problems || []).reduce((sum, p) => sum + Math.max(0, Number(p.users) || 0), 0);
+  const entityScore = clamp(affected.size * 10, 0, 70);
+  const userScore = affectedUsers > 1000 ? 30 : affectedUsers > 100 ? 20 : affectedUsers > 0 ? 10 : 0;
+  return clamp(entityScore + userScore, 0, 100);
 }
 
 function sreScoreStatus(score) {
@@ -6241,7 +6420,7 @@ function developerConfidenceExplanation(pat) {
   const hasRca = Boolean(pat.dimensions?.rootCauseEntities?.length || pat.dimensions?.rootCauses?.length || pat.problems?.some(p => p.rca));
   if (status === 'High') return 'Repeated evidence is consistent across the selected recurring issue.';
   if (status === 'Medium') return hasRca
-    ? 'Some root-cause evidence repeats, but validation is still useful before remediation.'
+    ? 'Davis reports root-cause evidence for this recurring issue; review scoped evidence before remediation.'
     : 'The recurrence is visible, but root-cause evidence is incomplete.';
   return 'Evidence is limited or inconsistent, so use Assist analysis before deciding on a fix.';
 }
@@ -6637,10 +6816,10 @@ function renderExecutivePatternView(patterns, ps) {
   }
   chips.push(`<div class="exec-chip" title="Auto-correlated: % of problems where Davis AI identified a root cause entity - higher means less manual investigation"><span class="exec-chip-val">${Math.round(sm.autoCorrelationRate * 100)}%</span><span class="exec-chip-lbl">Auto-correlated</span></div>`);
   if (sm.avgQuality != null) {
-    chips.push(`<div class="exec-chip" title="Pattern Quality Score (0–100): how reliably Davis can identify this as a real repeating problem vs random noise. Combines: how similar incident titles are (35%), how consistently the same root cause is found (35%), how regular the timing is (15%), and how predictable the cost is each time (15%)."><span class="exec-chip-val">${sm.avgQuality}</span><span class="exec-chip-lbl">Avg pattern quality</span></div>`);
+    chips.push(`<div class="exec-chip" title="Pattern Quality Score (0-100): observed grouping and data regularity. Combines title clustering, recurrence stability, cost predictability, and observed entity context. It does not validate RCA correctness."><span class="exec-chip-val">${sm.avgQuality}</span><span class="exec-chip-lbl">Avg pattern quality</span></div>`);
   }
   if (sm.lowConfCount > 0) {
-    chips.push(`<div class="exec-chip exec-chip-warn" title="Patterns with quality score below 50 - inconsistent RCA, irregular recurrence, or mixed entity cluster. Treat costs for these patterns as indicative, not precise."><span class="exec-chip-val">${sm.lowConfCount}</span><span class="exec-chip-lbl">Low-confidence patterns</span></div>`);
+    chips.push(`<div class="exec-chip exec-chip-warn" title="Patterns with quality score below 50 - irregular recurrence, sparse data, or mixed observed entity context. Treat costs for these patterns as indicative, not precise."><span class="exec-chip-val">${sm.lowConfCount}</span><span class="exec-chip-lbl">Low-confidence patterns</span></div>`);
   }
   chips.push(`<div class="exec-chip" title="Events suppressed: estimated alert noise eliminated by Davis AI pattern grouping. Each grouped problem saves ~8 separate alert notifications."><span class="exec-chip-val">${sm.estimatedEventsSuppressed}</span><span class="exec-chip-lbl">Events suppressed</span></div>`);
 
