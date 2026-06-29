@@ -630,6 +630,7 @@ let expandCache={};
 let aiSrc='davis';
 let aiState='idle';
 let lastAIResult=null;
+let lastAnalysisResult=null; // separate from lastAIResult — not overwritten by remediation
 let remProblem=null;
 let awsModalProblem=null;
 let davisConversationId=null; // unused, kept for backwards compat
@@ -796,7 +797,7 @@ function render(){
   else document.getElementById('pbarChip').textContent=`${ps.length} of ${PROBLEMS.length} visible | ${dataSourceLabel()}`;
   document.getElementById('pbarChip').title = DATA_SOURCE_ERROR || dataSourceLabel();
   // cost banner
-  const showCost=persona!=='developer' && !(persona === 'executive' && currentView === 'patterns');
+  const showCost=persona==='executive' && currentView !== 'patterns';
   document.getElementById('costBanner').classList.toggle('hidden',!showCost);
   if(showCost) renderCostBanner(ps);
   // kpis
@@ -1724,20 +1725,42 @@ function renderAssistRemediationResponse(response, evidence=null) {
         <div class="rem-next-step"><span>Recommended next step</span><strong>${renderInlineValue(recommendedNext)}</strong></div>
         <p>${renderInlineValue(whyNow)}</p>
       </div>`
-    : `<div class="rem-persona-summary">
-        <div class="rem-assist-title">${persona === 'sre' ? 'SRE Remediation Guidance' : 'Developer Remediation Guidance'}</div>
-        <p class="rem-obj-assessment">${attrText(response.objectiveAssessment || response.summary || whyNow)}</p>
-        <div class="rem-exec-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-          <div><span>Recommendation strength</span><strong>${strengthText}</strong></div>
-          <div><span>Effort</span><strong>${renderInlineValue(effort)}</strong></div>
-        </div>
-      </div>`;
+    : (() => {
+        const evOccurrences = evidence?.occurrenceCount ?? evidence?.groupedProblemCount ?? 0;
+        const evCost        = evidence?.operationalCost ?? 0;
+        const evOpen        = evidence?.openProblemCount ?? 0;
+        const evMttr        = evidence?.avgMTTR ?? evidence?.avgDuration ?? 0;
+        const evTrend       = evidence?.trend ?? 'N/A';
+        const evRca         = evidence?.rcaAvailability ?? (evidence?.rootCauseEntity ? 'Present' : 'Missing');
+        const tl = (v, lbl, tone) => {
+          const cls = tone === 'ok' ? 'tl-green' : tone === 'warn' ? 'tl-amber' : tone === 'bad' ? 'tl-red' : '';
+          return `<div class="${cls}"><strong>${attrText(String(v))}</strong><span>${attrText(lbl)}</span></div>`;
+        };
+        return `<div class="rem-persona-summary">
+          <div class="rem-assist-title">${persona === 'sre' ? 'SRE Remediation Guidance' : 'Developer Remediation Guidance'}</div>
+          <p class="rem-obj-assessment">${attrText(response.objectiveAssessment || response.summary || whyNow)}</p>
+          ${evOccurrences || evOpen ? `
+          <div class="rem-assist-title" style="margin-top:10px">Pattern Signals</div>
+          <div class="rem-kpi-grid">
+            ${tl(evOccurrences,               'Recurrences',   evOccurrences > 10 ? 'bad' : evOccurrences > 4 ? 'warn' : 'ok')}
+            ${tl(evOpen,                      'Open Now',      evOpen > 0 ? 'warn' : 'ok')}
+            ${tl(evMttr ? fmtM(evMttr) : 'N/A', 'Avg MTTR',  evMttr > 60 ? 'bad' : evMttr > 20 ? 'warn' : 'ok')}
+            ${tl(evRca,                       'Root Cause',    evRca === 'Present' ? 'ok' : 'bad')}
+          </div>
+          <div class="rem-kpi-grid" style="margin-top:6px">
+            ${tl(evTrend,                     'Trend',         evTrend === 'INCREASING' ? 'bad' : evTrend === 'DECREASING' ? 'ok' : 'warn')}
+            ${persona === 'sre' ? tl(evCost ? fmtC(evCost) : 'N/A', 'Cost Exposure', evCost > 5000 ? 'bad' : evCost > 1000 ? 'warn' : 'ok') : tl(evRca === 'Present' ? 'Actionable' : 'Needs RCA', 'Fix Readiness', evRca === 'Present' ? 'ok' : 'bad')}
+            ${tl(strengthText,                'Strength',      strengthText.includes('EVIDENCE') ? 'ok' : strengthText.includes('CANDIDATE') ? 'warn' : 'bad')}
+            ${tl(renderInlineValue(effort),   'Effort',        effort === 'Low' ? 'ok' : effort === 'Medium' ? 'warn' : 'bad')}
+          </div>` : `
+          <div class="rem-exec-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+            <div><span>Recommendation strength</span><strong>${strengthText}</strong></div>
+            <div><span>Effort</span><strong>${renderInlineValue(effort)}</strong></div>
+          </div>`}
+        </div>`;
+      })();
   return `
     ${summaryBlock}
-    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Actions</div><div class="rem-options">${recCards}</div></div>` : ''}
-    ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
-    ${disclosure('Drivers', response.drivers)}
-    ${disclosure('Remediation context', response.remediationContext)}
     ${(()=>{
       const risks = response.risks;
       if (!risks?.length) return '';
@@ -1750,6 +1773,10 @@ function renderAssistRemediationResponse(response, evidence=null) {
       const items = (Array.isArray(gaps) ? gaps : [gaps]).slice(0,5).map(g => `<span class="rem-blurb-item gap">${attrText(humanizeGap(g))}</span>`).join('');
       return `<div class="rem-blurb-row"><span class="rem-blurb-label">Data gaps</span><div class="rem-blurb-items">${items}</div></div>`;
     })()}
+    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Actions</div><div class="rem-options">${recCards}</div></div>` : ''}
+    ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
+    ${disclosure('Drivers', response.drivers)}
+    ${disclosure('Remediation context', response.remediationContext)}
     ${executivePromptDisclosure}
   `;
 }
@@ -2779,10 +2806,10 @@ async function analyzeMulti(){
     const costs=ps.map(calcCost);
     const total=costs.reduce((a,c)=>a+c.total,0);
     const result=aiSrc==='external'?await callExternalAI(ps,persona,costs,total):await callDavisCopilot(ps,persona,costs,total);
-    lastAIResult=result;aiState='result';
+    lastAIResult=result;lastAnalysisResult=result;aiState='result';
   }catch(e){
     console.warn('[OpInt Davis] analyzeMulti failed, using fallback:', e.message, e);
-    lastAIResult=getFallbackMulti(ps,persona,ps.map(calcCost));aiState='result';
+    lastAIResult=getFallbackMulti(ps,persona,ps.map(calcCost));lastAnalysisResult=lastAIResult;aiState='result';
   }
   renderAIPanel(ps);
 }
@@ -2814,16 +2841,27 @@ function renderAIPanel(ps){
   const aiConfidence = aiPatterns.length
     ? confidenceLevel(arrMean(aiPatterns.map(p => patternConfidence(p))))
     : 'MEDIUM';
+  const rPatterns = Array.isArray(r.patterns) ? r.patterns : [];
+  const rRecs = Array.isArray(r.recommendations) ? r.recommendations
+    : Array.isArray(r.recommendedActions) ? r.recommendedActions.map(a => ({
+        priority: a.priority,
+        title: a.title,
+        description: a.reason || '',
+        dynatraceFeature: a.dynatraceCapability || '',
+        estimatedImpact: '',
+        owner: a.personaFit || '',
+      }))
+    : [];
   el.innerHTML=`<div class="ai-result fade-in">
-    <div class="ai-sec"><div class="ai-sec-lbl">📝 Summary - ${PMETA[persona].label} ${renderConfidenceBadge(aiConfidence, 'summary')}</div><div class="ai-summ">${r.summary}</div></div>
-    <div class="ai-sec"><div class="ai-sec-lbl">🔍 Patterns</div>${r.patterns.map(p=>`<div class="ai-pat-item"><span class="ai-pat-bullet">◆</span><span>${p}</span></div>`).join('')}</div>
-    ${r.costNarrative&&persona!=='developer'?`<div class="ai-sec"><div class="ai-sec-lbl">Cost Cost Narrative</div><div class="ai-cost-box">${r.costNarrative}</div></div>`:''}
-    <div class="ai-sec"><div class="ai-sec-lbl">✅ Recommendations</div>${r.recommendations.map(rec=>`
+    <div class="ai-sec"><div class="ai-sec-lbl">Summary - ${PMETA[persona].label} ${renderConfidenceBadge(aiConfidence, 'summary')}</div><div class="ai-summ">${r.summary || r.objectiveAssessment || ''}</div></div>
+    ${rPatterns.length ? `<div class="ai-sec"><div class="ai-sec-lbl">Patterns</div>${rPatterns.map(p=>`<div class="ai-pat-item"><span class="ai-pat-bullet">-</span><span>${p}</span></div>`).join('')}</div>` : ''}
+    ${r.costNarrative&&persona!=='developer'?`<div class="ai-sec"><div class="ai-sec-lbl">Cost Narrative</div><div class="ai-cost-box">${r.costNarrative}</div></div>`:''}
+    <div class="ai-sec"><div class="ai-sec-lbl">Recommendations</div>${rRecs.map(rec=>`
       <div class="ai-rec">
         <div class="ai-rec-top"><span class="pri ${rec.priority}">${rec.priority.replace('_',' ')}</span><span class="ai-rec-title">${rec.title}</span></div>
-        <div class="ai-rec-desc">${rec.description}</div>
+        ${rec.description ? `<div class="ai-rec-desc">${rec.description}</div>` : ''}
         ${recommendationFeature(rec)?`<div class="ai-rec-feature">Dynatrace: ${recommendationFeature(rec)}</div>`:''}
-        <div class="ai-rec-footer"><span class="ai-rec-impact">ok ${rec.estimatedImpact}</span><span class="ai-rec-owner">${rec.owner}</span></div>
+        ${rec.estimatedImpact||rec.owner ? `<div class="ai-rec-footer">${rec.estimatedImpact?`<span class="ai-rec-impact">${rec.estimatedImpact}</span>`:''}${rec.owner?`<span class="ai-rec-owner">${rec.owner}</span>`:''}</div>` : ''}
       </div>`).join('')}</div>
     <div class="ai-meta"><div class="ai-meta-txt">${r.generatedBy==='davis-copilot'?'AI Davis CoPilot':r.generatedBy==='external'?`🔌 ${getProviderLabel()}`:'AI Demo mode'} | ${PMETA[persona].label} | ${ps?ps.length:selectedIds.size} problem${(ps?ps.length:selectedIds.size)!==1?'s':''}</div><div class="ai-meta-ms">${r.latencyMs}ms</div></div>
   </div>`;
@@ -3238,54 +3276,85 @@ Return valid JSON only matching this schema:
   "recurrenceDrivers": ["string"],
   "operationalWeaknesses": ["string"],
   "automationOpportunities": ["string"],
-  "preventionRecommendations": ["string"],
+  "preventionRecommendations": [
+    {
+      "title": "string",
+      "dynatraceCapability": "one of: Davis AI | Workflows | Site Reliability Guardian | Live Debugger | Ownership and Routing | Application Observability | Infrastructure and Cloud Observability | Release Management | AutomationEngine"
+    }
+  ],
   "confidence": "high|medium|low"
 }`;
+}
+
+function inferDynatraceCapability(text, fallbackIdx) {
+  const t = String(text || '').toLowerCase();
+  if (t.includes('anomaly') || t.includes('threshold') || t.includes('davis') || t.includes('detection')) return 'Davis AI';
+  if (t.includes('workflow') || t.includes('automat') || t.includes('runbook') || t.includes('trigger')) return 'Workflows';
+  if (t.includes('debug') || t.includes('code') || t.includes('exception') || t.includes('trace')) return 'Live Debugger';
+  if (t.includes('owner') || t.includes('routing') || t.includes('assign') || t.includes('team')) return 'Ownership and Routing';
+  if (t.includes('deploy') || t.includes('release') || t.includes('change')) return 'Release Management';
+  if (t.includes('dependency') || t.includes('smartscape') || t.includes('service flow') || t.includes('bottleneck')) return 'Application Observability';
+  if (t.includes('infra') || t.includes('host') || t.includes('kubernetes') || t.includes('cloud') || t.includes('resource')) return 'Infrastructure and Cloud Observability';
+  if (t.includes('slo') || t.includes('service level') || t.includes('reliability') || t.includes('guardian')) return 'Site Reliability Guardian';
+  const defaults = ['Davis AI', 'Workflows', 'Site Reliability Guardian', 'Application Observability'];
+  return defaults[fallbackIdx % defaults.length];
 }
 
 function normalizePersonaAnalysisResponse(parsed, currentPersona, ps, costs, totalCost, source, latencyMs) {
   if (currentPersona === 'developer') {
     const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+    const investigateFirst = parsed.investigateFirst;
     return {
-      summary: parsed.summary || `Dynatrace Assist analyzed ${ps.length} selected problems.`,
-      patterns: [
-        ...(Array.isArray(parsed.signals) ? parsed.signals.map(s => typeof s === 'string' ? s : `${s.signal || 'Signal'}${s.confidence ? ` (${s.confidence})` : ''}`) : []),
-        parsed.investigateFirst?.target ? `Investigate first: ${parsed.investigateFirst.target} - ${parsed.investigateFirst.reason || 'selected by Assist'}` : '',
-      ].filter(Boolean),
-      costNarrative: '',
-      recommendations: recs.map((r, idx) => ({
-        priority: idx === 0 ? 'IMMEDIATE' : 'SHORT_TERM',
-        title: r.action || r.title || 'Investigate scoped evidence',
-        description: r.reason || r.description || 'Use the selected problem IDs as the investigation scope.',
-        dynatraceFeature: r.dynatraceCapability || r.dynatraceFeature || 'Davis AI',
-        estimatedImpact: 'Faster scoped troubleshooting',
-        owner: 'Service owner',
-      })),
-      validationSteps: parsed.validationSteps || [],
+      objectiveAssessment: parsed.summary || (investigateFirst?.target ? `Investigation should start at ${investigateFirst.target}. ${investigateFirst.reason || ''}` : `Dynatrace Assist analyzed ${ps.length} selected problems.`),
+      recommendedActions: [
+        ...(investigateFirst?.target ? [{
+          priority: 'IMMEDIATE',
+          title: `Investigate: ${investigateFirst.target}`,
+          recommendationStrength: investigateFirst.confidence === 'high' ? 'Evidence-backed' : 'Candidate',
+          reason: investigateFirst.reason || 'Identified as primary investigation target.',
+          dynatraceCapability: 'Davis AI',
+          effort: 'Low',
+          personaFit: 'Developer-led code or config investigation.',
+        }] : []),
+        ...recs.map((r, idx) => ({
+          priority: idx === 0 && !investigateFirst?.target ? 'IMMEDIATE' : 'SHORT_TERM',
+          title: r.action || r.title || 'Investigate scoped evidence',
+          recommendationStrength: 'Candidate',
+          reason: r.reason || r.description || '',
+          dynatraceCapability: r.dynatraceCapability || r.dynatraceFeature || inferDynatraceCapability(r.action || r.title || '', idx),
+          effort: 'Low',
+          personaFit: 'Developer',
+        })),
+      ],
+      risks: (Array.isArray(parsed.signals) ? parsed.signals.slice(0,3).map(s => typeof s === 'string' ? s : s.signal || '') : []).filter(Boolean),
+      dataGaps: (parsed.validationSteps || []).slice(0,3),
+      summary: parsed.summary,
+      patterns: Array.isArray(parsed.signals) ? parsed.signals.map(s => typeof s === 'string' ? s : s.signal || '') : [],
       generatedBy: source,
       latencyMs,
     };
   }
   if (currentPersona === 'sre') {
     const signals = Array.isArray(parsed.reliabilitySignals) ? parsed.reliabilitySignals : [];
+    // preventionRecommendations can be strings (old schema) or {title, dynatraceCapability} objects (new schema)
+    const prevention = (parsed.preventionRecommendations || []).map(r =>
+      typeof r === 'string' ? { title: r, dynatraceCapability: null } : r
+    );
+    const automation = parsed.automationOpportunities || [];
     return {
-      summary: `Reliability analysis for ${ps.length} selected problems identified ${signals.length} reliability signals and ${(parsed.automationOpportunities || []).length} automation opportunities.`,
-      patterns: [
-        ...signals.map(s => `${s.signal || 'Reliability signal'}${s.confidence ? ` (${s.confidence})` : ''}`),
-        ...(parsed.recurrenceDrivers || []),
-      ],
-      costNarrative: totalCost ? `Selected problems represent ${fmtC(totalCost)} estimated operational exposure.` : '',
-      recommendations: (parsed.preventionRecommendations || []).map((r, idx) => ({
+      objectiveAssessment: `Reliability analysis identified ${signals.length} reliability signal${signals.length !== 1 ? 's' : ''} and ${automation.length} automation opportunit${automation.length !== 1 ? 'ies' : 'y'} across ${ps.length} selected problems.${totalCost ? ` Estimated operational exposure: ${fmtC(totalCost)}.` : ''}`,
+      recommendedActions: prevention.map((r, idx) => ({
         priority: idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC',
-        title: r,
-        description: (parsed.automationOpportunities || [])[idx] || 'Reduce recurrence through reliability workflow improvements.',
-        dynatraceFeature: 'Site Reliability Guardian',
-        estimatedImpact: 'Reduced future recurrence',
-        owner: 'SRE team',
+        title: r.title,
+        recommendationStrength: idx === 0 ? 'Evidence-backed' : 'Candidate',
+        reason: automation[idx] || 'Reduce recurrence through reliability workflow improvements.',
+        dynatraceCapability: r.dynatraceCapability || inferDynatraceCapability(r.title, idx),
+        effort: idx === 0 ? 'Low' : idx === 1 ? 'Medium' : 'High',
+        personaFit: 'SRE team',
       })),
-      reliabilitySignals: signals,
-      operationalWeaknesses: parsed.operationalWeaknesses || [],
-      automationOpportunities: parsed.automationOpportunities || [],
+      risks: signals.slice(0,4).map(s => `${s.signal || 'Reliability signal'}${s.confidence ? ` (${s.confidence} confidence)` : ''}`),
+      dataGaps: (parsed.operationalWeaknesses || []).slice(0,3),
+      patterns: signals.map(s => s.signal || ''),
       generatedBy: source,
       latencyMs,
     };
@@ -3321,6 +3390,8 @@ Return ONLY JSON: {"summary":"string","patterns":["str","str","str"],"costNarrat
     : persona === 'sre'
       ? buildSreAnalysisPrompt(ps, costs, totalCost)
       : legacyPrompt;
+  window.__OPINT_LAST_ANALYSIS_PROMPT__ = prompt;
+  window.__OPINT_LAST_ANALYSIS_PERSONA__ = persona;
   let text='';
   if(source==='davis-copilot'){
     text = await callDavisSkill(prompt);
@@ -3355,14 +3426,47 @@ function getFallbackMulti(ps,persona,costs){
   const metrics = calculateAIMetrics(ps, costs, total);
   const rcaCount = ps.filter(p=>p.hasRCA).length;
   const rcaPct = ps.length ? Math.round(rcaCount/ps.length*100) : 0;
+  const openCount = ps.filter(p=>p.status==='OPEN').length;
+  const noiseCount = ps.filter(p=>p.noise).length;
+  if (persona === 'developer') {
+    return {
+      objectiveAssessment: `${ps.length} problem${ps.length!==1?'s':''} analyzed with ${rcaPct}% RCA coverage. Root cause clusters point to ${ps.filter(p=>p.hasRCA).map(p=>p.rca).filter(Boolean).join(', ')||'undocumented failures'}. ${ps.filter(p=>!p.hasRCA).length} problem${ps.filter(p=>!p.hasRCA).length!==1?'s':''} lack root cause, blocking targeted prevention.`,
+      recommendedActions: [
+        {priority:'IMMEDIATE',title:'Investigate services with missing root cause',recommendationStrength:'Evidence-backed',reason:`${ps.filter(p=>!p.hasRCA).length} of ${ps.length} problems have no RCA — investigation scope is undefined.`,dynatraceCapability:'Davis AI',effort:'Low',personaFit:'Developer-led root cause investigation.'},
+        {priority:'SHORT_TERM',title:'Review error patterns and code-level signals',recommendationStrength:'Candidate',reason:'High recurrence suggests a persistent code or config defect that has not been addressed.',dynatraceCapability:'Live Debugger',effort:'Medium',personaFit:'Service owner or code contributor.'},
+        {priority:'STRATEGIC',title:'Add ownership metadata to affected services',recommendationStrength:'Data-gap',reason:'No accountable team is assigned — remediations cannot be routed.',dynatraceCapability:'Ownership and Routing',effort:'Low',personaFit:'Platform or developer team.'},
+      ],
+      risks: [`${ps.filter(p=>!p.hasRCA).length} problems without root cause`,openCount>0?`${openCount} incidents currently open`:''].filter(Boolean),
+      dataGaps: ['rca_availability','owner_team'],
+      summary: `${ps.length} problems analyzed with ${rcaPct}% RCA coverage.`,
+      patterns:[`${metrics.patternCount} recurring patterns account for ${metrics.recurringCostPct}% of operational cost`,`Average MTTR is ${metrics.avgMttr} minutes`],
+      generatedBy:'mock',latencyMs:1400,
+    };
+  }
+  if (persona === 'sre') {
+    return {
+      objectiveAssessment: `${ps.length} problem${ps.length!==1?'s':''} reviewed. ${ps.filter(p=>p.rec>=60).length} are high-recurrence, ${ps.filter(p=>!p.hasRCA).length} are missing RCA, and ${noiseCount} are alert noise candidates. Estimated operational exposure: ${fmtC(total)}.`,
+      recommendedActions: [
+        {priority:'IMMEDIATE',title:'Triage open high-recurrence incidents',recommendationStrength:'Evidence-backed',reason:`${openCount} open incidents — active blast radius must be contained before recurrence reduction.`,dynatraceCapability:'Davis AI',effort:'Low',personaFit:'On-call SRE.'},
+        {priority:'SHORT_TERM',title:'Implement recurrence suppression for noise candidates',recommendationStrength:noiseCount>0?'Evidence-backed':'Candidate',reason:`${noiseCount} alert noise candidates detected — suppression reduces on-call interrupt load.`,dynatraceCapability:'Workflows',effort:'Medium',personaFit:'SRE platform team.'},
+        {priority:'STRATEGIC',title:'Build runbook automation for top recurring patterns',recommendationStrength:'Candidate',reason:`${metrics.patternCount} recurring patterns represent ${metrics.recurringCostPct}% of cost — automation compounds savings.`,dynatraceCapability:'Site Reliability Guardian',effort:'High',personaFit:'SRE team.'},
+      ],
+      risks: [noiseCount>0?`${noiseCount} alert noise candidates`:'',`${ps.filter(p=>!p.hasRCA).length} missing RCA`].filter(Boolean),
+      dataGaps: ['alert_event_count','rca_availability'],
+      summary: `${ps.length} problems. ${ps.filter(p=>p.rec>=60).length} high-recurrence, ${ps.filter(p=>!p.hasRCA).length} missing RCA.`,
+      patterns:[`${metrics.patternCount} recurring patterns account for ${metrics.recurringCostPct}% of operational cost`,`Average MTTR is ${metrics.avgMttr} minutes`],
+      generatedBy:'mock',latencyMs:1400,
+    };
+  }
+  // executive fallback (legacy schema)
   return{
-    summary:persona==='executive'?`${ps.length} customer-facing incidents affected ${users.toLocaleString()} customers with an estimated ${fmtC(total)} impact. ${metrics.patternCount} recurring patterns represent ${metrics.recurringCostPct}% of operational cost, so the investment case is tied to measurable repeat impact.`:persona==='developer'?`${ps.length} problems analyzed with ${rcaPct}% RCA coverage. Root cause clusters point to ${ps.filter(p=>p.hasRCA).map(p=>p.rca).filter(Boolean).join(', ')||'undocumented failures'}, while ${ps.filter(p=>!p.hasRCA).length} problems lack root cause and block prevention.`:`${ps.length} problems. ${ps.filter(p=>p.rec>=60).length} high-recurrence, ${ps.filter(p=>!p.hasRCA).length} missing RCA, estimated ${fmtC(total)} cost. Alert noise candidates: ${ps.filter(p=>p.noise).length}.`,
+    summary:`${ps.length} customer-facing incidents affected ${users.toLocaleString()} customers with an estimated ${fmtC(total)} impact. ${metrics.patternCount} recurring patterns represent ${metrics.recurringCostPct}% of operational cost, so the investment case is tied to measurable repeat impact.`,
     patterns:[`${metrics.patternCount} recurring patterns account for ${metrics.recurringCostPct}% of operational cost`,`Average MTTR is ${metrics.avgMttr} minutes with a ${metrics.mttrDeltaPct}% modeled movement versus the prior period`,`${metrics.topTech} accounts for ${metrics.topTechCostPct}% of operational cost`],
     costNarrative:`These ${ps.length} incidents represent approximately ${fmtC(total)} in combined revenue and engineering costs, with ${metrics.recurringCostPct}% tied to recurring issues.`,
     recommendations:[
       {priority:'IMMEDIATE',title:'Address open incidents now',description:'Triage and escalate all OPEN status problems immediately. Follow existing runbooks.',dynatraceFeature:'Davis AI',estimatedImpact:'Stop active customer impact',owner:'on-call SRE'},
       {priority:'SHORT_TERM',title:'Mandate root cause documentation',description:'Require RCA entry before closing P1/P2 problems. Reduces recurrence by ~35%.',dynatraceFeature:'Ownership and Routing',estimatedImpact:'Reduce recurrence within 60 days',owner:'team:sre'},
-      {priority:'STRATEGIC',title:'Invest in autonomous remediation',description:'Configure AWS DevOps Agent for top recurring patterns. Each automated fix saves ~2–4 hours of engineer time per occurrence.',estimatedImpact:`Save ${fmtC(total*0.4)} per period once automated`,owner:'team:platform'},
+      {priority:'STRATEGIC',title:'Invest in autonomous remediation',description:`Configure AWS DevOps Agent for top recurring patterns. Each automated fix saves ~2-4 hours of engineer time per occurrence.`,estimatedImpact:`Save ${fmtC(total*0.4)} per period once automated`,owner:'team:platform'},
     ],
     generatedBy:'mock',latencyMs:1400,
   };
@@ -5561,6 +5665,42 @@ function renderPersonaKpiDetail(currentPersona, mode, ps) {
   return detail ? renderKpiDetailCard(detail) : '';
 }
 
+function spreadBubbles(rawPositions, plotW, plotH) {
+  const pts = rawPositions.map(p => ({
+    x: p.left / 100 * plotW,
+    y: p.bottom / 100 * plotH,
+    r: p.size / 2 + 5,
+  }));
+  for (let iter = 0; iter < 60; iter++) {
+    let moved = false;
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[j].x - pts[i].x || 0.001;
+        const dy = pts[j].y - pts[i].y || 0.001;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = pts[i].r + pts[j].r;
+        if (dist < minDist) {
+          const push = (minDist - dist) / 2 + 0.5;
+          const nx = dx / dist; const ny = dy / dist;
+          pts[i].x -= nx * push; pts[i].y -= ny * push;
+          pts[j].x += nx * push; pts[j].y += ny * push;
+          moved = true;
+        }
+      }
+    }
+    pts.forEach(p => {
+      p.x = Math.max(p.r + plotW * 0.06, Math.min(plotW - p.r - plotW * 0.06, p.x));
+      p.y = Math.max(p.r + plotH * 0.10, Math.min(plotH - p.r - plotH * 0.10, p.y));
+    });
+    if (!moved) break;
+  }
+  return pts.map((p, i) => ({
+    ...rawPositions[i],
+    left: Math.round(p.x / plotW * 100),
+    bottom: Math.round(p.y / plotH * 100),
+  }));
+}
+
 function renderActFirstMap(patterns) {
   const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns), model: actFirstModel(pat, patterns) }))
     .sort((a, b) => b.score - a.score);
@@ -5569,14 +5709,18 @@ function renderActFirstMap(patterns) {
     return `<section class="act-map"><div class="act-map-head"><div><div class="act-map-title">Act-First Map</div><div class="act-map-sub">No recurring patterns available for prioritization.</div></div></div></section>`;
   }
   const selectedModel = selected ? actFirstModel(selected, patterns) : null;
+  const rawActPositions = ranked.map(({ pat, score, model }) => ({
+    left: Math.round(8 + model.fixability * 84),
+    bottom: Math.round(9 + model.exposure * 80),
+    size: Math.round(clamp(18 + (pat.occurrences || 0) * 2 + Math.sqrt(Math.max(0, model.cost)) / 65, 20, 44)),
+  }));
+  const spreadActPositions = spreadBubbles(rawActPositions, 580, 320);
   const bubbles = ranked.map(({ pat, score, model }, idx) => {
     const selectedCls = pat.id === selected?.id ? ' selected' : '';
-    const left = Math.round(8 + model.fixability * 84);
-    const bottom = Math.round(9 + model.exposure * 80);
-    const size = Math.round(clamp(18 + (pat.occurrences || 0) * 2 + Math.sqrt(Math.max(0, model.cost)) / 65, 20, 44));
+    const { left, bottom, size } = spreadActPositions[idx];
     const tip = `${pat.title} | ${model.quadrant} | Exposure ${fmtC(model.cost)} | Recoverable ${fmtC(model.recoverable)} | ${model.reason}`;
     return `<button class="act-map-bubble${selectedCls}" data-action="selectPatternRow" data-act-map="1" data-pid="${pat.id}" tabindex="0" role="option" aria-selected="${pat.id === selected?.id}" aria-label="Priority ${idx + 1}: ${attrText(pat.title)}. ${attrText(model.quadrant)}. Exposure ${fmtC(model.cost)}. Recoverable ${fmtC(model.recoverable)}." title="${attrText(tip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
-      <span>#${idx + 1}</span><em>${score}</em>
+      <span>${idx + 1}</span><em>${score}</em>
     </button>`;
   }).join('');
   return `
@@ -5842,10 +5986,49 @@ function renderWorkspaceAnalysisBlock(pat, intro) {
   if (isCurrent && aiState === 'loading') {
     return `<div class="cx-remediation-summary"><span>Generating analysis from Dynatrace Assist...</span></div>`;
   }
-  if (isCurrent && aiState === 'result' && lastAIResult) {
-    const recs = Array.isArray(lastAIResult.recommendations) ? lastAIResult.recommendations : [];
-    const patterns = Array.isArray(lastAIResult.patterns) ? lastAIResult.patterns : [];
-    return `<div class="ai-compact"><div class="cx-eyebrow">Dynatrace Intelligence Analysis</div><p>${lastAIResult.summary || 'Analysis generated for the selected context.'}</p>${patterns.length ? `<ul>${patterns.slice(0,3).map(item => `<li>${typeof item === 'string' ? item : item.signal || item.title || item.description || 'Analysis signal'}</li>`).join('')}</ul>` : ''}${recs.length ? `<ul>${recs.slice(0,3).map(r => `<li>${typeof r === 'string' ? r : r.title || r.action || r.description || 'Recommended action'}</li>`).join('')}</ul>` : ''}</div>`;
+  if (isCurrent && lastAnalysisResult) {
+    const result = lastAnalysisResult;
+    const recs = Array.isArray(result.recommendedActions) ? result.recommendedActions
+      : Array.isArray(result.recommendations) ? result.recommendations : [];
+    const risks = Array.isArray(result.risks) ? result.risks : [];
+    const gaps  = Array.isArray(result.dataGaps) ? result.dataGaps : [];
+    const priMeta = {
+      IMMEDIATE: { tier:'immediate', label:'Immediate', time:'Now', cls:'act-auto' },
+      SHORT_TERM: { tier:'short', label:'Short term', time:'Days', cls:'act-semi' },
+      STRATEGIC: { tier:'strategic', label:'Strategic', time:'Weeks', cls:'act-manual' },
+    };
+    const recCards = recs.slice(0, 4).map((rec, idx) => {
+      const pri = String(rec.priority || (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC')).toUpperCase();
+      const meta = priMeta[pri] || priMeta.STRATEGIC;
+      const feature = rec.dynatraceCapability || rec.dynatraceFeature || '';
+      const recStrength = String(rec.recommendationStrength || '').toUpperCase();
+      const recTone = recStrength.includes('EVIDENCE') ? 'var(--green)' : recStrength.includes('CANDIDATE') ? 'var(--amber)' : recStrength.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
+      const recPct  = recStrength.includes('EVIDENCE') ? 85 : recStrength.includes('CANDIDATE') ? 60 : recStrength.includes('DATA') ? 35 : 50;
+      return `<div class="rem-opt tier-${meta.tier}">
+        ${feature ? `<div class="rem-feature-inline"><strong>${attrText(feature)}</strong></div>` : ''}
+        <div class="rem-opt-header">
+          <span class="rem-strength-dot" style="background:${recTone}" title="${recStrength}"></span>
+          <span class="rem-opt-label">${attrText(rec.title || meta.label)}</span>
+          <span class="tier-badge ${meta.tier}">${meta.label}</span>
+          <span class="rem-opt-time">${meta.time}</span>
+        </div>
+        <div class="rem-conf">
+          <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${recPct}%;background:${recTone}"></div></div>
+        </div>
+      </div>`;
+    }).join('');
+    const riskChips = risks.slice(0,4).map(r => `<span class="rem-blurb-item risk">${attrText(humanizeRisk(r))}</span>`).join('');
+    const gapItems  = gaps.slice(0,5).map(g => `<li>${attrText(humanizeGap(g))}</li>`).join('');
+    return `<div class="rem-analysis-wrap">
+      <div class="rem-persona-summary">
+        <div class="rem-assist-title">Dynatrace Intelligence Analysis</div>
+        <p class="rem-obj-assessment">${attrText(result.objectiveAssessment || result.summary || '')}</p>
+      </div>
+      ${riskChips ? `<div class="rem-blurb-row"><span class="rem-blurb-label">Risks</span><div class="rem-blurb-items">${riskChips}</div></div>` : ''}
+      ${gapItems  ? `<div class="rem-blurb-row"><span class="rem-blurb-label">Data Gaps</span><ul class="rem-gap-list">${gapItems}</ul></div>` : ''}
+      ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Actions</div><div class="rem-options">${recCards}</div></div>` : ''}
+      ${window.__OPINT_LAST_ANALYSIS_PROMPT__ && analysisPatternId === pat.id ? `<details class="rem-disclosure"><summary><span><strong>Prompt Used</strong><small>${window.__OPINT_LAST_ANALYSIS_PROMPT__.length} characters</small></span><b>+</b></summary><div class="rem-disclosure-body"><pre style="white-space:pre-wrap;font-size:10px;color:var(--text-3)">${attrText(window.__OPINT_LAST_ANALYSIS_PROMPT__)}</pre></div></details>` : ''}
+    </div>`;
   }
   return `<div class="cx-complexity-summary"><span>Analysis</span><strong>Available on request</strong><p>${intro}</p><button class="snap-cta" data-action="analyzeSelectedPattern" data-pid="${pat.id}">Generate Analysis</button></div>`;
 }
@@ -6118,15 +6301,24 @@ function renderConciseActFirstMap(patterns) {
   const maxCost = Math.max(1, ...patterns.map(p => patternCost(p)));
   const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) }))
     .sort((a, b) => b.score - a.score);
+  const rawExecPositions = ranked.map(({ pat, score }) => {
+    const cost = patternCost(pat);
+    const fixability = patternFixabilityScore(pat);
+    const costPosition = clamp(cost / maxCost, 0.06, 1);
+    return {
+      left: Math.round(12 + fixability * 70),
+      bottom: Math.round(16 + costPosition * 62),
+      size: Math.round(clamp(18 + Math.sqrt(Math.max(0, cost)) / 60, 20, 44)),
+    };
+  });
+  const spreadExecPositions = spreadBubbles(rawExecPositions, 580, 360);
   const bubbles = ranked.map(({ pat, score }, idx) => {
     const cost = patternCost(pat);
     const recoverable = patternRecoverableValue(pat);
     const fixability = patternFixabilityScore(pat);
     const model = actFirstModel(pat, patterns);
     const costPosition = clamp(cost / maxCost, 0.06, 1);
-    const left = Math.round(12 + fixability * 70);   // 12–82%: keeps bubbles away from left/right label corners
-    const bottom = Math.round(16 + costPosition * 62); // 16–78%: keeps bubbles away from top/bottom label corners
-    const size = Math.round(clamp(18 + Math.sqrt(Math.max(0, cost)) / 60, 20, 44));
+    const { left, bottom, size } = spreadExecPositions[idx];
     const primaryAction = pat.recommendation?.text || model.reason;
     const priority = executivePriorityLevel(pat, patterns);
     const confidence = patternConfidenceScore(pat);
@@ -6282,13 +6474,20 @@ function renderSreRiskMatrix(patterns, ps=[]) {
     if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max === min) return fallback;
     return clamp((value - min) / (max - min), 0, 1);
   };
-  const bubbles = ranked.map(({ pat, score }, idx) => {
+  const rawSrePositions = ranked.map(({ pat, score }, idx) => {
     const effort = 100 - patternFixabilityScore(pat);
     const spreadOffset = ((idx % 3) - 1) * 4;
     const rowOffset = ((Math.floor(idx / 3) % 3) - 1) * 3;
-    const left = Math.round(clamp(10 + displayScale(effort, effortMin, effortMax) * 80 + spreadOffset, 8, 92));
-    const bottom = Math.round(clamp(12 + displayScale(score, riskMin, riskMax) * 76 + rowOffset, 10, 90));
-    const size = Math.round(clamp(22 + sreBlastRadiusScore(pat) / 3, 22, 48));
+    return {
+      left: Math.round(clamp(10 + displayScale(effort, effortMin, effortMax) * 80 + spreadOffset, 8, 92)),
+      bottom: Math.round(clamp(12 + displayScale(score, riskMin, riskMax) * 76 + rowOffset, 10, 90)),
+      size: Math.round(clamp(22 + sreBlastRadiusScore(pat) / 3, 22, 48)),
+    };
+  });
+  const spreadSrePositions = spreadBubbles(rawSrePositions, 580, 360);
+  const bubbles = ranked.map(({ pat, score }, idx) => {
+    const effort = 100 - patternFixabilityScore(pat);
+    const { left, bottom, size } = spreadSrePositions[idx];
     const selected = pat.id === patternExplorerState.selectedId;
     const automation = sreAutomationOpportunity(pat);
     const blast = sreBlastRadiusScore(pat);
@@ -6302,7 +6501,7 @@ function renderSreRiskMatrix(patterns, ps=[]) {
       selected && execClosedBubblePopupId === pat.id ? 'popup-hidden' : '',
     ].filter(Boolean).join(' ');
     return `<button class="cx-map-bubble sre-risk-bubble sre-risk-${priorityClass} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
-      <span class="sre-bubble-rank">#${idx + 1}</span>
+      <span class="sre-bubble-rank">${idx + 1}</span>
       <span class="sre-bubble-status">${priorityStatus}</span>
       <div class="cx-bubble-popover sre-bubble-popover" role="tooltip">
         <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
@@ -7707,7 +7906,7 @@ function openTicket(url) {
 
 // ── UTILS ──
 function switchPersona(p){
-  persona=p;selectedIds.clear();expandedIds.clear();aiState='idle';lastAIResult=null;
+  persona=p;selectedIds.clear();expandedIds.clear();aiState='idle';lastAIResult=null;lastAnalysisResult=null;
   execKpiDetail=null;
   if (p === 'sre' || p === 'developer') currentView = 'patterns';
   document.querySelectorAll('.pbtn').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
