@@ -1624,6 +1624,19 @@ function humanizeRisk(raw) {
   return String(raw).replace(/_/g, ' ').split(/[.,]/)[0].trim().split(' ').slice(0,5).join(' ');
 }
 
+function renderRiskChip(raw) {
+  const s = String(raw);
+  const lower = s.toLowerCase();
+  // Extract confidence level then strip it from the display text
+  const conf = lower.includes('high confidence') ? 'high'
+    : lower.includes('medium confidence') ? 'medium'
+    : lower.includes('low confidence') ? 'low'
+    : null;
+  const text = humanizeRisk(s.replace(/\s*\(?(high|medium|low)\s+confidence\)?\s*/gi, ' ').trim());
+  const dot = conf ? `<span class="rem-risk-dot ${conf}" title="${conf} confidence"></span>` : '';
+  return `<span class="rem-blurb-item risk">${dot}${attrText(text)}</span>`;
+}
+
 function renderAssistRemediationResponse(response, evidence=null) {
   if (!response) return '';
   if (typeof response === 'string') {
@@ -1773,7 +1786,7 @@ function renderAssistRemediationResponse(response, evidence=null) {
     ${(()=>{
       const risks = response.risks;
       if (!risks?.length) return '';
-      const items = risks.slice(0,4).map(r => `<span class="rem-blurb-item risk">${attrText(humanizeRisk(r))}</span>`).join('');
+      const items = risks.slice(0,4).map(r => renderRiskChip(r)).join('');
       return `<div class="rem-blurb-row"><span class="rem-blurb-label">Risks</span><div class="rem-blurb-items">${items}</div></div>`;
     })()}
     ${(()=>{
@@ -6071,7 +6084,7 @@ function renderWorkspaceAnalysisBlock(pat, intro) {
         </div>
       </div>`;
     }).join('');
-    const riskChips = risks.slice(0,4).map(r => `<span class="rem-blurb-item risk">${attrText(humanizeRisk(r))}</span>`).join('');
+    const riskChips = risks.slice(0,4).map(r => renderRiskChip(r)).join('');
     const gapItems  = gaps.slice(0,5).map(g => `<li>${attrText(humanizeGap(g))}</li>`).join('');
     return `<div class="rem-analysis-wrap">
       <div class="rem-persona-summary">

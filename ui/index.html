@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpInt v3 - Operational Intelligence</title>
+<title>Calibrate - Operational Optimizer</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -338,7 +338,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .rem-blurb-label{font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)}
 .rem-blurb-items{display:flex;flex-wrap:wrap;gap:4px}
 .rem-blurb-item{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:3px;font-size:10px;line-height:1.4;max-width:100%}
-.rem-blurb-item.risk{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.25);color:var(--text-2)}
+.rem-blurb-item.risk{display:inline-flex;align-items:center;gap:5px;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.25);color:var(--text-2)}
 .rem-blurb-item.gap{background:rgba(245,197,24,.07);border:1px solid rgba(245,197,24,.2);color:var(--text-3);font-family:var(--mono);font-size:9px}
 .rem-blurb-item.driver{background:rgba(61,214,140,.06);border:1px solid rgba(61,214,140,.18);color:var(--text-3);gap:5px}
 .rem-blurb-item.driver strong{color:var(--text-1);font-size:11px}
@@ -400,8 +400,13 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .rem-feature-top{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;margin-bottom:10px;padding:7px 9px;border:1px solid rgba(155,143,228,.28);background:rgba(155,143,228,.11);border-radius:var(--r)}
 .rem-feature-top span{font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
 .rem-feature-top strong{font-size:12px;font-weight:800;color:var(--violet)}
-.rem-feature-inline{font-size:10px;color:var(--text-3);margin-bottom:4px}
-.rem-feature-inline strong{color:var(--blue);font-weight:600}
+.rem-feature-inline{display:flex;align-items:center;gap:5px;font-size:10px;margin-bottom:5px}
+.rem-feature-inline span{color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.rem-feature-inline strong{color:var(--blue);font-weight:700}
+.rem-risk-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}
+.rem-risk-dot.high{background:var(--coral)}
+.rem-risk-dot.medium{background:var(--amber)}
+.rem-risk-dot.low{background:var(--green)}
 .rem-gap-list{margin:4px 0 0;padding-left:14px;list-style:disc}
 .rem-gap-list li{font-size:11px;color:var(--text-2);line-height:1.6}
 
@@ -1539,8 +1544,7 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 <!-- HEADER -->
 <header class="hdr">
   <div class="brand">
-    <div class="brand-icon">Lightning</div>
-    <div><div class="brand-name">OpInt</div><div class="brand-sub">Operational Intelligence</div></div>
+    <div><div class="brand-name">Calibrate</div><div class="brand-sub">Operational Optimizer</div></div>
   </div>
   <div class="hsep"></div>
   <div class="psw" id="psw">
