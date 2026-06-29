@@ -3206,8 +3206,12 @@ function compactAssistContext(ps) {
 
 function buildDeveloperAnalysisPrompt(ps) {
   const c = compactAssistContext(ps);
+  const { patterns: devPatterns, sharedEntityMap: devSharedMap } = detectPatterns(ps);
   const obj = activeObjective || 'cost_impact';
   const isNoise = obj === 'alert_optimization';
+  const devSharedEntities = Object.entries(devSharedMap || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([entity, count]) => `${entity} (${count} patterns)`);
   return `You are a software developer using Dynatrace.
 OBJECTIVE: ${obj}
 
@@ -3228,6 +3232,7 @@ ${c.timeRange}
 
 Developer scope:
 ${c.selectedScope ? `${c.selectedScope.type}: ${c.selectedScope.label}` : 'All Developer Scope'}
+${devSharedEntities.length ? `\nShared blast radius entities (appear across multiple patterns):\n${devSharedEntities.join('\n')}` : ''}
 
 ${isNoise ? `OBJECTIVE FOCUS — alert_optimization:
 Identify which alerts in this pattern lack actionable code-level signal.
@@ -3267,9 +3272,12 @@ Return valid JSON only matching this schema:
 
 function buildSreAnalysisPrompt(ps, costs, totalCost) {
   const c = compactAssistContext(ps);
-  const patterns = detectPatterns(ps).patterns;
+  const { patterns, sharedEntityMap } = detectPatterns(ps);
   const obj = activeObjective || 'cost_impact';
   const isNoise = obj === 'alert_optimization';
+  const sharedEntities = Object.entries(sharedEntityMap || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([entity, count]) => `${entity} (${count} patterns)`);
   const metadata = {
     problemCount: ps.length,
     openProblems: ps.filter(p => p.status === 'OPEN').length,
@@ -3277,6 +3285,7 @@ function buildSreAnalysisPrompt(ps, costs, totalCost) {
     estimatedCost: isNoise ? undefined : totalCost,
     noisyAlerts: ps.filter(p => p.noise).length,
     missingRca: ps.filter(p => !p.hasRCA).length,
+    sharedBlastRadiusEntities: sharedEntities.length ? sharedEntities : undefined,
   };
   return `You are a Site Reliability Engineer.
 OBJECTIVE: ${obj}
@@ -3699,9 +3708,36 @@ function detectPatterns(problems) {
     }
   });
 
+  // Cross-pattern shared entity detection:
+  // Find root cause / causal entities that appear across multiple distinct patterns.
+  // These are the highest-priority blast radius origins — one entity causing N separate patterns.
+  const entityPatternCount = new Map();
+  patterns.forEach(pat => {
+    const entities = new Set();
+    if (pat.rootCauseEntity) entities.add(pat.rootCauseEntity);
+    pat.causalEntity && entities.add(pat.causalEntity);
+    (pat.dimensions?.rootCauseEntities || []).forEach(e => e && entities.add(e));
+    entities.forEach(e => {
+      entityPatternCount.set(e, (entityPatternCount.get(e) || 0) + 1);
+    });
+  });
+  // Attach shared entity flag to each pattern
+  patterns.forEach(pat => {
+    const candidates = [pat.rootCauseEntity, pat.causalEntity, ...(pat.dimensions?.rootCauseEntities || [])]
+      .filter(Boolean)
+      .filter(e => (entityPatternCount.get(e) || 0) >= 2);
+    pat.sharedBlastRadiusEntity = candidates[0] || null;
+    pat.sharedBlastRadiusPatternCount = pat.sharedBlastRadiusEntity
+      ? entityPatternCount.get(pat.sharedBlastRadiusEntity)
+      : 0;
+  });
+
   return {
     patterns: patterns.sort((a, b) => b.recurrenceScore - a.recurrenceScore),
     oneOffs,
+    sharedEntityMap: Object.fromEntries(
+      [...entityPatternCount.entries()].filter(([, c]) => c >= 2)
+    ),
   };
 }
 
@@ -3936,7 +3972,21 @@ function extractPatternSignals(pattern, allPatterns=[]) {
   const severityTier = observedSeverityTier(pattern);
   dataCoverage.present.push(`severity: ${uniqVals((pattern?.problems || []).map(problem => problem.sev)).join(', ') || 'UNKNOWN'}`);
   const impactTier = maxTier(userTier, entityTier, severityTier);
-  const scopeTier = maxTier(userTier, entityTier);
+  // Composite blast radius: user impact + entity count + severity category weight
+  const categoryWeight = (() => {
+    const sevs = (pattern?.problems || []).map(p => String(p.sev || '').toUpperCase());
+    if (sevs.includes('AVAILABILITY')) return 100;
+    if (sevs.includes('ERROR')) return 50;
+    if (sevs.includes('PERFORMANCE') || sevs.includes('SLOWDOWN')) return 25;
+    return 10;
+  })();
+  const blastRadiusScore = (affectedUsers != null ? affectedUsers / 10 : 0)
+    + affectedEntityCount * 5
+    + categoryWeight;
+  const scopeTier = blastRadiusScore >= 200 ? 'High'
+    : blastRadiusScore >= 60 ? 'Medium'
+    : blastRadiusScore >= 20 ? 'Low'
+    : 'Minimal';
   if (!affectedUsersInfo.present) dataCoverage.missing.push('affected users');
   if (!affectedEntityCount) dataCoverage.missing.push('affected entities');
   const duration = patternMedianDuration(pattern);
@@ -3981,6 +4031,7 @@ function extractPatternSignals(pattern, allPatterns=[]) {
     rootCauseEntity,
     affectedEntityCount,
     affectedUsers,
+    blastRadiusScore,
     scopeTier,
     noiseLikelihood,
     trend,
@@ -4652,7 +4703,9 @@ function buildRemediationRequest(pat, allPatterns=[]) {
   const rcaAvailability = rootCauseEntity ? 'Present' : 'Missing';
   const affectedEntities = patternAffectedEntities(pat);
   const affectedEntityCount = affectedEntities.length;
-  const scopeTier = extractPatternSignals(pat, allPatterns).scopeTier;
+  const patSignals = extractPatternSignals(pat, allPatterns);
+  const scopeTier = patSignals.scopeTier;
+  const blastRadiusScore = patSignals.blastRadiusScore;
   const scope = persona === 'developer' ? selectedDeveloperScope() : null;
   const req = {
     patternId: pat.id,
@@ -4669,6 +4722,9 @@ function buildRemediationRequest(pat, allPatterns=[]) {
     affectedEntities,
     affectedEntityCount,
     scopeTier,
+    blastRadiusScore,
+    sharedBlastRadiusEntity: pat.sharedBlastRadiusEntity || null,
+    sharedBlastRadiusPatternCount: pat.sharedBlastRadiusPatternCount || 0,
     environment: envs.join(', ') || 'unknown',
     cloudProvider: clouds[0] || null,
     rootCauseEntity,
@@ -4676,7 +4732,13 @@ function buildRemediationRequest(pat, allPatterns=[]) {
     rcaAvailability,
     deploymentCorrelation: tags.some(t => /deploy|release|version|build/i.test(t)) ? 'deployment-related tags present' : 'not available from current evidence',
     changeCorrelation: tags.some(t => /change|deploy|release|version|build/i.test(t)) ? 'change-related tags present' : 'not available from current evidence',
-    timeClustering: pat.hasTimeCluster ? `clusters around ${String(pat.dominantHour).padStart(2, '0')}:00 UTC` : 'no strong time cluster detected',
+    timeClustering: (() => {
+      if (!pat.hasTimeCluster && !pat.hasDayCluster) return 'no strong time cluster detected';
+      const parts = [];
+      if (pat.hasTimeCluster) parts.push(`clusters around ${String(pat.dominantHour).padStart(2, '0')}:00 UTC`);
+      if (pat.hasDayCluster && pat.dominantDayName) parts.push(`predominantly on ${pat.dominantDayName}s`);
+      return parts.join(', ');
+    })(),
     mttr: resolved.length ? Math.round(arrMean(resolved.map(p => p.dur))) : null,
     avgDuration: Math.round(pat.avgDur || 0) || null,
     userImpact: users,
@@ -5039,6 +5101,15 @@ function buildPattern(problems) {
   const dominantHour = dominantHourKey !== undefined ? parseInt(dominantHourKey, 10) : 0;
   // Require ≥5 valid events AND ≥70% at the same hour to avoid false positives
   const hasTimeCluster = hours.length >= 5 && maxHourCount / hours.length >= 0.7;
+  // Day-of-week clustering: detect if ≥60% of occurrences fall on the same day
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const days = problems.map(p => new Date(p.start).getUTCDay()).filter(d => !isNaN(d));
+  const dayCounts = {};
+  days.forEach(d => { dayCounts[d] = (dayCounts[d] || 0) + 1; });
+  const maxDayCount = days.length ? Math.max(...Object.values(dayCounts)) : 0;
+  const dominantDayKey = Object.keys(dayCounts).find(d => dayCounts[d] === maxDayCount);
+  const dominantDayName = dominantDayKey !== undefined ? DAY_NAMES[parseInt(dominantDayKey, 10)] : null;
+  const hasDayCluster = days.length >= 4 && maxDayCount / days.length >= 0.6;
 
   // Recurrence score (0-100)
   const daySpan = Math.max(1, (times[times.length - 1] - times[0]) / 86400000);
@@ -5126,6 +5197,8 @@ function buildPattern(problems) {
     trend,
     hasTimeCluster,
     dominantHour,
+    hasDayCluster,
+    dominantDayName,
     hasRCA,
     consistentRCA,
     rcaLabel: rootCauseEntity,
@@ -5174,10 +5247,12 @@ const REC_META = {
 function recommendAction(p) {
   // 1. Time cluster - scheduled batch job or deployment window
   if (p.hasTimeCluster) {
+    const dayScope = p.hasDayCluster && p.dominantDayName ? p.dominantDayName.toLowerCase() : 'all';
+    const dayText = p.hasDayCluster && p.dominantDayName ? ` on ${p.dominantDayName}s` : '';
     return {
-      type: 'ADD_TIME_WINDOW', confidence: 85,
-      text: `Occurrences cluster around ${String(p.dominantHour).padStart(2,'0')}:00 UTC - likely a scheduled batch job or deployment window.`,
-      config: `alert.suppress_window(start="${String(p.dominantHour).padStart(2,'0')}:00", duration="2h", days="all")`,
+      type: 'ADD_TIME_WINDOW', confidence: p.hasDayCluster ? 90 : 85,
+      text: `Occurrences cluster around ${String(p.dominantHour).padStart(2,'0')}:00 UTC${dayText} - likely a scheduled batch job or deployment window.`,
+      config: `alert.suppress_window(start="${String(p.dominantHour).padStart(2,'0')}:00", duration="2h", days="${dayScope}")`,
     };
   }
 
