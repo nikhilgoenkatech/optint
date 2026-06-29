@@ -189,24 +189,51 @@ export interface RootCauseCluster {
 }
 
 // ── AI summarisation ───────────────────────────────────────
+export type RecommendationStrength = 'Evidence-backed' | 'Candidate' | 'Data-gap';
+
 export interface AIRecommendation {
-  priority:        'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
-  title:           string;
-  description:     string;
-  dynatraceFeature?: string;
-  estimatedImpact: string;
-  owner:           string;
+  priority:               'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+  title:                  string;
+  recommendationStrength: RecommendationStrength;
+  reason:                 string;
+  dynatraceCapability:    string;
+  effort:                 'Low' | 'Medium' | 'High' | 'Unknown';
+  personaFit:             string;
+  // legacy compat
+  description?:           string;
+  dynatraceFeature?:      string;
+  estimatedImpact?:       string;
+  owner?:                 string;
+}
+
+export interface AIDriver {
+  signal:       string;
+  value:        string;
+  whyItMatters: string;
+}
+
+export interface AIRemediationContext {
+  horizon:             'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+  effortJustification: string;
+  blockers:            string[];
 }
 
 export interface AISummary {
-  summary:          string;
-  patterns:         string[];
-  costNarrative:    string;
-  sloImpact:        string;
-  noiseAssessment:  string;
-  recommendations:  AIRecommendation[];
-  generatedBy:      'davis-copilot' | 'external' | 'mock';
-  latencyMs:        number;
+  objectiveAssessment:  string;
+  drivers:              AIDriver[];
+  recommendedActions:   AIRecommendation[];
+  remediationContext?:  AIRemediationContext;
+  risks:                string[];
+  dataGaps:             string[];
+  // legacy compat
+  summary?:             string;
+  patterns?:            string[];
+  costNarrative?:       string;
+  sloImpact?:           string;
+  noiseAssessment?:     string;
+  recommendations?:     AIRecommendation[];
+  generatedBy:          'davis-copilot' | 'mock';
+  latencyMs:            number;
 }
 
 // ── Cost model ─────────────────────────────────────────────

@@ -3,31 +3,59 @@
 // Interface + Davis CoPilot production adapter + Mock adapter
 // ============================================================
 
-import { CostEstimate, DynatraceProblem } from '../models';
+import { CostEstimate, DynatraceProblem, ProblemPattern } from '../models';
 import { PersonaType } from '../persona/PersonaResolver';
-import { AISummaryRequest, buildDavisCopilotPayload } from '../persona/PersonaPromptBuilder';
+import { AISummaryRequest, ObjectiveType, buildDavisCopilotPayload } from '../persona/PersonaPromptBuilder';
 
 // ------------------------------------
 // Shared types
 // ------------------------------------
+
+export type RecommendationStrength = 'Evidence-backed' | 'Candidate' | 'Data-gap';
+
 export interface AIRecommendation {
-  priority: 'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
-  title: string;
-  description: string;
-  dynatraceFeature?: string;
-  estimatedImpact: string;
-  owner: string;
+  priority:                'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+  title:                   string;
+  recommendationStrength:  RecommendationStrength;
+  reason:                  string;
+  dynatraceCapability:     string;
+  // kept for UI backward compat
+  dynatraceFeature?:       string;
+  effort:                  'Low' | 'Medium' | 'High' | 'Unknown';
+  personaFit:              string;
+  // kept for UI backward compat
+  description?:            string;
+  estimatedImpact?:        string;
+  owner?:                  string;
+}
+
+export interface AIDriver {
+  signal:       string;
+  value:        string;
+  whyItMatters: string;
+}
+
+export interface AIRemediationContext {
+  horizon:              'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+  effortJustification:  string;
+  blockers:             string[];
 }
 
 export interface AISummary {
-  summary: string;
-  patterns: string[];
-  costNarrative: string;
-  sloImpact: string;
-  noiseAssessment: string;
-  recommendations: AIRecommendation[];
-  generatedBy: 'davis-copilot' | 'mock';
-  latencyMs: number;
+  objectiveAssessment:  string;
+  drivers:              AIDriver[];
+  recommendedActions:   AIRecommendation[];
+  remediationContext?:  AIRemediationContext;
+  risks:                string[];
+  dataGaps:             string[];
+  // kept for UI backward compat
+  summary?:             string;
+  patterns?:            string[];
+  costNarrative?:       string;
+  sloImpact?:           string;
+  noiseAssessment?:     string;
+  generatedBy:          'davis-copilot' | 'mock';
+  latencyMs:            number;
 }
 
 // ------------------------------------
@@ -35,10 +63,12 @@ export interface AISummary {
 // ------------------------------------
 export interface AISummarizationService {
   summarize(
-    problems: DynatraceProblem[],
-    persona: PersonaType,
+    problems:      DynatraceProblem[],
+    persona:       PersonaType,
     costEstimates: CostEstimate[],
-    totalCost: number
+    totalCost:     number,
+    objective?:    ObjectiveType,
+    pattern?:      ProblemPattern
   ): Promise<AISummary>;
 }
 
@@ -46,60 +76,37 @@ export interface AISummarizationService {
 // PRODUCTION: Davis CoPilot Adapter
 // ------------------------------------
 export class DavisCopilotAdapter implements AISummarizationService {
-  // import { davisCopilotClient } from '@dynatrace-sdk/client-davis-copilot';
-
   private conversationId: string | null = null;
 
   async summarize(
-    problems: DynatraceProblem[],
-    persona: PersonaType,
+    problems:      DynatraceProblem[],
+    persona:       PersonaType,
     costEstimates: CostEstimate[],
-    totalCost: number
+    totalCost:     number,
+    objective:     ObjectiveType = 'cost_impact',
+    pattern?:      ProblemPattern
   ): Promise<AISummary> {
     const t0 = Date.now();
-    const req: AISummaryRequest = { problems, persona, costEstimates, totalCost };
+    const req: AISummaryRequest = { problems, persona, costEstimates, totalCost, objective, pattern };
     const payload = buildDavisCopilotPayload(req);
 
     // Production Davis CoPilot SDK call:
     //
     // const client = davisCopilotClient();
-    //
-    // // Start conversation if needed
     // if (!this.conversationId) {
     //   const conv = await client.createConversation({});
     //   this.conversationId = conv.id;
     // }
-    //
     // const response = await client.createConversationMessage({
     //   conversationId: this.conversationId,
     //   body: payload.message,
     // });
-    //
     // const text = response.message?.content ?? '';
     // const parsed = JSON.parse(text);
+    // return { ...parsed, generatedBy: 'davis-copilot', latencyMs: Date.now() - t0 };
 
-    // Alternatively — direct REST call if SDK version doesn't match:
-    //
-    // const response = await fetch('/platform/copilot/v1/conversations/messages', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({
-    //     conversationId: this.conversationId,
-    //     message: payload.message,
-    //   }),
-    // });
-    // const { message } = await response.json();
-    // const parsed = JSON.parse(message.content);
-
-    // Stub — replace with real call above
     void payload;
     throw new Error('DavisCopilotAdapter: wire up SDK call (see comments above)');
-
-    // return {
-    //   ...parsed,
-    //   generatedBy: 'davis-copilot',
-    //   latencyMs: Date.now() - t0,
-    // };
   }
 }
 
@@ -108,92 +115,187 @@ export class DavisCopilotAdapter implements AISummarizationService {
 // ------------------------------------
 export class MockAIAdapter implements AISummarizationService {
   async summarize(
-    problems: DynatraceProblem[],
-    persona: PersonaType,
-    _costEstimates: CostEstimate[],
-    totalCost: number
+    problems:      DynatraceProblem[],
+    persona:       PersonaType,
+    costEstimates: CostEstimate[],
+    totalCost:     number,
+    objective:     ObjectiveType = 'cost_impact',
+    pattern?:      ProblemPattern
   ): Promise<AISummary> {
-    await new Promise(r => setTimeout(r, 1400)); // simulate latency
+    await new Promise(r => setTimeout(r, 1200));
 
-    const titles = problems.map(p => p.title);
-    const hasPayment = titles.some(t => t.toLowerCase().includes('payment'));
+    const occurrences   = pattern?.occurrences ?? problems.length;
+    const cost          = pattern?.totalCost ?? totalCost;
+    const trend         = pattern?.trend ?? 'STABLE';
+    const hasRCA        = pattern?.hasRCA ?? problems.some(p => p.hasRootCause);
+    const avgMTTR       = pattern?.avgMTTR ?? (problems.reduce((a, p) => a + (p.duration ?? 0), 0) / Math.max(problems.length, 1));
+    const affectedUsers = pattern?.totalUsers ?? problems.reduce((a, p) => a + (p.affectedUsers ?? 0), 0);
+    const recType       = pattern?.recommendation.type ?? 'INVESTIGATE_FIRST';
+
+    if (objective === 'alert_optimization') {
+      return {
+        objectiveAssessment: `This pattern has generated ${occurrences} occurrences with an average duration of ${Math.round(avgMTTR)} minutes. ${recType === 'ADD_TIME_WINDOW' || recType === 'RAISE_THRESHOLD' ? 'The recommendation type indicates an alert tuning opportunity.' : 'Alert fidelity should be reviewed before further investment.'} Affected user count is ${affectedUsers}, which informs suppression scope.`,
+        drivers: [
+          { signal: 'occurrence_count',    value: String(occurrences),        whyItMatters: 'High recurrence is the primary qualifying signal for alert optimization.' },
+          { signal: 'avg_duration',        value: `${Math.round(avgMTTR)}m`,  whyItMatters: 'Short-lived incidents are candidates for threshold or time-window tuning.' },
+          { signal: 'recommendation_type', value: recType,                    whyItMatters: 'ADD_TIME_WINDOW or RAISE_THRESHOLD types directly indicate alert tuning actions.' },
+        ],
+        recommendedActions: [
+          {
+            priority: 'IMMEDIATE', title: 'Review anomaly detector sensitivity for this pattern',
+            recommendationStrength: 'Evidence-backed',
+            reason: 'occurrence_count and avg_duration indicate high-frequency short-lived events',
+            dynatraceCapability: 'Davis AI', dynatraceFeature: 'Davis AI',
+            effort: 'Low', personaFit: `${persona === 'sre' ? 'Direct alert tuning action for SRE on-call ownership.' : 'Operational noise reduction reduces engineering interrupt load.'}`,
+          },
+          {
+            priority: 'SHORT_TERM', title: 'Configure suppression time window if pattern is time-bound',
+            recommendationStrength: recType === 'ADD_TIME_WINDOW' ? 'Evidence-backed' : 'Candidate',
+            reason: 'recommendation_type signals time-window suppression as the appropriate tuning lever',
+            dynatraceCapability: 'Workflows', dynatraceFeature: 'Workflows',
+            effort: 'Low', personaFit: 'SRE or platform team can implement without service owner involvement.',
+          },
+        ],
+        risks: ['Alert remains active and will continue generating noise until tuned.'],
+        dataGaps: [
+          ...(!hasRCA ? ['rca_availability: Missing — cannot confirm pattern is noise vs genuine failure.'] : []),
+          'alert_event_count: raw event volume unavailable — cannot compute event-to-problem ratio.',
+        ],
+        summary: `${occurrences} occurrences detected. Alert optimization candidate based on duration and recommendation type.`,
+        generatedBy: 'mock', latencyMs: 1200,
+      };
+    }
+
+    if (objective === 'remediation') {
+      const highEffort = cost > 10000 || occurrences > 20;
+      return {
+        objectiveAssessment: `This pattern has recurred ${occurrences} times with an estimated cost of ${cost.toLocaleString()} units and a trend of ${trend}. ${hasRCA ? 'Root cause is identified, enabling targeted remediation.' : 'Root cause is missing, which increases remediation uncertainty and effort.'} Effort-to-value ratio ${highEffort ? 'favours a staged approach.' : 'supports immediate action.'}`,
+        drivers: [
+          { signal: 'occurrence_count',  value: String(occurrences),        whyItMatters: 'Recurrence frequency determines remediation urgency.' },
+          { signal: 'operational_cost',  value: String(Math.round(cost)),   whyItMatters: 'Cost exposure quantifies the value of successful remediation.' },
+          { signal: 'rca_availability',  value: hasRCA ? 'Present' : 'Missing', whyItMatters: 'RCA availability determines whether remediation can be precisely targeted.' },
+          { signal: 'trend',             value: trend,                      whyItMatters: 'INCREASING trend elevates remediation priority; STABLE suggests window exists.' },
+        ],
+        recommendedActions: [
+          {
+            priority: hasRCA ? 'IMMEDIATE' : 'SHORT_TERM',
+            title: hasRCA ? 'Remediate identified root cause entity' : 'Initiate root cause investigation before remediation',
+            recommendationStrength: hasRCA ? 'Evidence-backed' : 'Data-gap',
+            reason: `rca_availability is ${hasRCA ? 'Present — root cause entity known' : 'Missing — remediation cannot be scoped without RCA'}`,
+            dynatraceCapability: hasRCA ? 'Live Debugger' : 'Davis AI',
+            dynatraceFeature:    hasRCA ? 'Live Debugger' : 'Davis AI',
+            effort: hasRCA ? 'Medium' : 'Low',
+            personaFit: persona === 'developer' ? 'Code-level investigation and fix.' : persona === 'sre' ? 'Infrastructure or config remediation path.' : 'Authorise remediation sprint with cost justification.',
+          },
+          {
+            priority: highEffort ? 'STRATEGIC' : 'SHORT_TERM',
+            title: 'Establish ownership and remediation accountability',
+            recommendationStrength: 'Candidate',
+            reason: 'owner_team is absent — remediation ownership is undefined',
+            dynatraceCapability: 'Ownership and Routing',
+            dynatraceFeature:    'Ownership and Routing',
+            effort: 'Low',
+            personaFit: 'Assign service ownership to unblock remediation prioritisation.',
+          },
+        ],
+        remediationContext: {
+          horizon:             hasRCA && !highEffort ? 'IMMEDIATE' : highEffort ? 'STRATEGIC' : 'SHORT_TERM',
+          effortJustification: hasRCA
+            ? `Root cause is identified; effort is proportionate to cost exposure of ${Math.round(cost)} units.`
+            : `Root cause is missing; investigation effort must precede remediation commitment.`,
+          blockers: [
+            ...(!hasRCA ? ['rca_availability: Missing — root cause must be confirmed before scoping remediation effort.'] : []),
+            'owner_team: absent — no accountable team assigned.',
+          ],
+        },
+        risks: [
+          `trend is ${trend}: ${trend === 'INCREASING' ? 'cost exposure is growing.' : 'cost will continue without intervention.'}`,
+          ...(!hasRCA ? ['rca_availability: Missing — remediation may address symptoms, not root cause.'] : []),
+        ],
+        dataGaps: [
+          ...(!hasRCA ? ['rca_availability: Missing'] : []),
+          'owner_team: absent',
+          'deployment_correlation: not available',
+        ],
+        summary: `${occurrences} occurrences, ${Math.round(cost)} cost units. ${hasRCA ? 'RCA present — targeted remediation is possible.' : 'RCA missing — investigation required first.'}`,
+        generatedBy: 'mock', latencyMs: 1200,
+      };
+    }
+
+    // Default: cost_impact
+    const titles      = problems.map(p => p.title);
+    const hasPayment  = titles.some(t => t.toLowerCase().includes('payment'));
     const hasCheckout = titles.some(t => t.toLowerCase().includes('checkout'));
-    const hasAuth = titles.some(t => t.toLowerCase().includes('auth'));
 
-    if (persona === 'executive') {
-      return {
-        summary: `${problems.length} customer-facing incidents have been identified this period, affecting an estimated ${problems.reduce((a,p)=>a+(p.affectedUsers??0),0).toLocaleString()} customers. ${hasPayment ? 'Payment processing disruptions represent the highest revenue risk.' : hasCheckout ? 'Checkout performance has degraded repeatedly, creating friction in the purchase journey.' : 'Service availability issues have directly impacted customer experience.'} These are recurring patterns — not isolated events — indicating systemic investment is needed.`,
-        patterns: [
-          hasPayment ? 'Payment systems have failed 3 times in 7 days — a recurring operational liability' : 'The same platform component is failing repeatedly under load',
-          'Resolution times are averaging over 1 hour, suggesting incident response gaps',
-          totalCost > 50000 ? `Estimated $${totalCost.toLocaleString()} in losses makes this a board-level operational risk` : `Compounding cost impact across repeated incidents warrants executive attention`,
-        ],
-        costNarrative: `These incidents represent approximately $${totalCost.toLocaleString()} in combined revenue impact and engineering resolution costs this period.`,
-        sloImpact: '',
-        noiseAssessment: '',
-        recommendations: [
-          { priority: 'IMMEDIATE', title: 'Commission an incident review', description: 'Mandate a structured post-incident review for all recurring P1/P2 issues with board visibility on outcomes', estimatedImpact: 'Stop the same incidents recurring within 30 days', owner: 'CTO / Engineering Leadership' },
-          { priority: 'SHORT_TERM', title: 'Invest in platform resilience', description: 'Allocate engineering capacity to address the root causes identified — this is technical debt manifesting as revenue loss', estimatedImpact: 'Reduce recurring incident rate by 60% within 90 days', owner: 'VP Engineering' },
-          { priority: 'STRATEGIC', title: 'Establish operational health OKRs', description: 'Set quarterly targets for MTTR reduction, incident recurrence rate, and customer impact minimisation with executive sponsorship', estimatedImpact: 'Create accountability and sustained improvement', owner: 'CTO + Product' },
-        ],
-        generatedBy: 'mock',
-        latencyMs: 1400,
-      };
-    }
-
-    if (persona === 'developer') {
-      return {
-        summary: `Analysis of ${problems.length} problems points to ${hasPayment && hasCheckout ? 'database connection pool exhaustion and capacity limits as the dual root causes' : hasCheckout ? 'upstream capacity constraints hitting the checkout service under peak load' : 'repeated service-level failures with insufficient root cause documentation'}. ${problems.filter(p=>!p.hasRootCause).length} of ${problems.length} problems are missing root cause analysis, reducing your ability to prevent recurrence. The recurring signature suggests these are not random failures — they are deterministic under specific load or time conditions.`,
-        patterns: [
-          hasPayment ? 'Connection pool exhaustion on payments-db under concurrent transaction load — classic N+1 or pool misconfiguration' : 'Service degradation pattern correlates with traffic spikes — capacity or resource limit issue',
-          problems.filter(p=>p.recurrenceScore&&p.recurrenceScore>=60).length > 0 ? 'High recurrence score indicates same code path or config is failing repeatedly' : 'Multiple services affected suggests shared dependency or infrastructure bottleneck',
-          'MTTR above 60 minutes suggests lack of runbook or automated remediation for known failure modes',
-        ],
-        costNarrative: '',
-        sloImpact: '',
-        noiseAssessment: '',
-        recommendations: [
-          { priority: 'IMMEDIATE', title: hasPayment ? 'Increase payments-db connection pool (100 → 300)' : 'Add circuit breaker to failing service', description: hasPayment ? 'Update HikariCP max-pool-size in payment-gateway config. Deploy PgBouncer as connection pooler to absorb spikes without DB config changes.' : 'Implement Resilience4j circuit breaker on the failing downstream call. Set failure threshold at 50%, wait duration 30s.', estimatedImpact: 'Eliminate root cause for recurring payment failures', owner: 'team:payments' },
-          { priority: 'SHORT_TERM', title: 'Add automated root cause tags to all P1/P2 problems', description: 'Configure Dynatrace problem comments workflow to require root cause classification before status change to RESOLVED. Use Davis AI evidence as starting point.', estimatedImpact: 'Reduce recurrence by 35% within 60 days (correlating with RCA completion)', owner: 'team:sre' },
-          { priority: 'SHORT_TERM', title: hasCheckout ? 'Implement auto-scaling for checkout service (14:00–18:00 UTC)' : 'Set up predictive scaling for high-traffic windows', description: 'Configure HPA with custom metric (request rate) to scale checkout replicas 3→8 during daily peak window. Add KEDA for event-driven scaling.', estimatedImpact: 'Eliminate peak-hour degradation', owner: 'team:checkout' },
-        ],
-        generatedBy: 'mock',
-        latencyMs: 1400,
-      };
-    }
-
-    // SRE
     return {
-      summary: `Operational analysis of ${problems.length} problems reveals ${problems.filter(p=>p.recurrenceScore&&p.recurrenceScore>=60).length} high-recurrence patterns, ${problems.filter(p=>!p.hasRootCause).length} problems missing RCA, and an estimated $${totalCost.toLocaleString()} total cost impact. ${problems.filter(p=>p.duration&&p.duration<15).length > 0 ? `${problems.filter(p=>p.duration&&p.duration<15).length} incidents auto-resolved in under 15 minutes — these are alert noise candidates requiring threshold review.` : 'Alert quality appears reasonable — most incidents had meaningful duration and user impact.'} MTTR trend is degrading — average resolution time has increased, suggesting incident response gaps or alert fatigue.`,
+      objectiveAssessment: `This pattern has recurred ${occurrences} times with an estimated operational cost of ${Math.round(cost).toLocaleString()} units and a trend of ${trend}. ${affectedUsers > 0 ? `${affectedUsers} users have been affected, confirming customer-facing impact.` : 'User impact data is unavailable.'} ${hasRCA ? 'A root cause entity is present, which improves remediation targeting.' : 'Root cause is missing, which increases the risk of continued cost accrual.'}`,
+      drivers: [
+        { signal: 'operational_cost',  value: String(Math.round(cost)),        whyItMatters: 'Primary cost burden — reducing recurrence is the highest-value lever for cost_impact.' },
+        { signal: 'occurrence_count',  value: String(occurrences),             whyItMatters: 'Recurrence frequency multiplies cost exposure over time.' },
+        { signal: 'trend',             value: trend,                           whyItMatters: 'STABLE or INCREASING trend means cost will not self-resolve without intervention.' },
+        { signal: 'rca_availability',  value: hasRCA ? 'Present' : 'Missing',  whyItMatters: 'RCA availability determines whether cost reduction can be precisely targeted.' },
+        ...(affectedUsers > 0 ? [{ signal: 'affected_users', value: String(affectedUsers), whyItMatters: 'User-facing impact carries retention and reputational cost beyond operational cost.' }] : []),
+        ...(avgMTTR > 0 ? [{ signal: 'avg_duration', value: `${Math.round(avgMTTR)}m`, whyItMatters: 'Each occurrence degrades user experience for this duration.' }] : []),
+      ],
+      recommendedActions: [
+        {
+          priority: 'IMMEDIATE',
+          title: hasRCA
+            ? `Investigate root cause entity: ${pattern?.dimensions.primaryRootCause ?? 'identified entity'}`
+            : 'Initiate root cause investigation to unlock cost recovery',
+          recommendationStrength: 'Evidence-backed',
+          reason: `rca_availability: ${hasRCA ? 'Present — root cause entity known' : 'Missing'}; operational_cost: ${Math.round(cost)} units recoverable through recurrence reduction`,
+          dynatraceCapability: hasRCA ? 'Live Debugger' : 'Davis AI',
+          dynatraceFeature:    hasRCA ? 'Live Debugger' : 'Davis AI',
+          effort: 'Low',
+          personaFit: persona === 'executive' ? 'Authorise investigation with cost recovery justification.' : persona === 'developer' ? 'Targeted technical investigation of root cause entity.' : 'SRE-led investigation using Davis AI evidence.',
+        },
+        {
+          priority: 'SHORT_TERM',
+          title: hasPayment ? 'Review payment service stability and SLO alignment' : hasCheckout ? 'Assess checkout service reliability against cost exposure' : 'Assess affected service reliability against cost exposure',
+          recommendationStrength: affectedUsers > 0 ? 'Evidence-backed' : 'Candidate',
+          reason: `affected_users: ${affectedUsers}; avg_duration: ${Math.round(avgMTTR)}m; operational_cost: ${Math.round(cost)}`,
+          dynatraceCapability: 'Site Reliability Guardian',
+          dynatraceFeature:    'Site Reliability Guardian',
+          effort: 'Medium',
+          personaFit: persona === 'executive' ? 'SLO alignment confirms business risk threshold.' : 'SRE-owned SLO review against observed cost and user impact.',
+        },
+        ...( persona !== 'executive' ? [{
+          priority: 'STRATEGIC' as const,
+          title: 'Assign service ownership to establish remediation accountability',
+          recommendationStrength: 'Data-gap' as RecommendationStrength,
+          reason: 'owner_team is absent — no accountable party assigned to act on cost recovery findings',
+          dynatraceCapability: 'Ownership and Routing',
+          dynatraceFeature:    'Ownership and Routing',
+          effort: 'Low' as const,
+          personaFit: 'Platform or SRE team to tag ownership metadata, unblocking escalation path.',
+        }] : []),
+      ],
+      risks: [
+        `trend is ${trend}: cost of ${Math.round(cost)} units will continue without intervention.`,
+        ...(!hasRCA ? ['rca_availability: Missing — cost recovery cannot be precisely targeted until root cause is confirmed.'] : []),
+      ],
+      dataGaps: [
+        ...(!hasRCA ? ['rca_availability: Missing — root cause entity is null.'] : []),
+        'owner_team: absent — no responsible team identified.',
+        'deployment_correlation: not available.',
+      ],
+      summary: `${occurrences} recurring occurrences with ${Math.round(cost).toLocaleString()} units estimated cost. ${hasRCA ? 'Root cause identified.' : 'Root cause missing.'}`,
       patterns: [
-        'Temporal correlation: checkout and payment failures cluster between 14:00–18:00 UTC — consistent with peak traffic window, not random failure',
-        problems.filter(p=>!p.hasRootCause).length > 2 ? 'RCA gap: majority of incidents closed without documented root cause — violates post-incident hygiene and drives recurrence' : 'RCA coverage acceptable but incomplete for recurring patterns',
-        hasAuth ? 'Auth service outage (P-011) had downstream blast radius across ShopApp and AdminPortal — single point of failure risk unaddressed' : 'Shared database dependency appears in multiple incident chains — single point of failure concern',
+        `${occurrences} occurrences detected — recurring operational cost pattern`,
+        trend !== 'DECREASING' ? 'Trend is not improving — cost will continue without action' : 'Trend is decreasing — monitor for sustained improvement',
       ],
-      costNarrative: `Estimated $${totalCost.toLocaleString()} total impact across selected incidents ($${Math.round(totalCost * 0.65).toLocaleString()} revenue, $${Math.round(totalCost * 0.35).toLocaleString()} engineering cost).`,
-      sloImpact: `${problems.filter(p=>p.severity==='AVAILABILITY').length > 0 ? 'AVAILABILITY incidents directly breach uptime SLO — error budget consumption estimated at 18% of monthly budget for this period.' : 'No direct SLO breach detected, but PERFORMANCE degradations are consuming error budget for latency SLOs.'} Review SLO burn rate dashboards immediately.`,
-      noiseAssessment: problems.filter(p=>p.duration&&p.duration<15).length > 0 ? `${problems.filter(p=>p.duration&&p.duration<15).length} incidents flagged as potential noise (auto-resolved <15min, zero user impact). Recommend: raise alert threshold to 95% CPU or exclude known batch job windows (02:00–04:00 UTC).` : 'No significant alert noise detected in selected incidents.',
-      recommendations: [
-        { priority: 'IMMEDIATE', title: hasPayment ? 'Hotfix: payments-db connection pool exhaustion' : 'Incident: mitigate open P1 now', description: hasPayment ? 'Increase max_connections on payments-db (ALTER SYSTEM SET max_connections=300). Restart PgBouncer. Monitor connection wait time metric.' : 'Follow runbook for current open incidents. Escalate to on-call lead if MTTR exceeds 30 minutes.', estimatedImpact: 'Stop active bleeding — prevent further user impact', owner: 'on-call SRE' },
-        { priority: 'SHORT_TERM', title: 'Tune alert thresholds to reduce noise', description: 'For inventory-service CPU: raise threshold to 95%, exclude 02:00–04:00 UTC batch window. Review all alerts with >5 occurrences and <15min avg duration for false positive candidates.', estimatedImpact: 'Reduce alert noise by ~30%, improve on-call engineer focus', owner: 'team:platform' },
-        { priority: 'SHORT_TERM', title: 'Mandate RCA completion workflow', description: 'Configure Dynatrace Workflows to block RESOLVED status on P1/P2 without root_cause_entity set. Create RCA template in problem comments.', estimatedImpact: 'Reduce incident recurrence rate by 35% within 60 days', owner: 'team:sre' },
-        { priority: 'STRATEGIC', title: 'Architect for resilience: eliminate shared SPOFs', description: 'Auth service and payments-db are single points of failure. Implement active-active replication for auth-service, add read replicas for payments-db, configure proper circuit breakers across all downstream calls.', estimatedImpact: 'Eliminate blast radius of auth/payment SPOFs', owner: 'team:platform + team:payments' },
-      ],
-      generatedBy: 'mock',
-      latencyMs: 1400,
+      costNarrative: `Estimated ${Math.round(cost).toLocaleString()} units in operational cost across ${occurrences} occurrences.`,
+      sloImpact: '',
+      noiseAssessment: '',
+      generatedBy: 'mock', latencyMs: 1200,
     };
   }
 }
 
 // ------------------------------------
-// Factory — picks real or mock at runtime
+// Factory
 // ------------------------------------
 export function createAIService(): AISummarizationService {
-  // In production Dynatrace AppEngine:
-  // Check if Davis CoPilot is available (tenant has feature enabled)
-  // const isDavisCopilotEnabled = window.__DT_APP_CONTEXT__?.features?.davisCopilot ?? false;
-  // return isDavisCopilotEnabled ? new DavisCopilotAdapter() : new MockAIAdapter();
-
-  // For now: always use mock
   return new MockAIAdapter();
 }

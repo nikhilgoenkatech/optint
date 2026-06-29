@@ -1581,6 +1581,48 @@ function renderEvidenceSummary(evidence) {
     <div class="rem-ctx-row"><span class="rem-ctx-label">${k}</span><span class="rem-ctx-val">${v}</span></div>`).join('')}</div>`;
 }
 
+const GAP_LABELS = {
+  rca_availability:       'Root cause not identified',
+  deployment_correlation: 'No deployment details',
+  root_cause_entity:      'Root cause entity unknown',
+  owner_team:             'Owner not assigned',
+  time_clustering:        'No time pattern detected',
+  affected_services:      'No services mapped',
+  alert_event_count:      'Alert volume unavailable',
+  occurrence_count:       'Recurrence data missing',
+  trend:                  'Trend direction unknown',
+  avg_duration:           'Duration data unavailable',
+  potential_savings:      'Savings estimate unavailable',
+  scope_tier:             'Scope undetermined',
+  recommendation_type:    'No recommendation type',
+};
+
+const RISK_LABELS = {
+  rca:          'Root cause unknown',
+  'root cause': 'Root cause unknown',
+  deployment:   'No deployment details',
+  owner:        'Owner not assigned',
+  trend:        'Trend direction unclear',
+  noise:        'Possible alert noise',
+  coverage:     'Monitoring gap',
+  recurrence:   'Pattern recurring',
+  escalat:      'Escalation risk',
+};
+
+function humanizeGap(raw) {
+  const key = String(raw).split(/[:\s—]/)[0].toLowerCase().replace(/[^a-z_]/g, '').trim();
+  return GAP_LABELS[key] ?? String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).split(':')[0].trim();
+}
+
+function humanizeRisk(raw) {
+  const lower = String(raw).toLowerCase();
+  for (const [pattern, label] of Object.entries(RISK_LABELS)) {
+    if (lower.includes(pattern)) return label;
+  }
+  // Fallback: take first 5 words and strip field-name underscores
+  return String(raw).replace(/_/g, ' ').split(/[.,]/)[0].trim().split(' ').slice(0,5).join(' ');
+}
+
 function renderAssistRemediationResponse(response, evidence=null) {
   if (!response) return '';
   if (typeof response === 'string') {
@@ -1634,23 +1676,21 @@ function renderAssistRemediationResponse(response, evidence=null) {
   const recCards = phaseRecs.map((rec, idx) => {
     const pri = String(rec.priority || (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC')).toUpperCase();
     const meta = priMeta[pri] || priMeta.STRATEGIC;
-    const feature = rec.dynatraceFeature || rec.dynatrace_feature
+    const feature = rec.dynatraceCapability || rec.dynatraceFeature || rec.dynatrace_feature
       || (response.suggestedDynatraceCapabilities || response.suggested_dynatrace_capabilities || [])[idx];
+    const recStrength = String(rec.recommendationStrength || strengthText).toUpperCase();
+    const recTone = recStrength.includes('EVIDENCE') ? 'var(--green)' : recStrength.includes('CANDIDATE') ? 'var(--amber)' : recStrength.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
+    const recPct  = recStrength.includes('EVIDENCE') ? 85 : recStrength.includes('CANDIDATE') ? 60 : recStrength.includes('DATA') ? 35 : 50;
     return `<div class="rem-opt tier-${meta.tier} ${meta.recommended ? 'recommended' : ''}">
       ${feature ? `<div class="rem-feature-top"><span>Dynatrace capability</span><strong>${renderInlineValue(feature)}</strong></div>` : ''}
       <div class="rem-opt-header">
+        <span class="rem-strength-dot" style="background:${recTone}" title="${recStrength}"></span>
         <span class="rem-opt-label">${attrText(rec.title || meta.label)}</span>
         <span class="tier-badge ${meta.tier}">${meta.label}</span>
         <span class="rem-opt-time">${meta.time}</span>
       </div>
       <div class="rem-conf">
-        <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${strengthPct}%;background:${strengthTone}"></div></div>
-        <span class="rem-conf-pct" style="color:${strengthTone}">${strengthText}</span>
-      </div>
-      <div class="ai-rec-footer">
-        ${rec.estimatedImpact ? `<span class="ai-rec-impact">${renderInlineValue(rec.estimatedImpact)}</span>` : ''}
-        ${rec.capabilityReason ? `<span class="ai-rec-impact">${renderInlineValue(rec.capabilityReason)}</span>` : ''}
-        ${rec.personaFit ? `<span class="ai-rec-impact">${renderInlineValue(rec.personaFit)}</span>` : ''}
+        <div class="rem-conf-track"><div class="rem-conf-fill" style="width:${recPct}%;background:${recTone}"></div></div>
       </div>
     </div>`;
   }).join('');
@@ -1673,25 +1713,43 @@ function renderAssistRemediationResponse(response, evidence=null) {
     ['RCA availability', evidence.rcaAvailability || (evidence.rootCauseEntity ? 'Present' : 'Missing')],
     ['Trend', evidence.trend || 'Not available'],
   ] : [];
+  const summaryBlock = persona === 'executive'
+    ? `<div class="rem-exec-summary">
+        <div class="rem-assist-title">Executive Remediation Summary</div>
+        <h3>${attrText(evidence?.patternName || 'Selected pattern')}</h3>
+        <div class="rem-exec-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <div><span>Recommendation strength</span><strong>${strengthText}</strong></div>
+          <div><span>Effort / horizon</span><strong>${renderInlineValue(effort)}</strong></div>
+        </div>
+        <div class="rem-next-step"><span>Recommended next step</span><strong>${renderInlineValue(recommendedNext)}</strong></div>
+        <p>${renderInlineValue(whyNow)}</p>
+      </div>`
+    : `<div class="rem-persona-summary">
+        <div class="rem-assist-title">${persona === 'sre' ? 'SRE Remediation Guidance' : 'Developer Remediation Guidance'}</div>
+        <p class="rem-obj-assessment">${attrText(response.objectiveAssessment || response.summary || whyNow)}</p>
+        <div class="rem-exec-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <div><span>Recommendation strength</span><strong>${strengthText}</strong></div>
+          <div><span>Effort</span><strong>${renderInlineValue(effort)}</strong></div>
+        </div>
+      </div>`;
   return `
-    <div class="rem-exec-summary">
-      <div class="rem-assist-title">Executive Remediation Summary</div>
-      <h3>${attrText(evidence?.patternName || 'Selected pattern')}</h3>
-      <div class="rem-exec-grid">
-        <div><span>Expected cost reduction</span><strong>${renderInlineValue(expectedReduction)}</strong></div>
-        <div><span>Recommendation strength</span><strong>${strengthText}</strong></div>
-        <div><span>Effort / horizon</span><strong>${renderInlineValue(effort)}</strong></div>
-      </div>
-      <div class="rem-next-step"><span>Recommended next step</span><strong>${renderInlineValue(recommendedNext)}</strong></div>
-      <p>${renderInlineValue(whyNow)}</p>
-    </div>
-    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Remediation Path</div><div class="rem-options">${recCards}</div></div>` : ''}
+    ${summaryBlock}
+    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Actions</div><div class="rem-options">${recCards}</div></div>` : ''}
     ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
     ${disclosure('Drivers', response.drivers)}
     ${disclosure('Remediation context', response.remediationContext)}
-    ${disclosure('Risks', response.risks)}
-    ${disclosure('Data gaps', response.dataGaps || response.missingEvidence || response.missingEvidenceOrNextValidationSteps || response.missing_evidence_or_next_validation_steps)}
-    ${disclosure('Supporting evidence', response.supportingEvidence || response.supporting_evidence_used)}
+    ${(()=>{
+      const risks = response.risks;
+      if (!risks?.length) return '';
+      const items = risks.slice(0,4).map(r => `<span class="rem-blurb-item risk">${attrText(humanizeRisk(r))}</span>`).join('');
+      return `<div class="rem-blurb-row"><span class="rem-blurb-label">Risks</span><div class="rem-blurb-items">${items}</div></div>`;
+    })()}
+    ${(()=>{
+      const gaps = response.dataGaps || response.missingEvidence || response.missingEvidenceOrNextValidationSteps || response.missing_evidence_or_next_validation_steps;
+      if (!gaps?.length) return '';
+      const items = (Array.isArray(gaps) ? gaps : [gaps]).slice(0,5).map(g => `<span class="rem-blurb-item gap">${attrText(humanizeGap(g))}</span>`).join('');
+      return `<div class="rem-blurb-row"><span class="rem-blurb-label">Data gaps</span><div class="rem-blurb-items">${items}</div></div>`;
+    })()}
     ${executivePromptDisclosure}
   `;
 }
@@ -2384,7 +2442,7 @@ async function getPatternRemediation(patternId, opts={}) {
 
   if (remediationCache.has(cacheKey)) {
     const cached = remediationCache.get(cacheKey);
-    remediationState = { status:'done', patternId:pat.id, evidence:request, response:cached, error:null };
+    remediationState = { status:'done', patternId:pat.id, persona, evidence:request, response:cached, error:null };
     lastAIResult = cached;
     aiState = 'result';
     renderPatternRemediationPanel();
@@ -2393,7 +2451,7 @@ async function getPatternRemediation(patternId, opts={}) {
     return;
   }
 
-  remediationState = { status:'loading', patternId:pat.id, evidence:request, response:null, error:null };
+  remediationState = { status:'loading', patternId:pat.id, persona, evidence:request, response:null, error:null };
   aiState = 'loading';
   renderPatternRemediationPanel();
   renderAIPanel(pat.problems || []);
@@ -2423,13 +2481,13 @@ async function getPatternRemediation(patternId, opts={}) {
     const normalized = normalizePatternAssistResponse(parsed, request);
     remediationCache.set(cacheKey, normalized);
     if (remediationPatternId !== pat.id) return;
-    remediationState = { status:'done', patternId:pat.id, evidence:request, response:normalized, error:null };
+    remediationState = { status:'done', patternId:pat.id, persona, evidence:request, response:normalized, error:null };
     lastAIResult = normalized;
     aiState = 'result';
   } catch (err) {
     console.warn('[OpInt Davis] pattern remediation failed:', err.message || err);
     if (remediationPatternId !== pat.id) return;
-    remediationState = { status:'error', patternId:pat.id, evidence:request, response:null, error:err };
+    remediationState = { status:'error', patternId:pat.id, persona, evidence:request, response:null, error:err };
     lastAIResult = normalizePatternAssistResponse(null, request);
     aiState = 'result';
   }
@@ -5793,7 +5851,7 @@ function renderWorkspaceAnalysisBlock(pat, intro) {
 }
 
 function renderWorkspaceRemediationBlock(pat) {
-  const isCurrent = remediationState.patternId === pat.id;
+  const isCurrent = remediationState.patternId === pat.id && remediationState.persona === persona;
   if (isCurrent && remediationState.status === 'loading') {
     return `<div class="cx-remediation-summary"><span>Generating remediation path from Dynatrace Assist...</span></div>`;
   }
@@ -5990,6 +6048,11 @@ function executiveBubbleSeenClass(pat) {
   return 'seen-recent';
 }
 
+function tileTraffic(value, label, tone) {
+  const cls = tone === 'ok' ? 'tl-green' : tone === 'warn' ? 'tl-amber' : tone === 'bad' ? 'tl-red' : '';
+  return `<div class="${cls}"><strong>${attrText(String(value))}</strong><span>${attrText(label)}</span></div>`;
+}
+
 function renderDecisionDetailPanel(pat, patterns) {
   if (!pat) return `<aside class="cx-detail cx-detail-empty">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>No pattern selected</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection" disabled>Clear Selection</button></div></div>
@@ -6009,8 +6072,10 @@ function renderDecisionDetailPanel(pat, patterns) {
   const rcaAvailability = patternRcaAvailability(pat);
   const confidence = patternConfidenceScore(pat);
   const priority = executivePriorityLevel(pat, patterns);
-  const effort = remediationEffortLabel(pat.fixability);
   const hasObservedRca = rcaAvailability === 'Present';
+  // Without RCA, effort cannot be Low — we don't know what to fix
+  const effortRaw = remediationEffortLabel(pat.fixability);
+  const effort = !hasObservedRca && effortRaw === 'Low' ? 'Medium' : effortRaw;
   const totalExposure = patterns.reduce((sum, pattern) => sum + patternCost(pattern), 0);
   const exposureShare = totalExposure ? Math.round(exposure / totalExposure * 100) : 0;
   const affected = executiveAffectedAreas(pat);
@@ -6029,15 +6094,23 @@ function renderDecisionDetailPanel(pat, patterns) {
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Selected Pattern</div><h3>${pat.title}</h3></div><div class="cx-panel-actions"><button class="cx-panel-toggle" data-action="toggleExecPanelMaximize">${execPanelMaximized ? 'Restore Panel' : 'Maximize Panel'}</button><button class="cx-panel-toggle" data-action="clearPatternSelection">Clear Selection</button></div></div>
     <div class="cx-detail-label cx-detail-label-row"><span>Business Impact${infoPill('Exposure, recoverable value, and currently open incidents for the selected recurring pattern. These values use the active cost model and available Davis problem data.', 'business-impact')}</span><button class="cx-cost-link" data-action="toggleCfg">Cost assumptions</button></div>
-    <div class="cx-detail-tiles"><div><strong>${fmtC(exposure)}</strong><span>Exposure</span></div><div><strong>${fmtC(recoverable)}</strong><span>Recoverable</span></div><div><strong>${openCount}</strong><span>Open Incidents</span></div></div>
+    <div class="cx-detail-tiles">
+      ${tileTraffic(fmtC(exposure),   'Exposure',       'cost')}
+      ${tileTraffic(fmtC(recoverable),'Recoverable',    'recover')}
+      ${tileTraffic(String(openCount),'Open Incidents', openCount > 0 ? 'warn' : 'ok')}
+      ${tileTraffic(avgMttr ? fmtM(avgMttr) : 'N/A', 'Avg Duration', avgMttr > 60 ? 'warn' : avgMttr > 0 ? 'ok' : 'neutral')}
+    </div>
     <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.', 'technical-actionability')}</div>
-    <div class="cx-detail-tiles actionability"><div><strong>${effort}</strong><span>Remediation Effort</span></div><div><strong>${confidenceLabel(confidence)}</strong><span>Confidence</span></div><div><strong>${priority}</strong><span>Priority</span></div><div><strong>${complexity.evidenceFragmentation}</strong><span>Investigation Friction</span></div></div>
+    <div class="cx-detail-tiles actionability">
+      ${tileTraffic(effort,              'Remediation Effort',    effort === 'Low' ? 'ok' : effort === 'Medium' ? 'warn' : 'bad')}
+      ${tileTraffic(confidenceLabel(confidence), 'Confidence',   confidence >= 0.65 ? 'ok' : confidence >= 0.4 ? 'warn' : 'bad')}
+      ${tileTraffic(priority,            'Priority',              priority === 'High' ? 'bad' : priority === 'Medium' ? 'warn' : 'ok')}
+      ${tileTraffic((!hasObservedRca && complexity.evidenceFragmentation === 'low' ? 'Medium' : complexity.evidenceFragmentation.charAt(0).toUpperCase() + complexity.evidenceFragmentation.slice(1)), 'Investigation Friction', (!hasObservedRca && complexity.evidenceFragmentation === 'low') || complexity.evidenceFragmentation === 'high' ? 'bad' : complexity.evidenceFragmentation === 'medium' ? 'warn' : 'ok')}
+    </div>
     <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
-    <div class="cx-action-block ${hasObservedRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong><div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div></div>
+    <div class="cx-action-block ${hasObservedRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong>${showRemediation ? '' : `<div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`}</div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
     ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
-    ${renderExecDisclosure('Raw Evidence', `${pat.occurrences} recurrences | ${pat.trend.toLowerCase()} | RCA Availability: ${rcaAvailability}`, evidenceBody)}
-    ${renderExecDisclosure('Investigation Complexity', complexitySummary, renderInvestigationComplexityCard(pat, patterns) || `<p>${complexity.narrative}</p>`)}
   </aside>`;
 }
 
@@ -6051,9 +6124,9 @@ function renderConciseActFirstMap(patterns) {
     const fixability = patternFixabilityScore(pat);
     const model = actFirstModel(pat, patterns);
     const costPosition = clamp(cost / maxCost, 0.06, 1);
-    const left = Math.round(8 + fixability * 84);
-    const bottom = Math.round(9 + costPosition * 80);
-    const size = Math.round(clamp(18 + Math.sqrt(Math.max(0, cost)) / 60, 20, 48));
+    const left = Math.round(12 + fixability * 70);   // 12–82%: keeps bubbles away from left/right label corners
+    const bottom = Math.round(16 + costPosition * 62); // 16–78%: keeps bubbles away from top/bottom label corners
+    const size = Math.round(clamp(18 + Math.sqrt(Math.max(0, cost)) / 60, 20, 44));
     const primaryAction = pat.recommendation?.text || model.reason;
     const priority = executivePriorityLevel(pat, patterns);
     const confidence = patternConfidenceScore(pat);
@@ -6065,7 +6138,7 @@ function renderConciseActFirstMap(patterns) {
       selected && execClosedBubblePopupId === pat.id ? 'popup-hidden' : '',
     ].filter(Boolean).join(' ');
     return `<button class="cx-map-bubble ${executiveBubbleSeenClass(pat)} ${selected ? 'selected' : ''} ${popupClass}" data-action="selectPatternRow" data-pid="${pat.id}" aria-label="${attrText(tooltip)}" style="left:${left}%;bottom:${bottom}%;width:${size}px;height:${size}px">
-      <span>#${idx + 1}</span>
+      <span>${idx + 1}</span>
       <div class="cx-bubble-popover" role="tooltip">
         <span class="cx-pop-close" role="button" tabindex="0" data-action="closeBubblePopup" data-pid="${pat.id}" aria-label="Close popup">x</span>
         <div class="cx-pop-title">${pat.title}</div>

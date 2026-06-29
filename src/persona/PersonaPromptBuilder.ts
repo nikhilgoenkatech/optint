@@ -1,139 +1,181 @@
 // ============================================================
 // PERSONA PROMPT BUILDER
-// Builds persona-tuned prompts for Davis CoPilot
+// Builds objective-aware, signal-based prompts for Davis CoPilot
 // ============================================================
 
-import { CostEstimate, DynatraceProblem } from '../models';
+import { CostEstimate, DynatraceProblem, ProblemPattern } from '../models';
 import { PersonaType } from './PersonaResolver';
+
+export type ObjectiveType = 'cost_impact' | 'alert_optimization' | 'remediation';
 
 export interface AISummaryRequest {
   problems: DynatraceProblem[];
   persona: PersonaType;
   costEstimates: CostEstimate[];
   totalCost: number;
+  objective?: ObjectiveType;
+  pattern?: ProblemPattern;
 }
 
-const SYSTEM_BASE = `You are an operational intelligence assistant embedded in a Dynatrace custom app.
-You analyze Dynatrace problems and return structured insights.
-Always respond with valid JSON matching the requested schema. No markdown, no preamble.`;
+// ------------------------------------
+// Prompt constants
+// ------------------------------------
 
-const EXEC_INSTRUCTION = `
-You are briefing a C-level executive or VP. Rules:
-- Plain English only. Zero technical jargon.
-- Never mention: pods, containers, heap, GC, JVM, percentile, DQL, endpoints, stack traces
-- Replace "service" with "system" or "platform" where possible
-- Focus on: what customers experienced, revenue risk, how long it lasted, is it recurring
-- Recommendations must be strategic (invest, prioritise, escalate) not technical (deploy, configure)
-- Keep the summary under 3 sentences. Direct. Confident. No hedging.`;
+const SYSTEM_PROMPT = `You are OpInt Assist. A recurring pattern has been identified by OpInt.
+Recommend practical next actions for the active persona and objective
+using only the supplied signals. Everything must trace to supplied evidence.
 
-const DEV_INSTRUCTION = `
-You are briefing a software developer or engineering lead. Rules:
-- Technical root cause analysis expected
-- Name specific services, endpoints, error types, libraries
-- Recommend specific code changes, config values, dependency fixes
-- Reference patterns like: connection pool exhaustion, memory leak, N+1 queries, timeout cascades
-- Include specific values where helpful (e.g. "increase max_connections from 100 to 300")
-- Be direct and actionable`;
+CONSTRAINTS
+- Use only supplied signal values. Absent signal → data gap, not assumption.
+- RCA is observed fact only: Present or Missing. Never score or validate it.
+- Scope = observed counts only. Never infer hidden dependencies.
+- Do not invent outcomes, savings, or MTTR improvements not in the evidence.
+- Only recommend a Dynatrace capability when a specific supplied signal justifies it.
+- dynatraceCapability must be a capability name only — no description or narrative in that field.
+- Only Evidence-backed actions may be IMMEDIATE.
+- Fewer than 3 meaningful signals → return {"error":"Insufficient signal data."}
 
-const SRE_INSTRUCTION = `
-You are briefing a Site Reliability Engineer or Platform engineer. Rules:
-- Full operational analysis expected
-- Include: infrastructure signals, deployment correlation, alert noise assessment
-- Assess SLO/SLA impact explicitly
-- Recommend runbook steps, alert tuning, capacity changes
-- Flag whether any alerts appear to be noise (auto-resolved, low impact)
-- Consider blast radius and cascading failure risk`;
+RECOMMENDATION STRENGTH
+Evidence-backed: directly supported by supplied signals
+Candidate: plausible but depends on missing evidence
+Data-gap: clarify missing evidence before acting`;
 
-const DYNATRACE_OBSERVABILITY_FEATURES = `
-Broad Dynatrace features and action capabilities to recommend when relevant:
-- Davis AI
-- Live Debugger
-- AWS DevOps Agent
-- Azure DevOps Agent
-- GCP DevOps Agent
-- Release Management
-- Workflows
-- AutomationEngine
-- Site Reliability Guardian
-- Service-Level Objectives
-- Ownership and Routing
-- Digital Experience Monitoring
-- Business Analytics
-- Application Observability
-- Infrastructure and Cloud Observability
+const PERSONA_GUIDANCE = `Executive → business cost, customer impact, risk. No implementation detail. Maximum 3 recommendedActions.
+SRE → reliability, MTTR, runbooks, SLOs, alert quality, investigation friction.
+Developer → affected service, debugging path, release validation, code ownership.`;
 
-Use these broad feature names only. Do not recommend granular telemetry sources such as Distributed Traces, Logs, Metrics, events, spans, stack traces, or dashboards as the feature.`;
+const OBJECTIVE_GUIDANCE = `cost_impact → reduce recurring cost, customer impact, and engineering effort.
+Do not recommend alert tuning — that belongs to the alert_optimization objective.
 
-// Schema returned by all personas (some fields optional per persona)
-const RESPONSE_SCHEMA = `
-Return ONLY this JSON (no other text):
-{
-  "summary": "string - 2-3 sentence summary tailored to this persona",
-  "patterns": ["string", "string"],
-  "costNarrative": "string - one sentence on cost/business impact (exec/sre only, else empty string)",
-  "sloImpact": "string - SLO impact assessment (sre only, else empty string)",
-  "noiseAssessment": "string - alert noise comment (sre only, else empty string)",
-  "recommendations": [
+alert_optimization → alert tuning only. Threshold review, suppression windows,
+routing, event filter refinement. Not a service fix.
+Use "short-lived" not "auto-resolved".
+
+remediation → identify what to fix and how hard. For each action assess whether
+remediation effort is proportionate to recurrence and cost signals.
+Default high-effort actions to STRATEGIC unless evidence demands otherwise.
+Rank by effort-to-value ratio, not severity alone.`;
+
+const RESPONSE_SCHEMA = `{
+  "objectiveAssessment": "2-3 sentences. Supplied signal values only.",
+  "drivers": [
+    { "signal": "", "value": "", "whyItMatters": "reference the active objective directly" }
+  ],
+  "recommendedActions": [
     {
       "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
-      "title": "string",
-      "description": "string",
-      "dynatraceFeature": "string - one broad Dynatrace feature or action capability from the approved list",
-      "estimatedImpact": "string",
-      "owner": "string"
+      "title": "",
+      "recommendationStrength": "Evidence-backed | Candidate | Data-gap",
+      "reason": "name the signal that justifies this action",
+      "dynatraceCapability": "capability name only",
+      "effort": "Low | Medium | High | Unknown",
+      "personaFit": ""
     }
-  ]
+  ],
+  "remediationContext": "include only when objective is remediation — omit otherwise: { horizon, effortJustification, blockers[] }",
+  "risks": ["unresolved evidence only — no future inference"],
+  "dataGaps": ["absent or insufficient signal"]
 }`;
 
+// ------------------------------------
+// Evidence builder
+// Maps pattern or raw problems to signal JSON
+// ------------------------------------
+
+function buildEvidenceJson(req: AISummaryRequest): object {
+  const { problems, costEstimates, totalCost, pattern } = req;
+
+  if (pattern) {
+    return {
+      occurrence_count:      pattern.occurrences,
+      alert_event_count:     pattern.problems.length,
+      operational_cost:      Math.round(pattern.totalCost),
+      potential_savings:     pattern.recommendation.type !== 'INVESTIGATE_FIRST'
+                               ? Math.round(pattern.totalCost * pattern.autoResolveRate)
+                               : 'absent',
+      affected_users:        pattern.totalUsers,
+      affected_entity_count: pattern.affectedServices.length,
+      affected_services:     pattern.affectedServices.join(', ') || 'absent',
+      event_category:        pattern.severity,
+      scope_tier:            pattern.dimensions.managementZones.length > 2
+                               ? 'broad'
+                               : pattern.dimensions.managementZones.length > 0
+                               ? 'scoped'
+                               : 'unknown',
+      trend:                 pattern.trend,
+      avg_duration:          `${Math.round(pattern.avgMTTR)}m`,
+      recommendation_type:   pattern.recommendation.type,
+      rca_availability:      pattern.hasRCA ? 'Present' : 'Missing',
+      root_cause_entity:     pattern.dimensions.primaryRootCause ?? 'absent',
+    };
+  }
+
+  // Fallback: derive signals from raw problems
+  const totalUsers    = problems.reduce((a, p) => a + (p.affectedUsers ?? 0), 0);
+  const avgDuration   = problems.reduce((a, p) => a + (p.duration ?? 0), 0) / Math.max(problems.length, 1);
+  const hasRCA        = problems.some(p => p.hasRootCause);
+  const services      = [...new Set(problems.flatMap(p =>
+    p.impactedEntities.filter(e => e.type === 'SERVICE').map(e => e.name)
+  ))];
+  const entities      = new Set(problems.flatMap(p => p.impactedEntities.map(e => e.entityId)));
+  const rootCause     = problems.find(p => p.rootCauseEntity)?.rootCauseEntity?.name ?? 'absent';
+  const cost          = costEstimates.reduce((a, c) => a + c.total, 0) || totalCost;
+
+  return {
+    occurrence_count:      problems.length,
+    alert_event_count:     problems.length,
+    operational_cost:      Math.round(cost),
+    potential_savings:     'absent',
+    affected_users:        totalUsers,
+    affected_entity_count: entities.size,
+    affected_services:     services.join(', ') || 'absent',
+    event_category:        problems[0]?.severity ?? 'absent',
+    scope_tier:            'unknown',
+    trend:                 'absent',
+    avg_duration:          `${Math.round(avgDuration)}m`,
+    recommendation_type:   'absent',
+    rca_availability:      hasRCA ? 'Present' : 'Missing',
+    root_cause_entity:     rootCause,
+  };
+}
+
+// ------------------------------------
+// Prompt builder
+// ------------------------------------
+
 export function buildPrompt(req: AISummaryRequest): string {
-  const { problems, persona, costEstimates, totalCost } = req;
+  const { persona, objective = 'cost_impact' } = req;
+  const evidence = buildEvidenceJson(req);
 
-  const personaInstruction = {
-    executive: EXEC_INSTRUCTION,
-    developer: DEV_INSTRUCTION,
-    sre: SRE_INSTRUCTION,
-  }[persona];
+  return `${SYSTEM_PROMPT}
 
-  const problemContext = problems.map((p, i) => ({
-    index: i + 1,
-    title: p.title,
-    severity: p.severity,
-    status: p.status,
-    durationMinutes: p.duration ?? null,
-    affectedUsers: p.affectedUsers ?? 0,
-    hasRootCause: p.hasRootCause,
-    rootCause: p.rootCauseEntity?.name ?? null,
-    impactedServices: p.impactedEntities?.map(e => e.name) ?? [],
-    recurrenceScore: p.recurrenceScore ?? 0,
-    estimatedCost: costEstimates[i]?.total ?? 0,
-    tags: p.tags,
-  }));
+PERSONA: ${persona}
+OBJECTIVE: ${objective}
 
-  return `${SYSTEM_BASE}
+${PERSONA_GUIDANCE}
 
-PERSONA: ${persona.toUpperCase()}
-${personaInstruction}
+${OBJECTIVE_GUIDANCE}
 
-TOTAL ESTIMATED COST ACROSS SELECTED PROBLEMS: $${totalCost.toLocaleString()}
+Apply persona and objective simultaneously.
 
-PROBLEMS TO ANALYZE:
-${JSON.stringify(problemContext, null, 2)}
+SIGNALS
+${JSON.stringify(evidence, null, 2)}
 
-${DYNATRACE_OBSERVABILITY_FEATURES}
+Return valid JSON only. No markdown, no commentary outside the JSON.
 
 ${RESPONSE_SCHEMA}`;
 }
 
-// Davis CoPilot wraps the prompt in its conversation format
+// ------------------------------------
+// Davis CoPilot payload wrapper
+// ------------------------------------
+
 export function buildDavisCopilotPayload(req: AISummaryRequest) {
   return {
-    // Davis CoPilot conversation message format
-    // See: @dynatrace-sdk/client-davis-copilot
     message: {
       role: 'user' as const,
       content: buildPrompt(req),
     },
-    // Tell CoPilot to use structured output
     context: {
       appId: 'my.dynatrace.opint',
       entityContext: req.problems.map(p => p.problemId),
