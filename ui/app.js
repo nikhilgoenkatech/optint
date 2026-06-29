@@ -857,9 +857,9 @@ function renderKPIs(ps){
     ],
     sre:[
       {lbl:'Operational Debt',val:ps.length,sub:`${open} open now`,c:'kc-blue',mode:'sre-total',actionText:execKpiDetail==='sre-total'?'Hide details':'View details'},
-      {lbl:'Automation Candidates',val:fmtC(waste),sub:'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
-      {lbl:'Repeat Offenders',val:noisy,sub:'noise candidates',c:'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
-      {lbl:'Median MTTR',val:fmtM(mttr.median),sub:`p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`,c:'kc-violet',mode:'sre-mttr',actionText:execKpiDetail==='sre-mttr'?'Hide details':'View details'},
+      {lbl:'Automation Candidates',val:activeObjective==='alert_optimization'?noisy:fmtC(waste),sub:activeObjective==='alert_optimization'?'noise candidates':'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
+      {lbl:'Repeat Offenders',val:noisy,sub:'noise candidates',c:activeObjective==='alert_optimization'?'kc-amber kc-primary':'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
+      {lbl: activeObjective==='alert_optimization' ? 'Avg Alert Duration' : 'Median MTTR', val:fmtM(mttr.median), sub: activeObjective==='alert_optimization' ? 'avg event open time' : `p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`, c:'kc-violet',mode:'sre-mttr',actionText:execKpiDetail==='sre-mttr'?'Hide details':'View details'},
     ],
   };
   if (persona === 'executive') {
@@ -1666,24 +1666,33 @@ function renderAssistRemediationResponse(response, evidence=null) {
     response.shortTermRemediation ? { priority:'SHORT_TERM', title:'Short-term remediation', description:response.shortTermRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
     response.strategicRemediation ? { priority:'STRATEGIC', title:'Strategic remediation', description:response.strategicRemediation, estimatedImpact:response.expectedOperationalCostReduction } : null,
   ].filter(Boolean);
-  const priMeta = {
-    IMMEDIATE: { tier:'immediate', label:'Immediate', time:'Now', cls:'act-auto', recommended:true },
-    SHORT_TERM: { tier:'short', label:'Short term', time:'Days', cls:'act-semi', recommended:false },
-    STRATEGIC: { tier:'strategic', label:'Strategic', time:'Weeks', cls:'act-manual', recommended:false },
+  const isNoiseObj = activeObjective === 'alert_optimization';
+  const mapStrength = (s) => {
+    if (!isNoiseObj) return s;
+    const u = String(s).toUpperCase();
+    if (u.includes('EVIDENCE')) return 'DETECTOR-CONFIRMED';
+    if (u.includes('DATA')) return 'CONFIG-UNKNOWN';
+    if (u.includes('CANDIDATE')) return 'INFERRED';
+    return s;
   };
-  const strengthText = String(response.recommendationStrength || recs[0]?.recommendationStrength || 'Evidence status').toUpperCase();
-  const strengthTone = strengthText.includes('EVIDENCE') ? 'var(--green)' : strengthText.includes('CANDIDATE') ? 'var(--amber)' : strengthText.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
-  const strengthPct = strengthText.includes('EVIDENCE') ? 85 : strengthText.includes('CANDIDATE') ? 60 : strengthText.includes('DATA') ? 35 : 50;
+  const priMeta = {
+    IMMEDIATE: { tier:'immediate', label: isNoiseObj ? 'Tune Now' : 'Immediate', time:'Now', cls:'act-auto', recommended:true },
+    SHORT_TERM: { tier:'short', label: isNoiseObj ? 'Schedule Tune' : 'Short term', time:'Days', cls:'act-semi', recommended:false },
+    STRATEGIC: { tier:'strategic', label: isNoiseObj ? 'Review Config' : 'Strategic', time:'Weeks', cls:'act-manual', recommended:false },
+  };
+  const strengthText = mapStrength(String(response.recommendationStrength || recs[0]?.recommendationStrength || 'Evidence status').toUpperCase());
+  const strengthTone = (s) => s.includes('DETECTOR') || s.includes('EVIDENCE') ? 'var(--green)' : s.includes('INFERRED') || s.includes('CANDIDATE') ? 'var(--amber)' : s.includes('CONFIG') || s.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
+  const strengthPct  = (s) => s.includes('DETECTOR') || s.includes('EVIDENCE') ? 85 : s.includes('INFERRED') || s.includes('CANDIDATE') ? 60 : 35;
   const recCards = phaseRecs.map((rec, idx) => {
     const pri = String(rec.priority || (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC')).toUpperCase();
     const meta = priMeta[pri] || priMeta.STRATEGIC;
     const feature = rec.dynatraceCapability || rec.dynatraceFeature || rec.dynatrace_feature
       || (response.suggestedDynatraceCapabilities || response.suggested_dynatrace_capabilities || [])[idx];
-    const recStrength = String(rec.recommendationStrength || strengthText).toUpperCase();
-    const recTone = recStrength.includes('EVIDENCE') ? 'var(--green)' : recStrength.includes('CANDIDATE') ? 'var(--amber)' : recStrength.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
-    const recPct  = recStrength.includes('EVIDENCE') ? 85 : recStrength.includes('CANDIDATE') ? 60 : recStrength.includes('DATA') ? 35 : 50;
+    const recStrength = mapStrength(String(rec.recommendationStrength || strengthText).toUpperCase());
+    const recTone = strengthTone(recStrength);
+    const recPct  = strengthPct(recStrength);
     return `<div class="rem-opt tier-${meta.tier} ${meta.recommended ? 'recommended' : ''}">
-      ${feature ? `<div class="rem-feature-top"><span>Dynatrace capability</span><strong>${renderInlineValue(feature)}</strong></div>` : ''}
+      ${feature ? `<div class="rem-feature-top"><span>${isNoiseObj ? 'Detector lever' : 'Dynatrace capability'}</span><strong>${renderInlineValue(feature)}</strong></div>` : ''}
       <div class="rem-opt-header">
         <span class="rem-strength-dot" style="background:${recTone}" title="${recStrength}"></span>
         <span class="rem-opt-label">${attrText(rec.title || meta.label)}</span>
@@ -1737,10 +1746,10 @@ function renderAssistRemediationResponse(response, evidence=null) {
           return `<div class="${cls}"><strong>${attrText(String(v))}</strong><span>${attrText(lbl)}</span></div>`;
         };
         return `<div class="rem-persona-summary">
-          <div class="rem-assist-title">${persona === 'sre' ? 'SRE Remediation Guidance' : 'Developer Remediation Guidance'}</div>
+          <div class="rem-assist-title">${persona === 'sre' ? (isNoiseObj ? 'SRE Alert Tuning Guidance' : 'SRE Remediation Guidance') : (isNoiseObj ? 'Developer Alert Tuning Guidance' : 'Developer Remediation Guidance')}</div>
           <p class="rem-obj-assessment">${attrText(response.objectiveAssessment || response.summary || whyNow)}</p>
           ${evOccurrences || evOpen ? `
-          <div class="rem-assist-title" style="margin-top:10px">Pattern Signals</div>
+          <div class="rem-assist-title" style="margin-top:10px">${isNoiseObj ? 'Noise Signals' : 'Pattern Signals'}</div>
           <div class="rem-kpi-grid">
             ${tl(evOccurrences,               'Recurrences',   evOccurrences > 10 ? 'bad' : evOccurrences > 4 ? 'warn' : 'ok')}
             ${tl(evOpen,                      'Open Now',      evOpen > 0 ? 'warn' : 'ok')}
@@ -1773,7 +1782,7 @@ function renderAssistRemediationResponse(response, evidence=null) {
       const items = (Array.isArray(gaps) ? gaps : [gaps]).slice(0,5).map(g => `<span class="rem-blurb-item gap">${attrText(humanizeGap(g))}</span>`).join('');
       return `<div class="rem-blurb-row"><span class="rem-blurb-label">Data gaps</span><div class="rem-blurb-items">${items}</div></div>`;
     })()}
-    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Actions</div><div class="rem-options">${recCards}</div></div>` : ''}
+    ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">${activeObjective === 'alert_optimization' ? 'Tuning Recommendations' : 'Recommended Actions'}</div><div class="rem-options">${recCards}</div></div>` : ''}
     ${whyRows.length ? `<details class="rem-disclosure"><summary><span><strong>Why this remediation is suggested</strong><small>View decision factors</small></span><b>+</b></summary><div class="rem-disclosure-body"><div class="rem-why-grid">${whyRows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div></details>` : ''}
     ${disclosure('Drivers', response.drivers)}
     ${disclosure('Remediation context', response.remediationContext)}
@@ -2070,9 +2079,16 @@ Developer -> affected service, debugging path, release validation, code ownershi
 
 cost_impact -> reduce recurring cost, customer impact, and engineering effort.
 
-alert_optimization -> alert tuning only. Threshold review, suppression windows,
-routing, event filter refinement. Not service fix.
-Use "short-lived" not "auto-resolved".
+alert_optimization -> alert tuning only. Detector config changes, not service fixes.
+Use "short-lived" not "auto-resolved". Never recommend RCA investigation or code changes.
+Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
+Map recommendation_type to the specific tuning lever:
+  ADD_TIME_WINDOW   -> increase dealertingSamples or add suppression time window
+  RAISE_THRESHOLD   -> raise static threshold; if trend=INCREASING also flag detector model mismatch (switch to adaptive/seasonal)
+  DISABLE_ALERT     -> route to CUSTOM_INFO severity or disable detector
+  TUNE_FREQUENCY    -> increase violatingSamples/slidingWindow to stop flapping
+avg_duration < 5m -> dealertingSamples tuning is the fix, not threshold change.
+trend=INCREASING + recommendation_type=RAISE_THRESHOLD -> detector model mismatch: recommend switching model type.
 
 remediation -> identify what to fix and how hard. For each action assess whether
 remediation effort is proportionate to recurrence and cost signals.
@@ -3177,7 +3193,10 @@ function compactAssistContext(ps) {
 
 function buildDeveloperAnalysisPrompt(ps) {
   const c = compactAssistContext(ps);
+  const obj = activeObjective || 'cost_impact';
+  const isNoise = obj === 'alert_optimization';
   return `You are a software developer using Dynatrace.
+OBJECTIVE: ${obj}
 
 Please analyze these Dynatrace problem IDs:
 ${c.problemIds.join(', ')}
@@ -3197,12 +3216,21 @@ ${c.timeRange}
 Developer scope:
 ${c.selectedScope ? `${c.selectedScope.type}: ${c.selectedScope.label}` : 'All Developer Scope'}
 
-Please explain:
+${isNoise ? `OBJECTIVE FOCUS — alert_optimization:
+Identify which alerts in this pattern lack actionable code-level signal.
+Focus on:
+- Alerts that closed without any developer action (short-lived, no stack trace, no RCA)
+- Alerts where the event category does not match the code path (e.g. RESOURCE alerts on a pure application service)
+- Alerts with high recurrence but no associated deployment or code change
+- Whether the detector model is appropriate (static vs adaptive vs seasonal) given the trend
+Do NOT recommend code fixes. Recommend detector tuning actions only.
+Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.` :
+`OBJECTIVE FOCUS — cost_impact / remediation:
 - what the signals are suggesting
 - what service, endpoint, or entity should be investigated first
 - whether the pattern suggests recurrence, deployment correlation, or time clustering
 - what recommendations you have
-- which Dynatrace Observability capability would help most
+- which Dynatrace Observability capability would help most`}
 
 Return valid JSON only matching this schema:
 {
@@ -3227,19 +3255,20 @@ Return valid JSON only matching this schema:
 function buildSreAnalysisPrompt(ps, costs, totalCost) {
   const c = compactAssistContext(ps);
   const patterns = detectPatterns(ps).patterns;
+  const obj = activeObjective || 'cost_impact';
+  const isNoise = obj === 'alert_optimization';
   const metadata = {
     problemCount: ps.length,
     openProblems: ps.filter(p => p.status === 'OPEN').length,
     recurringPatterns: patterns.length,
-    estimatedCost: totalCost,
+    estimatedCost: isNoise ? undefined : totalCost,
     noisyAlerts: ps.filter(p => p.noise).length,
     missingRca: ps.filter(p => !p.hasRCA).length,
   };
   return `You are a Site Reliability Engineer.
+OBJECTIVE: ${obj}
 
 Analyze the recurring operational pattern represented by the supplied Dynatrace problem IDs.
-
-Focus on reliability engineering rather than incident debugging.
 
 Problem IDs:
 ${c.problemIds.join(', ')}
@@ -3253,6 +3282,21 @@ ${c.affectedServicesOrEntities}
 Pattern metadata:
 ${JSON.stringify(metadata, null, 2)}
 
+${isNoise ? `OBJECTIVE FOCUS — alert_optimization:
+Focus exclusively on reducing alert noise and detector quality. Do NOT focus on service reliability or MTTR.
+Identify:
+- Which alerts in this pattern are short-lived (closed without SRE action)
+- Whether recommendation_type signals ADD_TIME_WINDOW, RAISE_THRESHOLD, DISABLE_ALERT, or TUNE_FREQUENCY
+- Whether the detector model (static/adaptive/seasonal) matches the signal's behavior — flag model mismatch if trend is INCREASING and recommendation is RAISE_THRESHOLD
+- Suppression candidates: alerts that recur on a schedule (time-clustering) or have low user impact
+- Routing mismatches: alerts that fire broadly but should be scoped to a specific management zone or entity selector
+- Workflow-level fixes: dt.alert_group routing, notification filtering, maintenance windows
+
+Prioritize recommendations that reduce Davis event volume without hiding genuine incidents.
+Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
+Do NOT recommend MTTR improvements, runbooks, or SLO changes.` :
+`OBJECTIVE FOCUS — cost_impact / remediation:
+Focus on reliability engineering rather than incident debugging.
 Identify:
 - recurring reliability signals
 - recurrence drivers
@@ -3260,9 +3304,8 @@ Identify:
 - automation opportunities
 - prevention recommendations
 
-Do not focus on code-level fixes.
-Do not summarize individual incidents.
-Prioritize recommendations that reduce future recurrence.
+Do not focus on code-level fixes. Do not summarize individual incidents.
+Prioritize recommendations that reduce future recurrence.`}
 
 Return valid JSON only matching this schema:
 {
@@ -3279,7 +3322,7 @@ Return valid JSON only matching this schema:
   "preventionRecommendations": [
     {
       "title": "string",
-      "dynatraceCapability": "one of: Davis AI | Workflows | Site Reliability Guardian | Live Debugger | Ownership and Routing | Application Observability | Infrastructure and Cloud Observability | Release Management | AutomationEngine"
+      "dynatraceCapability": "${isNoise ? 'one of: Davis AI | Workflows | AutomationEngine' : 'one of: Davis AI | Workflows | Site Reliability Guardian | Live Debugger | Ownership and Routing | Application Observability | Infrastructure and Cloud Observability | Release Management | AutomationEngine'}"
     }
   ],
   "confidence": "high|medium|low"
@@ -5992,20 +6035,31 @@ function renderWorkspaceAnalysisBlock(pat, intro) {
       : Array.isArray(result.recommendations) ? result.recommendations : [];
     const risks = Array.isArray(result.risks) ? result.risks : [];
     const gaps  = Array.isArray(result.dataGaps) ? result.dataGaps : [];
-    const priMeta = {
-      IMMEDIATE: { tier:'immediate', label:'Immediate', time:'Now', cls:'act-auto' },
-      SHORT_TERM: { tier:'short', label:'Short term', time:'Days', cls:'act-semi' },
-      STRATEGIC: { tier:'strategic', label:'Strategic', time:'Weeks', cls:'act-manual' },
+    const isNoiseObj = activeObjective === 'alert_optimization';
+    const mapStrengthA = (s) => {
+      if (!isNoiseObj) return s;
+      const u = String(s).toUpperCase();
+      if (u.includes('EVIDENCE')) return 'DETECTOR-CONFIRMED';
+      if (u.includes('DATA')) return 'CONFIG-UNKNOWN';
+      if (u.includes('CANDIDATE')) return 'INFERRED';
+      return s;
     };
+    const priMeta = {
+      IMMEDIATE: { tier:'immediate', label: isNoiseObj ? 'Tune Now' : 'Immediate', time:'Now', cls:'act-auto' },
+      SHORT_TERM: { tier:'short', label: isNoiseObj ? 'Schedule Tune' : 'Short term', time:'Days', cls:'act-semi' },
+      STRATEGIC: { tier:'strategic', label: isNoiseObj ? 'Review Config' : 'Strategic', time:'Weeks', cls:'act-manual' },
+    };
+    const sTone = (s) => s.includes('DETECTOR') || s.includes('EVIDENCE') ? 'var(--green)' : s.includes('INFERRED') || s.includes('CANDIDATE') ? 'var(--amber)' : s.includes('CONFIG') || s.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
+    const sPct  = (s) => s.includes('DETECTOR') || s.includes('EVIDENCE') ? 85 : s.includes('INFERRED') || s.includes('CANDIDATE') ? 60 : 35;
     const recCards = recs.slice(0, 4).map((rec, idx) => {
       const pri = String(rec.priority || (idx === 0 ? 'IMMEDIATE' : idx === 1 ? 'SHORT_TERM' : 'STRATEGIC')).toUpperCase();
       const meta = priMeta[pri] || priMeta.STRATEGIC;
       const feature = rec.dynatraceCapability || rec.dynatraceFeature || '';
-      const recStrength = String(rec.recommendationStrength || '').toUpperCase();
-      const recTone = recStrength.includes('EVIDENCE') ? 'var(--green)' : recStrength.includes('CANDIDATE') ? 'var(--amber)' : recStrength.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
-      const recPct  = recStrength.includes('EVIDENCE') ? 85 : recStrength.includes('CANDIDATE') ? 60 : recStrength.includes('DATA') ? 35 : 50;
+      const recStrength = mapStrengthA(String(rec.recommendationStrength || '').toUpperCase());
+      const recTone = sTone(recStrength);
+      const recPct  = sPct(recStrength);
       return `<div class="rem-opt tier-${meta.tier}">
-        ${feature ? `<div class="rem-feature-inline"><strong>${attrText(feature)}</strong></div>` : ''}
+        ${feature ? `<div class="rem-feature-inline"><span>${isNoiseObj ? 'Detector lever' : 'Capability'}:</span> <strong>${attrText(feature)}</strong></div>` : ''}
         <div class="rem-opt-header">
           <span class="rem-strength-dot" style="background:${recTone}" title="${recStrength}"></span>
           <span class="rem-opt-label">${attrText(rec.title || meta.label)}</span>
@@ -6021,12 +6075,12 @@ function renderWorkspaceAnalysisBlock(pat, intro) {
     const gapItems  = gaps.slice(0,5).map(g => `<li>${attrText(humanizeGap(g))}</li>`).join('');
     return `<div class="rem-analysis-wrap">
       <div class="rem-persona-summary">
-        <div class="rem-assist-title">Dynatrace Intelligence Analysis</div>
+        <div class="rem-assist-title">${isNoiseObj ? 'Alert Noise Analysis' : 'Dynatrace Intelligence Analysis'}</div>
         <p class="rem-obj-assessment">${attrText(result.objectiveAssessment || result.summary || '')}</p>
       </div>
       ${riskChips ? `<div class="rem-blurb-row"><span class="rem-blurb-label">Risks</span><div class="rem-blurb-items">${riskChips}</div></div>` : ''}
       ${gapItems  ? `<div class="rem-blurb-row"><span class="rem-blurb-label">Data Gaps</span><ul class="rem-gap-list">${gapItems}</ul></div>` : ''}
-      ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">Recommended Actions</div><div class="rem-options">${recCards}</div></div>` : ''}
+      ${recCards ? `<div class="rem-assist-sec"><div class="rem-assist-title">${activeObjective === 'alert_optimization' ? 'Tuning Recommendations' : 'Recommended Actions'}</div><div class="rem-options">${recCards}</div></div>` : ''}
       ${window.__OPINT_LAST_ANALYSIS_PROMPT__ && analysisPatternId === pat.id ? `<details class="rem-disclosure"><summary><span><strong>Prompt Used</strong><small>${window.__OPINT_LAST_ANALYSIS_PROMPT__.length} characters</small></span><b>+</b></summary><div class="rem-disclosure-body"><pre style="white-space:pre-wrap;font-size:10px;color:var(--text-3)">${attrText(window.__OPINT_LAST_ANALYSIS_PROMPT__)}</pre></div></details>` : ''}
     </div>`;
   }
@@ -6851,7 +6905,7 @@ function renderDeveloperContextPanel(pat, patterns) {
 }
 
 function renderDeveloperWorkspace(patterns, ps) {
-  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
+  const ranked = rankPatterns(patterns).map((pat, i) => ({ pat, score: patternPriorityScore(pat, patterns) - i }));
   if (patternExplorerState.selectedId && !patterns.some(p => p.id === patternExplorerState.selectedId)) {
     patternExplorerState.selectedId = null;
   }
@@ -6874,7 +6928,7 @@ function renderDeveloperWorkspace(patterns, ps) {
 }
 
 function renderConciseExecView(patterns, ps) {
-  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
+  const ranked = rankPatterns(patterns).map((pat, i) => ({ pat, score: patternPriorityScore(pat, patterns) - i }));
   if (!patternExplorerState.selectedId || !patterns.some(p => p.id === patternExplorerState.selectedId)) {
     patternExplorerState.selectedId = ranked[0]?.pat.id || null;
   }
@@ -6893,7 +6947,7 @@ function renderConciseExecView(patterns, ps) {
 }
 
 function renderDecisionFirstExecView(patterns, ps) {
-  const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns) })).sort((a, b) => b.score - a.score);
+  const ranked = rankPatterns(patterns).map((pat, i) => ({ pat, score: patternPriorityScore(pat, patterns) - i }));
   const selected = execPatternSelectionMade
     ? patterns.find(p => p.id === patternExplorerState.selectedId) || null
     : null;
@@ -7905,9 +7959,18 @@ function openTicket(url) {
 
 
 // ── UTILS ──
-function switchPersona(p){
-  persona=p;selectedIds.clear();expandedIds.clear();aiState='idle';lastAIResult=null;lastAnalysisResult=null;
+function resetWorkspaceState(){
+  selectedIds.clear();expandedIds.clear();
+  aiState='idle';lastAIResult=null;lastAnalysisResult=null;
   execKpiDetail=null;
+  remediationState={status:'empty',patternId:null,evidence:null,response:null,error:null};
+  remediationCache.clear();
+  patternExplorerState={selectedId:null,sort:'priority',dir:'desc',search:'',filters:{},offset:0};
+  execPatternSelectionMade=false;
+}
+function switchPersona(p){
+  resetWorkspaceState();
+  persona=p;
   if (p === 'sre' || p === 'developer') currentView = 'patterns';
   document.querySelectorAll('.pbtn').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
   document.querySelectorAll('.view-tab').forEach(b=>b.classList.toggle('active',b.dataset.view===currentView));
@@ -8213,6 +8276,11 @@ document.querySelector('.ai-src-bar').addEventListener('click', function(e) {
 
 // Select change listeners
 document.getElementById('appFilter').addEventListener('change', render);
+document.getElementById('objectiveSelect').addEventListener('change', (e) => {
+  activeObjective = e.target.value;
+  resetWorkspaceState();
+  render();
+});
 document.getElementById('timeRange').addEventListener('change', () => {
   PROBLEMS = [];
   MTTR_SUMMARY = null;
