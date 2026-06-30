@@ -2096,13 +2096,43 @@ cost_impact -> reduce recurring cost, customer impact, and engineering effort.
 alert_optimization -> alert tuning only. Detector config changes, not service fixes.
 Use "short-lived" not "auto-resolved". Never recommend RCA investigation or code changes.
 Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
-Map recommendation_type to the specific tuning lever:
-  ADD_TIME_WINDOW   -> increase dealertingSamples or add suppression time window
-  RAISE_THRESHOLD   -> raise static threshold; if trend=INCREASING also flag detector model mismatch (switch to adaptive/seasonal)
-  DISABLE_ALERT     -> route to CUSTOM_INFO severity or disable detector
-  TUNE_FREQUENCY    -> increase violatingSamples/slidingWindow to stop flapping
-avg_duration < 5m -> dealertingSamples tuning is the fix, not threshold change.
-trend=INCREASING + recommendation_type=RAISE_THRESHOLD -> detector model mismatch: recommend switching model type.
+
+Map recommendation_type to the exact Dynatrace tuning lever:
+  ADD_TIME_WINDOW ->
+    Primary lever: dealertingSamples (require 5+ clean samples before clearing alert)
+    If hasDayCluster=true: SeasonalBaselineAnomalyDetectionAnalyzer with tolerance 1-4
+    If time-bound pattern: add suppression window in Workflows maintenance window
+  RAISE_THRESHOLD ->
+    StaticThresholdAnomalyDetectionAnalyzer: raise threshold value directly
+    AutoAdaptiveAnomalyDetectionAnalyzer: increase numberOfSignalFluctuations (higher = less sensitive)
+    SeasonalBaselineAnomalyDetectionAnalyzer: increase tolerance (1=sensitive, 4=tolerant)
+    trend=INCREASING + RAISE_THRESHOLD: model mismatch — switch Static → AutoAdaptive
+  DISABLE_ALERT ->
+    Step 1: set event.type = CUSTOM_INFO (preserves visibility, no problem opened)
+    Step 2 only if still noisy: disable detector fully
+    Never recommend full disable as first action
+  TUNE_FREQUENCY ->
+    violatingSamples: how many samples must breach (increase to reduce flapping)
+    slidingWindow: rolling evaluation window (typically 5 samples)
+    dealertingSamples: clean samples required to clear (typically 5)
+    For metric-key detectors: violationWindowInMinutes + dealertingWindowInMinutes (5-10 min each)
+
+Detector model selection rules:
+  avg_duration < 5m            -> dealertingSamples is the fix, not threshold
+  hasDayCluster = true         -> SeasonalBaselineAnomalyDetectionAnalyzer
+  trend = STABLE               -> StaticThresholdAnomalyDetectionAnalyzer (hard boundary)
+  trend = INCREASING/DECREASING -> AutoAdaptiveAnomalyDetectionAnalyzer
+
+Routing triage (before disabling):
+  noiseLikelihood = High + impactTier = Low -> route via dt.alert_group to low-urgency channel
+    Use: event.severity >= 3 filter in Workflow trigger (not on-call)
+    Reliable filter field: matchesPhrase(smartscape.affected_entity.ids, "<entity-id>")
+    Do NOT filter on root_cause_entity_id — unreliable in Workflows
+
+Consolidation signal:
+  sharedBlastRadiusPatternCount >= 2 -> multiple patterns share the same root cause entity
+    Recommend: consolidate into a single detector with by:{dimension} grouping
+    instead of N separate detectors firing independently on the same entity
 
 remediation -> identify what to fix and how hard. For each action assess whether
 remediation effort is proportionate to recurrence and cost signals.
@@ -2159,27 +2189,64 @@ Return valid JSON only:
 }
 
 function buildDeveloperRemediationPrompt(request) {
+  const isNoise = activeObjective === 'alert_optimization';
   return `You are a software developer using Dynatrace.
+OBJECTIVE: ${isNoise ? 'alert_optimization' : 'cost_impact'}
 
 Based on these Dynatrace problem IDs:
 ${(request.problemIds || []).join(', ')}
 
-Event type:
-${request.eventType || request.severity || 'UNKNOWN'}
+Event type: ${request.eventType || request.severity || 'UNKNOWN'}
+Event name: ${request.eventName || request.patternName}
+Affected services/entities: ${(request.affectedServices || request.affectedEntities || []).join(', ') || 'not available'}
 
-Event name:
-${request.eventName || request.patternName}
+${isNoise ? `ALERT TUNING FOCUS — assess whether this alert has actionable code-level signal.
+Do NOT recommend code fixes. Recommend detector configuration changes only.
+Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
 
-Affected services/entities:
-${(request.affectedServices || request.affectedEntities || []).join(', ') || 'not available'}
+Evaluate:
+- Does this alert close without developer action? (short-lived, no stack trace, no RCA) → dealertingSamples candidate
+- Does the event.category match the service type? (e.g. RESOURCE alert on pure application service) → wrong detector type
+- Does the trend match the detector model? INCREASING trend + static threshold → AutoAdaptiveAnomalyDetectionAnalyzer
+- Is avg_duration < 5m? → dealertingSamples fix, not threshold change
+- Are multiple patterns on the same entity? → consolidate detectors with by:{dimension} grouping
+- Would routing to CUSTOM_INFO (informational, no problem opened) satisfy the use case?
 
-Please recommend the best remediation path.
+Noise metadata:
+${JSON.stringify({
+  recommendationType: request.recommendationType,
+  timeClustering: request.timeClustering,
+  avgDuration: request.avgDuration,
+  trend: request.trend,
+  sharedBlastRadiusEntity: request.sharedBlastRadiusEntity || null,
+  sharedBlastRadiusPatternCount: request.sharedBlastRadiusPatternCount || 0,
+}, null, 2)}
 
-Focus on:
-- the most likely technical fix
-- what to validate before changing code/config
-- what Dynatrace Observability feature helps
-- what should be escalated if ownership or RCA is unclear
+Return valid JSON only matching this schema:
+{
+  "recommendedNextAction": {
+    "title": "",
+    "reason": "",
+    "confidence": "high|medium|low",
+    "dynatraceCapability": "Davis AI | Workflows | AutomationEngine",
+    "detectorParameter": "",
+    "exactConfigChange": ""
+  },
+  "detectorAssessment": {
+    "hasCodeLevelSignal": false,
+    "detectorModelAppropriate": true,
+    "modelMismatchReason": "",
+    "recommendedModel": ""
+  },
+  "tuningActions": [
+    { "action": "", "parameter": "", "value": "", "rationale": "" }
+  ],
+  "validationSteps": [],
+  "escalationNeeded": false,
+  "escalationReason": ""
+}` :
+`Please recommend the best remediation path.
+Focus on: the most likely technical fix, what to validate before changing code/config, what Dynatrace Observability feature helps, what should be escalated if ownership or RCA is unclear.
 
 Return valid JSON only matching this schema:
 {
@@ -2193,20 +2260,64 @@ Return valid JSON only matching this schema:
   "validationSteps": [],
   "escalationNeeded": false,
   "escalationReason": ""
-}`;
+}`}`;
 }
 
 function buildSreRemediationPrompt(request) {
+  const isNoise = activeObjective === 'alert_optimization';
+  const noiseMeta = {
+    recommendationType: request.recommendationType,
+    timeClustering: request.timeClustering,
+    avgDuration: request.avgDuration,
+    trend: request.trend,
+    noiseLikelihood: request.noiseLikelihood,
+    scopeTier: request.scopeTier,
+    sharedBlastRadiusEntity: request.sharedBlastRadiusEntity || null,
+    sharedBlastRadiusPatternCount: request.sharedBlastRadiusPatternCount || 0,
+  };
   return `You are a Site Reliability Engineer.
+OBJECTIVE: ${isNoise ? 'alert_optimization' : 'cost_impact'}
 
-Recommend prevention and automation actions for the recurring operational pattern represented by these Dynatrace problem IDs:
+${isNoise ? `This is an ALERT TUNING task. Recommend exact Dynatrace detector configuration changes.
+Do NOT recommend service fixes, RCA investigation, or code changes.
+Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
+
+Detector tuning rules:
+- ADD_TIME_WINDOW: set dealertingSamples=5; if timeClustering shows day pattern use SeasonalBaselineAnomalyDetectionAnalyzer
+- RAISE_THRESHOLD: StaticThreshold→raise threshold; Adaptive→increase numberOfSignalFluctuations; Seasonal→increase tolerance (1-4)
+- DISABLE_ALERT: first set event.type=CUSTOM_INFO (no problem opened); only fully disable if still noisy after that
+- TUNE_FREQUENCY: increase violatingSamples + slidingWindow; for metric-key use violationWindowInMinutes + dealertingWindowInMinutes (5-10m)
+- avg_duration < 5m: dealertingSamples is the fix, not threshold change
+- trend=INCREASING + RAISE_THRESHOLD: model mismatch — recommend switching to AutoAdaptiveAnomalyDetectionAnalyzer
+- sharedBlastRadiusPatternCount >= 2: recommend consolidating N detectors into one with by:{dimension} grouping
+- Routing before disabling: use dt.alert_group + event.severity>=3 filter to route to low-urgency channel first
+
+Noise tuning metadata:
+${JSON.stringify(noiseMeta, null, 2)}
+
+Return valid JSON only matching this schema:
+{
+  "recommendedNextAction": {
+    "title": "",
+    "reason": "",
+    "confidence": "high|medium|low",
+    "dynatraceCapability": "Davis AI | Workflows | AutomationEngine",
+    "detectorParameter": "",
+    "exactConfigChange": ""
+  },
+  "tuningActions": [
+    { "priority": "IMMEDIATE|SHORT_TERM|STRATEGIC", "action": "", "detectorType": "", "parameter": "", "value": "", "rationale": "" }
+  ],
+  "routingRecommendation": { "suggested": true, "alertGroup": "", "severityFilter": "" },
+  "consolidationRecommended": false,
+  "validationSteps": [],
+  "missingEvidence": []
+}` :
+`Recommend prevention and automation actions for the recurring operational pattern represented by these Dynatrace problem IDs:
 ${(request.problemIds || []).join(', ')}
 
-Event type:
-${request.eventType || request.severity || 'UNKNOWN'}
-
-Affected services:
-${(request.affectedServices || request.affectedEntities || []).join(', ') || 'not available'}
+Event type: ${request.eventType || request.severity || 'UNKNOWN'}
+Affected services: ${(request.affectedServices || request.affectedEntities || []).join(', ') || 'not available'}
 
 Pattern metadata:
 ${JSON.stringify({
@@ -2219,14 +2330,8 @@ ${JSON.stringify({
   deploymentCorrelation: request.deploymentCorrelation,
 }, null, 2)}
 
-Focus on:
-- why this keeps recurring
-- what should be automated
-- what operational weakness should be corrected
-- how to prevent future recurrence
-
-Do not focus on code-level fixes.
-Do not summarize individual incidents.
+Focus on: why this keeps recurring, what should be automated, what operational weakness should be corrected, how to prevent future recurrence.
+Do not focus on code-level fixes. Do not summarize individual incidents.
 
 Return valid JSON only matching this schema:
 {
@@ -2240,7 +2345,7 @@ Return valid JSON only matching this schema:
   "preventionActions": [],
   "validationSteps": [],
   "missingEvidence": []
-}`;
+}`}`;
 }
 
 function buildPatternAssistPrompt(request) {
@@ -4755,6 +4860,7 @@ function buildRemediationRequest(pat, allPatterns=[]) {
     } : null,
     ownerTeam: primaryTeamFromPattern(pat),
     recommendationType: pat.recommendation?.type || null,
+    noiseLikelihood: extractPatternSignals(pat, allPatterns).noiseLikelihood,
     trend: pat.trend,
     priorityScore: patternPriorityScore(pat, allPatterns),
   };
