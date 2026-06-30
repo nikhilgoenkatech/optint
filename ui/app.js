@@ -274,6 +274,7 @@ function confLabel(score) {
 
 function fmtC(n){if(n>=1e6)return`$${(n/1e6).toFixed(1)}M`;if(n>=1e3)return`$${(n/1e3).toFixed(1)}K`;return`$${Math.round(n)}`}
 function fmtM(m){if(!Number.isFinite(m)||m<=0)return'-';if(m>=1440)return`${(m/1440).toFixed(m>=14400?0:2)}d`;if(m<60)return Math.round(m)+'m';const h=Math.floor(m/60),r=Math.round(m%60);return r>0?`${h}h ${r}m`:`${h}h`}
+function remBtnLabel(){return activeObjective==='alert_optimization'?'Get Recommendations':'Get Remediation Path';}
 function fmtR(ms){const d=Date.now()-ms,m=Math.floor(d/60000);if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;return`${Math.floor(h/24)}d ago`}
 const SEV_LBL={AVAILABILITY:'Avail',ERROR:'Error',PERFORMANCE:'Perf',RESOURCE_CONTENTION:'Rsrc',CUSTOM_ALERT:'Custom'};
 
@@ -941,7 +942,7 @@ function renderTopPatternsSnapshot(ps) {
         </div>
         <div class="snap-actions">
           <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
-          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selectedPattern?.id || ''}" ${selectedPattern ? '' : 'disabled'}>Get Remediation Path</button>
+          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selectedPattern?.id || ''}" ${selectedPattern ? '' : 'disabled'}${remBtnLabel()}</button>
         </div>
       </div>
       ${focusPattern ? `
@@ -956,7 +957,7 @@ function renderTopPatternsSnapshot(ps) {
           <strong>${fmtC(focusRecoverable)}</strong>
         </div>
         <div class="snap-actions">
-          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${focusPattern.id}">Get Remediation Path</button>
+          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${focusPattern.id}"${remBtnLabel()}</button>
           <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
         </div>
       </div>` : ''}`;
@@ -998,7 +999,7 @@ function renderTopPatternsSnapshot(ps) {
       </div>
       <div class="snap-actions">
         <button class="snap-cta" data-action="focusPatternExplorer">Open Pattern Explorer</button>
-        <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selectedPattern?.id || ''}" ${selectedPattern ? '' : 'disabled'}>Get Remediation Path</button>
+        <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selectedPattern?.id || ''}" ${selectedPattern ? '' : 'disabled'}${remBtnLabel()}</button>
       </div>
     </div>
     <div class="snap-body">
@@ -1689,9 +1690,9 @@ function renderAssistRemediationResponse(response, evidence=null) {
     return s;
   };
   const priMeta = {
-    IMMEDIATE: { tier:'immediate', label: isNoiseObj ? 'Tune Now' : 'Immediate', time:'Now', cls:'act-auto', recommended:true },
-    SHORT_TERM: { tier:'short', label: isNoiseObj ? 'Schedule Tune' : 'Short term', time:'Days', cls:'act-semi', recommended:false },
-    STRATEGIC: { tier:'strategic', label: isNoiseObj ? 'Review Config' : 'Strategic', time:'Weeks', cls:'act-manual', recommended:false },
+    IMMEDIATE: { tier:'immediate', label: isNoiseObj ? 'High urgency' : 'Immediate', time:'Now', cls:'act-auto', recommended:true },
+    SHORT_TERM: { tier:'short', label: isNoiseObj ? 'Medium urgency' : 'Short term', time:'Days', cls:'act-semi', recommended:false },
+    STRATEGIC: { tier:'strategic', label: isNoiseObj ? 'Low urgency' : 'Strategic', time:'Weeks', cls:'act-manual', recommended:false },
   };
   const strengthText = mapStrength(String(response.recommendationStrength || recs[0]?.recommendationStrength || 'Evidence status').toUpperCase());
   const strengthTone = (s) => s.includes('DETECTOR') || s.includes('EVIDENCE') ? 'var(--green)' : s.includes('INFERRED') || s.includes('CANDIDATE') ? 'var(--amber)' : s.includes('CONFIG') || s.includes('DATA') ? 'var(--coral)' : 'var(--text-3)';
@@ -5072,7 +5073,7 @@ function renderPatternDetailPane(pat, patterns) {
       <div class="px-section-title">Recommended actions</div>
       <div class="px-action-box">
         <strong>Dynatrace Assist:</strong> Request pattern-level remediation guidance using aggregated recurrence, impact, entity, RCA, MTTR, and cost evidence.
-        <div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>
+        <div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}"${remBtnLabel()}</button></div>
       </div>
     </div>
   </div>`;
@@ -5884,7 +5885,7 @@ function renderActFirstMap(patterns) {
           </div>
           <div class="act-quadrant ${selectedModel ? selectedModel.quadrant.toLowerCase().replace(/\s+/g, '-') : ''}">${selectedModel?.quadrant || 'Select a pattern'}</div>
           <div class="act-reason">${selectedModel?.reason || 'Select a pattern to understand why it should be acted on now or monitored.'}</div>
-          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selected?.id || ''}" ${selected ? '' : 'disabled'}>Get Remediation Path</button>
+          <button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${selected?.id || ''}" ${selected ? '' : 'disabled'}${remBtnLabel()}</button>
         </div>
       </div>
     </section>`;
@@ -6096,7 +6097,7 @@ function renderConciseDetailPanel(pat, patterns) {
     <div class="cx-action-block ${hasObservedRca ? '' : 'low'}">
       <div class="cx-eyebrow">Root cause / recommended action</div>
       ${hasObservedRca
-        ? `<strong>${rcaList.slice(0, 2).join(', ')}</strong><p>${pat.recommendation?.text || 'Use the existing remediation path to validate the corrective action before automation.'}</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button>`
+        ? `<strong>${rcaList.slice(0, 2).join(', ')}</strong><p>${pat.recommendation?.text || 'Use the existing remediation path to validate the corrective action before automation.'}</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}"${remBtnLabel()}</button>`
         : `<strong>RCA Availability: Missing</strong><p>Continue investigation with scoped evidence before selecting a remediation path.</p>`}
     </div>
   </aside>`;
@@ -6186,7 +6187,7 @@ function renderWorkspaceRemediationBlock(pat) {
   if (isCurrent && remediationState.status === 'done') {
     return renderAssistRemediationResponse(remediationState.response, remediationState.evidence);
   }
-  return `<div class="cx-complexity-summary"><span>Remediation</span><strong>Available on request</strong><p>Generate a remediation path from Dynatrace Assist for the selected recurring issue.</p><button class="snap-cta" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`;
+  return `<div class="cx-complexity-summary"><span>${activeObjective === 'alert_optimization' ? 'Recommendations' : 'Remediation'}</span><strong>Available on request</strong><p>Generate ${activeObjective === 'alert_optimization' ? 'tuning recommendations' : 'a remediation path'} from Dynatrace Assist for the selected recurring issue.</p><button class="snap-cta" data-action="getPatternRemediation" data-pid="${pat.id}">${remBtnLabel()}</button></div>`;
 }
 
 function executivePriorityLevel(pat, patterns) {
@@ -6433,7 +6434,7 @@ function renderDecisionDetailPanel(pat, patterns) {
       ${tileTraffic((!hasObservedRca && complexity.evidenceFragmentation === 'low' ? 'Medium' : complexity.evidenceFragmentation.charAt(0).toUpperCase() + complexity.evidenceFragmentation.slice(1)), 'Investigation Friction', (!hasObservedRca && complexity.evidenceFragmentation === 'low') || complexity.evidenceFragmentation === 'high' ? 'bad' : complexity.evidenceFragmentation === 'medium' ? 'warn' : 'ok')}
     </div>
     <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
-    <div class="cx-action-block ${hasObservedRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong>${showRemediation ? '' : `<div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`}</div>
+    <div class="cx-action-block ${hasObservedRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong>${showRemediation ? '' : `<div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}"${remBtnLabel()}</button></div>`}</div>
     ${showRemediation ? `<div class="cx-complexity-summary"><span>Remediation Path</span>${remediationPanel}</div>` : ''}
     ${renderExecDisclosure('Impacted Entities', `${services.length} customer-facing services | ${affected.applications} applications | ${affected.synthetic} synthetic monitors | ${affected.infrastructure} infrastructure components`, impactedBody)}
   </aside>`;
@@ -6761,7 +6762,7 @@ function renderSreContextPanel(pat, patterns) {
   const tabBody = selectedTab === 'analysis'
     ? renderWorkspaceAnalysisBlock(pat, 'Generate reliability-focused analysis to review recurring signals, recurrence drivers, automation opportunities, and prevention recommendations.')
     : selectedTab === 'remediation'
-      ? renderWorkspaceRemediationBlock(pat) || `<div class="cx-complexity-summary"><span>Remediation</span><strong>Available on request</strong><p>Generate prevention and automation guidance for this selected reliability pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">Get Remediation Path</button></div>`
+      ? renderWorkspaceRemediationBlock(pat) || `<div class="cx-complexity-summary"><span>${activeObjective === 'alert_optimization' ? 'Recommendations' : 'Remediation'}</span><strong>Available on request</strong><p>Generate ${activeObjective === 'alert_optimization' ? 'tuning recommendations' : 'prevention and automation guidance'} for this selected reliability pattern.</p><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}">${remBtnLabel()}</button></div>`
       : `<div class="cx-detail-tiles sre-status-tiles">
           ${renderSreStatusTile('Reliability Priority', priorityStatus, `Based on recurrence, impact, and open incidents.`)}
           ${renderSreStatusTile('Automation Opportunity', automationStatus, `Based on recurrence, recommendation type, and remediation effort.`)}
@@ -6774,7 +6775,7 @@ function renderSreContextPanel(pat, patterns) {
         ${renderExecDisclosure('Supporting Evidence', `${pat.problems?.length || 0} grouped problems`, `<div class="px-chip-list">${(pat.problems || []).slice(0, 8).map(p => `<span class="px-chip">${p.displayId || p.id}</span>`).join('') || '<span class="px-chip">No problem IDs available</span>'}</div>`)}`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Reliability Context</div><h3>${pat.title}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
-    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="details">Context</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="remediation">Remediation</button></div>
+    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="details">Context</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setSrePanelTab" data-tab="remediation">${activeObjective === 'alert_optimization' ? 'Recommendations' : 'Remediation'}</button></div>
     ${tabBody}
   </aside>`;
 }
@@ -6987,7 +6988,7 @@ function renderDeveloperContextPanel(pat, patterns) {
         ${renderExecDisclosure('Impacted entities', `${affectedCount} affected`, `<div class="px-chip-list">${patternAffectedEntities(pat).map(e => `<span class="px-chip">${e}</span>`).join('') || '<span class="px-chip">No resolved entity names</span>'}</div>`)}`;
   return `<aside class="cx-detail">
     <div class="cx-section-head compact"><div><div class="cx-eyebrow">Technical Context</div><h3>${service}</h3></div><button class="snap-cta" data-action="clearPatternSelection">Clear Selection</button></div>
-    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="details">Context</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="remediation">Remediation</button></div>
+    <div class="cx-view-switch full"><button class="${selectedTab === 'details' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="details">Context</button><button class="${selectedTab === 'analysis' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="analysis">Analysis</button><button class="${selectedTab === 'remediation' ? 'active' : ''}" data-action="setDeveloperPanelTab" data-tab="remediation">${activeObjective === 'alert_optimization' ? 'Recommendations' : 'Remediation'}</button></div>
     ${tabBody}
   </aside>`;
 }
