@@ -32,6 +32,11 @@ let MTTR_SUMMARY = null;
 let DATA_SOURCE_STATE = USE_DEMO_DATA ? 'demo' : 'loading';
 let DATA_SOURCE_ERROR = '';
 let activeObjective = 'cost_impact';
+let rankingWeights = {
+  cost_impact:       { cost:30, recurrence:20, blastRadius:20, severity:10, open:10, fixability:5, trend:5 },
+  alert_optimization:{ noiseLikelihood:35, recurrence:25, duration:15, severity:10, blastRadius:10, fixability:5 },
+};
+let weightsPopoverOpen = false;
 const DQL_VALIDATION = {
   recurringRootCauses: {
     queryName: 'recurringRootCausesQuery',
@@ -3971,13 +3976,83 @@ function highImpactReason(pat, allPatterns=[]) {
 }
 
 function patternPriorityScore(pat, allPatterns=[]) {
-  const totalPatternCost = allPatterns.reduce((s, p) => s + patternCost(p), 0);
+  const cohort = allPatterns.length ? allPatterns : [pat];
+
+  // Cost — share of total; cohort-relative so spread is always 0–1
+  const totalPatternCost = cohort.reduce((s, p) => s + patternCost(p), 0);
   const costShare = totalPatternCost ? patternCost(pat) / totalPatternCost : 0;
-  const recurrence = clamp((pat.occurrences || 0) / 10, 0, 1);
-  const impact = clamp(patternMaxImpact(pat) / 100, 0, 1);
-  const open = clamp(patternOpenCount(pat) / 5, 0, 1);
+
+  // Recurrence — normalize against cohort max so the top pattern always scores 1
+  const maxOcc = Math.max(1, ...cohort.map(p => p.occurrences || 0));
+  const recurrence = (pat.occurrences || 0) / maxOcc;
+
+  // Open count — normalize against cohort max
+  const maxOpen = Math.max(1, ...cohort.map(p => patternOpenCount(p)));
+  const open = patternOpenCount(pat) / maxOpen;
+
+  // Fixability — discrete 3-level
   const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.65 : 0.35;
-  return Math.round((costShare * 35 + recurrence * 25 + impact * 20 + open * 15 + fix * 5));
+
+  // Blast radius — cohort-relative
+  const blastScore = p => {
+    const eIds = (p.problems || []).flatMap(x => x.affectedEntityIds || []);
+    const users = (p.problems || []).map(x => x.users).filter(Number.isFinite).reduce((s,v)=>s+Math.max(0,v),0);
+    const sevs2 = (p.problems || []).map(x => String(x.sev||'').toUpperCase());
+    const cw2 = sevs2.includes('AVAILABILITY') ? 100 : sevs2.includes('ERROR') ? 50 : (sevs2.includes('PERFORMANCE')||sevs2.includes('SLOWDOWN')) ? 25 : 10;
+    return users / 10 + new Set(eIds).size * 5 + cw2;
+  };
+  const maxBlast = Math.max(1, ...cohort.map(blastScore));
+  const blastRaw = blastScore(pat) / maxBlast;
+
+  // Severity — max severity in pattern
+  const SEV_MAP = { AVAILABILITY:1, ERROR:0.75, PERFORMANCE:0.5, SLOWDOWN:0.5, RESOURCE_CONTENTION:0.4, LOW:0.2, INFO:0.15, CUSTOM_ALERT:0.1 };
+  const sevs = (pat.problems || []).map(p => String(p.sev || '').toUpperCase());
+  const maxSev = Math.max(0.1, ...sevs.map(s => SEV_MAP[s] || 0.3));
+
+  // Duration score (short = more noise)
+  const durations = (pat.problems || []).map(p => p.dur).filter(v => Number.isFinite(v) && v > 0);
+  const medDur = durations.length ? durations.slice().sort((a,b)=>a-b)[Math.floor(durations.length/2)] : 60;
+  const maxDur = Math.max(60, ...cohort.map(p => {
+    const ds = (p.problems||[]).map(x=>x.dur).filter(v=>Number.isFinite(v)&&v>0);
+    return ds.length ? ds.slice().sort((a,b)=>a-b)[Math.floor(ds.length/2)] : 60;
+  }));
+  const durationScore = clamp(1 - medDur / maxDur, 0, 1);
+
+  // Noise likelihood
+  const noiseReasons = [];
+  if (pat.recommendation?.type === 'ADD_TIME_WINDOW') noiseReasons.push(1);
+  if (durations.length && medDur <= 15) noiseReasons.push(1);
+  if (sevs.some(s => ['LOW', 'INFO', 'CUSTOM_ALERT'].includes(s))) noiseReasons.push(1);
+  const noiseLikelihoodScore = noiseReasons.length >= 3 ? 1 : noiseReasons.length >= 2 ? 0.65 : 0.2;
+
+  // Trend
+  const TREND_MAP = { worsening:1, rising:0.8, stable:0.5, improving:0.2, resolving:0.1 };
+  const trendScore = TREND_MAP[String(pat.trend || '').toLowerCase()] || 0.5;
+
+  if (activeObjective === 'alert_optimization') {
+    const aw = rankingWeights.alert_optimization;
+    const total = aw.noiseLikelihood + aw.recurrence + aw.duration + aw.severity + aw.blastRadius + aw.fixability;
+    return Math.round((
+      noiseLikelihoodScore * aw.noiseLikelihood +
+      recurrence           * aw.recurrence +
+      durationScore        * aw.duration +
+      maxSev               * aw.severity +
+      blastRaw             * aw.blastRadius +
+      fix                  * aw.fixability
+    ) / (total || 100) * 100);
+  }
+
+  const cw = rankingWeights.cost_impact;
+  const total = cw.cost + cw.recurrence + cw.blastRadius + cw.severity + cw.open + cw.fixability + cw.trend;
+  return Math.round((
+    costShare  * cw.cost +
+    recurrence * cw.recurrence +
+    blastRaw   * cw.blastRadius +
+    maxSev     * cw.severity +
+    open       * cw.open +
+    fix        * cw.fixability +
+    trendScore * cw.trend
+  ) / (total || 100) * 100);
 }
 
 const TIER_ORDER = { Low:1, Medium:2, High:3, Critical:4 };
@@ -4196,7 +4271,7 @@ function rankPatterns(patterns, objective = activeObjective) {
       .sort(compareAlertOptimizationCandidates)
       .map(({ pat }) => pat);
   }
-  return [...(patterns || [])].sort((a, b) => patternPriorityScore(b) - patternPriorityScore(a));
+  return [...(patterns || [])].sort((a, b) => patternPriorityScore(b, patterns) - patternPriorityScore(a, patterns));
 }
 
 function patternFixabilityScore(pat) {
@@ -5939,6 +6014,155 @@ function spreadBubbles(rawPositions, plotW, plotH) {
   }));
 }
 
+function renderWeightsPopover() {
+  const isCost = activeObjective !== 'alert_optimization';
+  const W = isCost ? rankingWeights.cost_impact : rankingWeights.alert_optimization;
+
+  const segments = isCost
+    ? [
+        { key:'cost',        label:'Cost share',    color:'#3B6D11', txt:'#EAF3DE' },
+        { key:'recurrence',  label:'Recurrence',    color:'#185FA5', txt:'#E6F1FB' },
+        { key:'blastRadius', label:'Blast radius',  color:'#3C3489', txt:'#EEEDFE' },
+        { key:'severity',    label:'Severity',      color:'#854F0B', txt:'#FAEEDA' },
+        { key:'open',        label:'Open count',    color:'#993556', txt:'#FBEAF0' },
+        { key:'fixability',  label:'Fixability',    color:'#0F6E56', txt:'#E1F5EE' },
+        { key:'trend',       label:'Trend',         color:'#3d3d3a', txt:'#F1EFE8' },
+      ]
+    : [
+        { key:'noiseLikelihood', label:'Noise',      color:'#A32D2D', txt:'#FCEBEB' },
+        { key:'recurrence',      label:'Recurrence', color:'#185FA5', txt:'#E6F1FB' },
+        { key:'duration',        label:'Duration',   color:'#854F0B', txt:'#FAEEDA' },
+        { key:'severity',        label:'Severity',   color:'#3C3489', txt:'#EEEDFE' },
+        { key:'blastRadius',     label:'Blast radius',color:'#3B6D11',txt:'#EAF3DE' },
+        { key:'fixability',      label:'Fixability', color:'#0F6E56', txt:'#E1F5EE' },
+      ];
+
+  const segsJson = JSON.stringify(segments.map(s => ({ ...s, w: W[s.key] || 0 })));
+
+  return `<div class="weights-popover" id="weightsPopover">
+    <div class="weights-pop-head">
+      <span class="weights-pop-title">Ranking weights</span>
+      <button class="weights-pop-close" data-action="closeWeightsPopover">✕</button>
+    </div>
+    <div class="weights-pop-body">
+      <div class="weights-ruler-wrap" id="weightsRulerWrap" data-segs='${segsJson}'></div>
+      <div class="weights-legend" id="weightsLegend"></div>
+    </div>
+    <div class="weights-preview-section">
+      <div class="weights-preview-label">Live preview</div>
+      <div class="weights-preview" id="weightsPreview"><div class="weights-preview-loading">Loading…</div></div>
+    </div>
+    <div class="weights-pop-footer">
+      <button class="weights-reset-btn" data-action="resetWeights">Reset</button>
+      <button class="weights-apply-btn" data-action="applyWeights">Apply weights</button>
+    </div>
+  </div>`;
+}
+
+function initWeightsRuler() {
+  const wrap = document.getElementById('weightsRulerWrap');
+  if (!wrap) return;
+  const segs = JSON.parse(wrap.dataset.segs || '[]');
+  if (!segs.length) return;
+
+  function clampW(v,lo,hi){return v<lo?lo:v>hi?hi:v;}
+
+  function renderRuler() {
+    const isCost = activeObjective !== 'alert_optimization';
+    const W = isCost ? rankingWeights.cost_impact : rankingWeights.alert_optimization;
+    segs.forEach(s => { s.w = W[s.key] || 0; });
+
+    wrap.innerHTML = '';
+    const inner = document.createElement('div');
+    inner.className = 'weights-ruler-inner';
+    segs.forEach(s => {
+      const seg = document.createElement('div');
+      seg.className = 'weights-seg';
+      seg.style.cssText = `flex:${s.w};background:${s.color};color:${s.txt}`;
+      const show = s.w >= 8;
+      seg.innerHTML = `<span class="weights-seg-name">${show?s.label:''}</span><span class="weights-seg-pct">${show?s.w+'%':''}</span>`;
+      inner.appendChild(seg);
+    });
+    wrap.appendChild(inner);
+
+    let cum = 0;
+    for (let i = 0; i < segs.length - 1; i++) {
+      cum += segs[i].w;
+      const div = document.createElement('div');
+      div.className = 'weights-divider';
+      div.style.top = cum + '%';
+      div.dataset.i = i;
+      div.innerHTML = '<div class="weights-divider-line"></div>';
+      div.addEventListener('mousedown', startDrag);
+      div.addEventListener('touchstart', startDrag, {passive:false});
+      wrap.appendChild(div);
+    }
+
+    const legend = document.getElementById('weightsLegend');
+    if (legend) {
+      legend.innerHTML = segs.map(s =>
+        `<div class="weights-leg"><div class="weights-leg-dot" style="background:${s.color}"></div><span><strong style="font-weight:500;color:var(--text-primary)">${s.w}%</strong> ${s.label}</span></div>`
+      ).join('');
+    }
+
+    const preview = document.getElementById('weightsPreview');
+    if (preview) {
+      try {
+        const { patterns: pats } = detectPatterns(getFiltered());
+        if (pats.length) {
+          const ranked = [...pats].map(p => ({ title: p.title, score: patternPriorityScore(p, pats) }))
+            .sort((a, b) => b.score - a.score).slice(0, 5);
+          preview.innerHTML = ranked.map((r, i) =>
+            `<div class="w-prev-row"><span class="w-prev-rank">#${i+1}</span><span class="w-prev-name">${r.title.length > 22 ? r.title.slice(0,21)+'…' : r.title}</span><span class="w-prev-score">${r.score}</span></div>`
+          ).join('');
+        } else {
+          preview.innerHTML = '<div class="weights-preview-loading">No patterns loaded</div>';
+        }
+      } catch(_) {
+        preview.innerHTML = '<div class="weights-preview-loading">—</div>';
+      }
+    }
+  }
+
+  let drag = null;
+  function startDrag(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const idx = parseInt(e.currentTarget.dataset.i);
+    const rect = wrap.getBoundingClientRect();
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    drag = { idx, rect, startY:cy, origTop:segs[idx].w, origBot:segs[idx+1].w, pair:segs[idx].w+segs[idx+1].w };
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', stopDrag);
+    document.addEventListener('touchmove', onDrag, {passive:false});
+    document.addEventListener('touchend', stopDrag);
+  }
+
+  function onDrag(e) {
+    if (!drag) return;
+    e.preventDefault();
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const pct = (cy - drag.startY) / drag.rect.height * 100;
+    const nt = Math.round(clampW(drag.origTop + pct, 5, drag.pair - 5));
+    segs[drag.idx].w = nt;
+    segs[drag.idx+1].w = drag.pair - nt;
+    const isCost = activeObjective !== 'alert_optimization';
+    const W = isCost ? rankingWeights.cost_impact : rankingWeights.alert_optimization;
+    segs.forEach(s => { W[s.key] = s.w; });
+    renderRuler();
+  }
+
+  function stopDrag() {
+    drag = null;
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', stopDrag);
+    document.removeEventListener('touchmove', onDrag);
+    document.removeEventListener('touchend', stopDrag);
+  }
+
+  renderRuler();
+}
+
 function renderActFirstMap(patterns) {
   const ranked = [...patterns].map(pat => ({ pat, score: patternPriorityScore(pat, patterns), model: actFirstModel(pat, patterns) }))
     .sort((a, b) => b.score - a.score);
@@ -6115,7 +6339,6 @@ function renderConciseFocusBanner(patterns) {
 function renderExecutiveMapCostControl() {
   return `<div class="cx-map-cost-control">
     <span>Bubble size = exposure</span>
-    <button class="exec-inline-highlight low" data-action="toggleCfg">Recovery model: ${Math.round(recoveryRate() * 100)}%</button>
   </div>`;
 }
 
@@ -6847,7 +7070,12 @@ function renderSreWorkspaceHeader(patterns, ps) {
       <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
       <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
     </div>
-    <button class="snap-cta" data-action="toggleCfg">Configure</button>
+    <div style="display:flex;align-items:center;gap:6px;position:relative">
+      <span class="cfg-label">Configure:</span>
+      <button class="weights-btn${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover">Ranking weights</button>
+      <button class="snap-cta" data-action="toggleCfg">Cost model</button>
+      ${weightsPopoverOpen ? renderWeightsPopover() : ''}
+    </div>
   </section>`;
 }
 
@@ -7003,7 +7231,13 @@ function renderDeveloperWorkspaceHeader(patterns) {
       <button class="${developerAnalyticalView === 'heatmap' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="heatmap">Service Heat Map</button>
       <button class="${developerAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setDeveloperAnalyticalView" data-mode="explorer">Error Patterns</button>
     </div>
-    <span class="cx-scope-label">${scopeLabel !== 'All Developer Scope' ? scopeLabel : ''}</span>
+    <div style="display:flex;align-items:center;gap:6px;position:relative">
+      <span class="cx-scope-label">${scopeLabel !== 'All Developer Scope' ? scopeLabel : ''}</span>
+      <span class="cfg-label">Configure:</span>
+      <button class="weights-btn${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover">Ranking weights</button>
+      <button class="snap-cta" data-action="toggleCfg">Cost model</button>
+      ${weightsPopoverOpen ? renderWeightsPopover() : ''}
+    </div>
   </section>`;
 }
 
@@ -7059,7 +7293,7 @@ function renderDeveloperServiceHeatMap(patterns) {
     return `<div class="heat-row"><div class="heat-service">${service}</div>${cells}${popup}</div>`;
   }).join('');
   return `<section class="cx-map dev-heat">
-    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-controls"><div class="dev-heat-legend"><span><i class="heat-dot low"></i>Lower recurrence</span><span><i class="heat-dot moderate"></i>Moderate</span><span><i class="heat-dot high"></i>High</span><span><i class="heat-dot critical"></i>Critical / worsening</span><b>trend: up | flat | down</b></div><button class="snap-cta" data-action="toggleCfg">Configure</button></div></div>
+    <div class="cx-section-head"><div><div class="cx-eyebrow">Service Heat Map</div><h3>Where are recurring failures concentrated?</h3></div><div class="dev-heat-controls"><div class="dev-heat-legend"><span><i class="heat-dot low"></i>Lower recurrence</span><span><i class="heat-dot moderate"></i>Moderate</span><span><i class="heat-dot high"></i>High</span><span><i class="heat-dot critical"></i>Critical / worsening</span><b>trend: up | flat | down</b></div></div></div>
     <div class="heat-grid"><div class="heat-head"><span>Service / Endpoint</span>${categories.map(c => `<span>${c.replace('_',' ')}</span>`).join('')}</div>${rows || '<div class="exec-empty">No recurring service patterns available.</div>'}</div>
   </section>`;
 }
@@ -7157,6 +7391,12 @@ function renderDecisionFirstExecView(patterns, ps) {
             <button class="${execAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="explorer">Pattern Explorer</button>
             <button class="${execAnalyticalView === 'map' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="map">Act-First Map</button>
           </div>
+          <div style="display:flex;align-items:center;gap:6px;position:relative">
+            <span class="cfg-label">Configure:</span>
+            <button class="weights-btn${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover">Ranking weights</button>
+            <button class="snap-cta" data-action="toggleCfg">Cost model</button>
+            ${weightsPopoverOpen ? renderWeightsPopover() : ''}
+          </div>
         </section>
         <div class="cx-selected-view">${selectedView}</div>
       </div>
@@ -7227,7 +7467,7 @@ function renderExecutivePatternView(patterns, ps) {
 
         <div class="pattern-explorer-shell">
           <div class="px-panel">
-            <div class="px-toolbar">
+            <div class="px-toolbar" style="position:relative">
               <input class="px-search" data-action="patternSearch" value="${patternExplorerState.search || ''}" placeholder="Search patterns, RCA, service, team">
               <select class="px-filter" data-action="patternFilter" data-filter="cost">${renderSelectOptions(['high','medium','low'], patternExplorerState.filters.cost, 'Cost')}</select>
               <select class="px-filter" data-action="patternFilter" data-filter="recurrence">${renderSelectOptions(['high','medium','low'], patternExplorerState.filters.recurrence, 'Recurrence')}</select>
@@ -8326,6 +8566,12 @@ function downloadValidationReport() {
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
 document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
 document.addEventListener('click',e=>{
+  if (!weightsPopoverOpen) return;
+  if (e.target.closest('.weights-popover') || e.target.closest('[data-action="toggleWeightsPopover"]')) return;
+  weightsPopoverOpen = false;
+  rerenderPatternsView();
+});
+document.addEventListener('click',e=>{
   if (persona === 'developer') {
     if (!developerHeatPopupId) return;
     if (e.target.closest('.heat-cell-popup') || e.target.closest('.heat-cell')) return;
@@ -8411,6 +8657,10 @@ document.addEventListener('click', function(e) {
       if (pid) getPatternRemediation(pid, currentView === 'patterns' ? { openDrawers:false, scroll:false } : {});
       break;
     case 'setExecAnalyticalView': e.stopPropagation(); setExecAnalyticalView(el.dataset.mode); break;
+    case 'toggleWeightsPopover': e.stopPropagation(); weightsPopoverOpen = !weightsPopoverOpen; rerenderPatternsView(); if (weightsPopoverOpen) requestAnimationFrame(initWeightsRuler); break;
+    case 'closeWeightsPopover': e.stopPropagation(); weightsPopoverOpen = false; rerenderPatternsView(); break;
+    case 'applyWeights': e.stopPropagation(); weightsPopoverOpen = false; rerenderPatternsView(); break;
+    case 'resetWeights': e.stopPropagation(); rankingWeights = { cost_impact:{ cost:30, recurrence:20, blastRadius:20, severity:10, open:10, fixability:5, trend:5 }, alert_optimization:{ noiseLikelihood:35, recurrence:25, duration:15, severity:10, blastRadius:10, fixability:5 } }; rerenderPatternsView(); requestAnimationFrame(initWeightsRuler); break;
     case 'toggleExecPanelMaximize': e.stopPropagation(); toggleExecPanelMaximize(); break;
     case 'setSreAnalyticalView': e.stopPropagation(); setSreAnalyticalView(el.dataset.mode); break;
     case 'setSrePanelTab': e.stopPropagation(); setSrePanelTab(el.dataset.tab); break;
