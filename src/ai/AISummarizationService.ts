@@ -166,62 +166,6 @@ export class MockAIAdapter implements AISummarizationService {
       };
     }
 
-    if (objective === 'remediation') {
-      const highEffort = cost > 10000 || occurrences > 20;
-      return {
-        objectiveAssessment: `This pattern has recurred ${occurrences} times with an estimated cost of ${cost.toLocaleString()} units and a trend of ${trend}. ${hasRCA ? 'Root cause is identified, enabling targeted remediation.' : 'Root cause is missing, which increases remediation uncertainty and effort.'} Effort-to-value ratio ${highEffort ? 'favours a staged approach.' : 'supports immediate action.'}`,
-        drivers: [
-          { signal: 'occurrence_count',  value: String(occurrences),        whyItMatters: 'Recurrence frequency determines remediation urgency.' },
-          { signal: 'operational_cost',  value: String(Math.round(cost)),   whyItMatters: 'Cost exposure quantifies the value of successful remediation.' },
-          { signal: 'rca_availability',  value: hasRCA ? 'Present' : 'Missing', whyItMatters: 'RCA availability determines whether remediation can be precisely targeted.' },
-          { signal: 'trend',             value: trend,                      whyItMatters: 'INCREASING trend elevates remediation priority; STABLE suggests window exists.' },
-        ],
-        recommendedActions: [
-          {
-            priority: hasRCA ? 'IMMEDIATE' : 'SHORT_TERM',
-            title: hasRCA ? 'Remediate identified root cause entity' : 'Initiate root cause investigation before remediation',
-            recommendationStrength: hasRCA ? 'Evidence-backed' : 'Data-gap',
-            reason: `rca_availability is ${hasRCA ? 'Present — root cause entity known' : 'Missing — remediation cannot be scoped without RCA'}`,
-            dynatraceCapability: hasRCA ? 'Live Debugger' : 'Davis AI',
-            dynatraceFeature:    hasRCA ? 'Live Debugger' : 'Davis AI',
-            effort: hasRCA ? 'Medium' : 'Low',
-            personaFit: persona === 'developer' ? 'Code-level investigation and fix.' : persona === 'sre' ? 'Infrastructure or config remediation path.' : 'Authorise remediation sprint with cost justification.',
-          },
-          {
-            priority: highEffort ? 'STRATEGIC' : 'SHORT_TERM',
-            title: 'Establish ownership and remediation accountability',
-            recommendationStrength: 'Candidate',
-            reason: 'owner_team is absent — remediation ownership is undefined',
-            dynatraceCapability: 'Ownership and Routing',
-            dynatraceFeature:    'Ownership and Routing',
-            effort: 'Low',
-            personaFit: 'Assign service ownership to unblock remediation prioritisation.',
-          },
-        ],
-        remediationContext: {
-          horizon:             hasRCA && !highEffort ? 'IMMEDIATE' : highEffort ? 'STRATEGIC' : 'SHORT_TERM',
-          effortJustification: hasRCA
-            ? `Root cause is identified; effort is proportionate to cost exposure of ${Math.round(cost)} units.`
-            : `Root cause is missing; investigation effort must precede remediation commitment.`,
-          blockers: [
-            ...(!hasRCA ? ['rca_availability: Missing — root cause must be confirmed before scoping remediation effort.'] : []),
-            'owner_team: absent — no accountable team assigned.',
-          ],
-        },
-        risks: [
-          `trend is ${trend}: ${trend === 'INCREASING' ? 'cost exposure is growing.' : 'cost will continue without intervention.'}`,
-          ...(!hasRCA ? ['rca_availability: Missing — remediation may address symptoms, not root cause.'] : []),
-        ],
-        dataGaps: [
-          ...(!hasRCA ? ['rca_availability: Missing'] : []),
-          'owner_team: absent',
-          'deployment_correlation: not available',
-        ],
-        summary: `${occurrences} occurrences, ${Math.round(cost)} cost units. ${hasRCA ? 'RCA present — targeted remediation is possible.' : 'RCA missing — investigation required first.'}`,
-        generatedBy: 'mock', latencyMs: 1200,
-      };
-    }
-
     // Default: cost_impact
     const titles      = problems.map(p => p.title);
     const hasPayment  = titles.some(t => t.toLowerCase().includes('payment'));

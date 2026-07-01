@@ -77,8 +77,17 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .cb-stat-val{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text-1)}
 .cb-stat-lbl{font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-top:1px}
 .cb-stat-val.recurring{color:var(--coral)}
-.cb-cfg{padding:5px 10px;border-radius:var(--r);background:rgba(255,255,255,.04);border:1px solid var(--border-hi);color:var(--text-3);font-size:11px;font-family:var(--font);cursor:pointer;flex-shrink:0}
-.cb-cfg:hover{color:var(--text-1)}
+.cb-cfg{display:inline-grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--text-3);font-size:11px;font-family:var(--font);font-weight:750;cursor:pointer;flex-shrink:0}
+.cb-cfg:hover{color:var(--text-1);background:rgba(77,184,255,.08)}
+.strato-icon{width:14px;height:14px;display:inline-block;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.strato-icon-btn{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:5px 8px;border:1px solid var(--border-hi);border-radius:var(--r);background:rgba(255,255,255,.035);color:var(--text-2);font-family:var(--font);font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.strato-icon-btn:hover{color:var(--text-1);background:rgba(77,184,255,.06);border-color:rgba(77,184,255,.28)}
+.strato-icon-btn.active{color:var(--blue);background:rgba(77,184,255,.09);border-color:rgba(77,184,255,.34)}
+.strato-icon-btn.cost{color:var(--green);border-color:rgba(61,214,140,.22);background:rgba(61,214,140,.045)}
+.strato-icon-btn.cost:hover{color:var(--text-1);border-color:rgba(61,214,140,.34);background:rgba(61,214,140,.08)}
+.strato-icon-btn .icon-label{line-height:1}
+.cfg-icon-label{display:inline-grid;place-items:center;width:20px;height:26px;color:var(--text-3)}
+.cfg-icon-label .strato-icon{width:15px;height:15px}
 .hidden{display:none!important}
 
 /* cost config popup */
@@ -265,6 +274,11 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
 .ai-idle-hint{font-size:11px;color:var(--text-3);padding:6px 12px;border-radius:20px;border:1px solid var(--border-hi)}
 .ai-loading{padding:20px 18px;display:flex;flex-direction:column;align-items:center;gap:10px}
 .ai-ring{width:32px;height:32px;border-radius:50%;border:2px solid var(--bg-3);border-top-color:var(--violet);animation:spin 1s linear infinite}
+.assist-progress{width:100%;min-width:160px;margin-top:8px}
+.assist-progress-track{height:6px;border-radius:999px;background:rgba(148,163,184,.14);border:1px solid rgba(148,163,184,.14);overflow:hidden;position:relative}
+.assist-progress-bar{position:absolute;inset:0 auto 0 0;width:42%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--violet),var(--green));animation:assist-progress-slide 1.15s ease-in-out infinite}
+.assist-progress-label{margin-top:5px;font-size:10px;letter-spacing:.02em;color:var(--text-3)}
+@keyframes assist-progress-slide{0%{transform:translateX(-105%)}50%{transform:translateX(75%)}100%{transform:translateX(245%)}}
 .ai-steps{width:100%;display:flex;flex-direction:column;gap:3px}
 .ai-step{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-3);padding:3px 0;transition:color .3s}
 .ai-step.done{color:var(--green)}.ai-step.active{color:var(--violet)}
@@ -1630,7 +1644,9 @@ input[type=checkbox].rc{width:14px;height:14px;accent-color:var(--violet);cursor
     <div class="cb-sub" id="cbSub">Revenue loss | engineering cost | recurring waste</div>
   </div>
   <div class="cb-stats" id="cbStats"></div>
-  <button class="cb-cfg" data-action="toggleCfg">⚙ Configure</button>
+  <button class="cb-cfg" data-action="toggleCfg" title="Configure cost model" aria-label="Configure cost model">
+    <svg class="strato-icon" data-strato-icon="Options" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3.5v3"></path><path d="M12 17.5v3"></path><path d="M3.5 12h3"></path><path d="M17.5 12h3"></path><path d="M6 6l2.1 2.1"></path><path d="M15.9 15.9 18 18"></path><path d="M18 6l-2.1 2.1"></path><path d="M8.1 15.9 6 18"></path></svg>
+  </button>
 </div>
 
 <!-- COST CONFIG -->

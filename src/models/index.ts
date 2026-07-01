@@ -104,6 +104,8 @@ export interface ProblemPattern {
   problems:         DynatraceProblem[];
   trend:            'INCREASING' | 'STABLE' | 'DECREASING';
   concentration:    ConfidenceLevel;
+  evidenceQuality:  ConfidenceLevel;
+  investigationReadiness: ConfidenceLevel;
   fixability:       ConfidenceLevel;
   confidence:       ConfidenceLevel;
   recurrenceScore:  number;

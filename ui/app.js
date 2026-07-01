@@ -180,6 +180,32 @@ function calcRecurringWaste(ps){
   return ps.filter(p=>p.rec>=60).reduce((s,p)=>s+calcCost(p).total*(p.rec/100),0);
 }
 
+function calcPatternRecurringWaste(patterns) {
+  return (patterns || []).reduce((sum, pat) => {
+    const recurrenceFactor = clamp((pat.occurrences || 0) / 5, 0, 1);
+    return sum + patternCost(pat) * recurrenceFactor;
+  }, 0);
+}
+
+function getRepeatOffenderPatterns(patterns) {
+  return (patterns || []).filter(pat => (pat.occurrences || 0) >= 2);
+}
+
+function getAutomationCandidatePatterns(patterns) {
+  return (patterns || []).filter(pat => {
+    if (activeObjective === 'alert_optimization') {
+      const signals = extractPatternSignals(pat, patterns);
+      return isAlertOptimizationCandidate(pat, signals);
+    }
+    const evidence = pat.evidenceQuality || pat.confidence || 'LOW';
+    const readiness = pat.investigationReadiness || pat.fixability || 'LOW';
+    return (pat.occurrences || 0) >= 2
+      && patternRcaAvailability(pat) === 'Present'
+      && ['HIGH', 'MEDIUM'].includes(evidence)
+      && ['HIGH', 'MEDIUM'].includes(readiness);
+  });
+}
+
 // ── Math utilities ──
 const arrMean   = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
 const arrStddev = a => { if(a.length<2)return 0; const m=arrMean(a); return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length); };
@@ -242,6 +268,113 @@ function calculateCostConfidence(pattern) {
 function scoreLabel(score) {
   return score >= 0.65 ? 'HIGH' : score >= 0.40 ? 'MEDIUM' : 'LOW';
 }
+function titleCaseScore(level) {
+  const value = String(level || 'LOW').toUpperCase();
+  return value[0] + value.slice(1).toLowerCase();
+}
+function deriveEvidenceAndReadiness({
+  problems,
+  dimensions,
+  rcaAvailability,
+  consistentRCA,
+  rcaValues,
+  recurrenceStability,
+  trend,
+  hasTimeCluster,
+  hasDayCluster,
+}) {
+  const rows = Array.isArray(problems) ? problems : [];
+  const total = Math.max(1, rows.length);
+  const coverage = predicate => rows.filter(predicate).length / total;
+  const validTimestampCoverage = coverage(p => Number.isFinite(p.start) && p.start > 0);
+  const durationCoverage = coverage(p => Number.isFinite(p.dur) && p.dur > 0);
+  const problemIdCoverage = coverage(p => String(p.id || '').trim().length > 0);
+  const impactCoverage = coverage(p =>
+    (Number.isFinite(p.users) && p.users > 0) ||
+    (Number.isFinite(p.impact) && p.impact > 0) ||
+    (Array.isArray(p.affectedEntityIds) && p.affectedEntityIds.length > 0)
+  );
+  const serviceCoverage = coverage(p =>
+    (Array.isArray(p.svcs) && p.svcs.some(Boolean)) ||
+    String(p.rca || '').trim().length > 0 ||
+    String(p.causalEntity || '').trim().length > 0
+  );
+  const categoryConsistency = purityFor(rows.map(p => p.rawEventCategory || p.category || p.sev));
+  const rcaAvailable = rcaAvailability === 'Present';
+  const rcaConsistencyScore = consistentRCA ? 1 : (Array.isArray(rcaValues) && rcaValues.length > 1 ? 0.35 : 0);
+  const evidenceRawBase = clamp(
+    (rcaAvailable ? 1 : 0) * 0.20 +
+    rcaConsistencyScore * 0.20 +
+    serviceCoverage * 0.20 +
+    categoryConsistency * 0.15 +
+    validTimestampCoverage * 0.10 +
+    durationCoverage * 0.05 +
+    impactCoverage * 0.05 +
+    problemIdCoverage * 0.05,
+    0,
+    1
+  );
+  let evidenceQualityRaw = evidenceRawBase;
+  if (!rcaAvailable) evidenceQualityRaw = Math.min(evidenceQualityRaw, 0.62);
+  if (validTimestampCoverage < 0.5) evidenceQualityRaw = Math.min(evidenceQualityRaw, 0.58);
+  if (serviceCoverage < 0.5) evidenceQualityRaw = Math.min(evidenceQualityRaw, 0.55);
+
+  const recurrenceStrength = clamp((rows.length - 1) / 7, 0, 1);
+  const openSignal = clamp(rows.filter(p => p.status === 'OPEN').length / 3, 0, 1);
+  const timeTrendSignal = hasTimeCluster || hasDayCluster ? 1 : trend === 'INCREASING' ? 0.85 : trend === 'STABLE' ? 0.55 : 0.35;
+  const assistContextCompleteness = clamp((problemIdCoverage + validTimestampCoverage + categoryConsistency + serviceCoverage) / 4, 0, 1);
+  let investigationReadinessRaw = clamp(
+    evidenceQualityRaw * 0.35 +
+    recurrenceStrength * 0.15 +
+    openSignal * 0.10 +
+    serviceCoverage * 0.10 +
+    timeTrendSignal * 0.10 +
+    recurrenceStability * 0.10 +
+    assistContextCompleteness * 0.10,
+    0,
+    1
+  );
+  if (rows.length < 3) investigationReadinessRaw = Math.min(investigationReadinessRaw, 0.62);
+  if (validTimestampCoverage < 0.7) investigationReadinessRaw = Math.min(investigationReadinessRaw, 0.58);
+  if (!rcaAvailable && evidenceQualityRaw < 0.5) investigationReadinessRaw = Math.min(investigationReadinessRaw, 0.50);
+
+  const evidenceDrivers = [];
+  if (rcaAvailable) evidenceDrivers.push(consistentRCA ? 'consistent RCA observed' : 'RCA observed but varies');
+  else evidenceDrivers.push('RCA missing');
+  evidenceDrivers.push(`${Math.round(serviceCoverage * 100)}% service/entity coverage`);
+  evidenceDrivers.push(`${Math.round(validTimestampCoverage * 100)}% timestamp coverage`);
+  evidenceDrivers.push(`${Math.round(categoryConsistency * 100)}% category consistency`);
+
+  const readinessDrivers = [
+    `${rows.length} recurrence${rows.length === 1 ? '' : 's'}`,
+    `${Math.round(evidenceQualityRaw * 100)}% evidence quality`,
+    `${Math.round(assistContextCompleteness * 100)}% Assist context completeness`,
+  ];
+  if (openSignal > 0) readinessDrivers.push(`${rows.filter(p => p.status === 'OPEN').length} open incident${rows.filter(p => p.status === 'OPEN').length === 1 ? '' : 's'}`);
+  if (hasTimeCluster || hasDayCluster) readinessDrivers.push('time clustering observed');
+
+  return {
+    evidenceQualityRaw,
+    evidenceQuality: scoreLabel(evidenceQualityRaw),
+    evidenceQualityScore: titleCaseScore(scoreLabel(evidenceQualityRaw)),
+    investigationReadinessRaw,
+    investigationReadiness: scoreLabel(investigationReadinessRaw),
+    investigationReadinessScore: titleCaseScore(scoreLabel(investigationReadinessRaw)),
+    evidenceDrivers,
+    readinessDrivers,
+    evidenceCoverage: {
+      rcaAvailable,
+      rcaConsistencyScore,
+      serviceCoverage,
+      categoryConsistency,
+      validTimestampCoverage,
+      durationCoverage,
+      impactCoverage,
+      problemIdCoverage,
+      assistContextCompleteness,
+    },
+  };
+}
 function calculateConcentration(pattern) {
   if (pattern.concentration) return pattern.concentration;
   if (pattern.concentrationRaw != null) return scoreLabel(pattern.concentrationRaw);
@@ -251,6 +384,8 @@ function calculateConcentration(pattern) {
   return scoreLabel(clamp(purity * 0.5 + costConsistency * 0.5, 0, 1));
 }
 function calculateFixability(pattern) {
+  if (pattern.investigationReadiness) return pattern.investigationReadiness;
+  if (pattern.investigationReadinessRaw != null) return scoreLabel(pattern.investigationReadinessRaw);
   if (pattern.fixability) return pattern.fixability;
   if (pattern.fixabilityRaw != null) return scoreLabel(pattern.fixabilityRaw);
   const stability = pattern.recurrenceStability ?? 0;
@@ -845,6 +980,9 @@ function renderKPIs(ps){
   const openPatterns=patterns.filter(pat=>pat.problems.some(p=>p.status==='OPEN'));
   const highImpactPatterns=patterns.filter(pat=>isHighImpactPattern(pat, patterns));
   const totalPatternCost=patterns.reduce((s, pat)=>s+patternCost(pat),0);
+  const repeatOffenderPatterns=getRepeatOffenderPatterns(patterns);
+  const automationCandidatePatterns=getAutomationCandidatePatterns(patterns);
+  const patternRecurringWaste=calcPatternRecurringWaste(patterns);
   const session=calcSessionMetrics(ps, patterns);
   const potentialSavings=patterns.length ? recoverableFromCost(totalPatternCost) + session.valueDeliveredTotal : 0;
   const highImpactOccurrences=highImpactPatterns.reduce((s, pat)=>s+pat.occurrences,0);
@@ -863,8 +1001,8 @@ function renderKPIs(ps){
     ],
     sre:[
       {lbl:'Operational Debt',val:ps.length,sub:`${open} open now`,c:'kc-blue',mode:'sre-total',actionText:execKpiDetail==='sre-total'?'Hide details':'View details'},
-      {lbl:'Automation Candidates',val:activeObjective==='alert_optimization'?noisy:fmtC(waste),sub:activeObjective==='alert_optimization'?'noise candidates':'cost of recurrence',c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
-      {lbl:'Repeat Offenders',val:noisy,sub:'noise candidates',c:activeObjective==='alert_optimization'?'kc-amber kc-primary':'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
+      {lbl:'Automation Candidates',val:automationCandidatePatterns.length,sub:activeObjective==='alert_optimization'?`${repeatOffenderPatterns.length} repeat patterns screened`:`${fmtC(patternRecurringWaste)} modeled repeat exposure`,c:'kc-coral',badge:{t:'actionable',cls:'badge-up'},mode:'sre-waste',actionText:execKpiDetail==='sre-waste'?'Hide details':'View details'},
+      {lbl:'Repeat Offenders',val:repeatOffenderPatterns.length,sub:`${patternOccurrences} grouped occurrences`,c:activeObjective==='alert_optimization'?'kc-amber kc-primary':'kc-amber',mode:'sre-noise',actionText:execKpiDetail==='sre-noise'?'Hide details':'View details'},
       {lbl: activeObjective==='alert_optimization' ? 'Avg Alert Duration' : 'Median MTTR', val:fmtM(mttr.median), sub: activeObjective==='alert_optimization' ? 'avg event open time' : `p85: ${fmtM(mttr.p85)} | ${mttr.count} resolved`, c:'kc-violet',mode:'sre-mttr',actionText:execKpiDetail==='sre-mttr'?'Hide details':'View details'},
     ],
   };
@@ -1582,7 +1720,7 @@ function renderEvidenceSummary(evidence) {
     ['Entities', (evidence.affectedServices || []).slice(0, 4).join(', ') || 'not available'],
     ['RCA', evidence.rootCauseSummary || 'not consistently identified'],
     ['MTTR', evidence.mttr ? fmtM(evidence.mttr) : 'not available'],
-    ['Confidence', `${evidence.confidenceScore}/100, fixability ${evidence.fixabilityScore}/100`],
+    ['Confidence', `${evidence.confidenceScore}/100, readiness ${evidence.fixabilityScore}/100`],
   ];
   return `<div class="rem-context">${rows.map(([k, v]) => `
     <div class="rem-ctx-row"><span class="rem-ctx-label">${k}</span><span class="rem-ctx-val">${v}</span></div>`).join('')}</div>`;
@@ -1777,7 +1915,7 @@ function renderAssistRemediationResponse(response, evidence=null) {
           </div>
           <div class="rem-kpi-grid" style="margin-top:6px">
             ${tl(evTrend,                     'Trend',         evTrend === 'INCREASING' ? 'bad' : evTrend === 'DECREASING' ? 'ok' : 'warn')}
-            ${persona === 'sre' ? tl(evCost ? fmtC(evCost) : 'N/A', 'Cost Exposure', evCost > 5000 ? 'bad' : evCost > 1000 ? 'warn' : 'ok') : tl(evRca === 'Present' ? 'Actionable' : 'Needs RCA', 'Fix Readiness', evRca === 'Present' ? 'ok' : 'bad')}
+            ${persona === 'sre' ? tl(evCost ? fmtC(evCost) : 'N/A', 'Cost Exposure', evCost > 5000 ? 'bad' : evCost > 1000 ? 'warn' : 'ok') : tl(evRca === 'Present' ? 'Ready' : 'Needs RCA', 'Investigation Readiness', evRca === 'Present' ? 'ok' : 'bad')}
             ${tl(strengthText,                'Strength',      strengthText.includes('EVIDENCE') ? 'ok' : strengthText.includes('CANDIDATE') ? 'warn' : 'bad')}
             ${tl(renderInlineValue(effort),   'Effort',        effort === 'Low' ? 'ok' : effort === 'Medium' ? 'warn' : 'bad')}
           </div>` : `
@@ -2067,10 +2205,14 @@ function meaningfulSignalCount(evidence) {
   }).length;
 }
 
+function activeAssistObjective() {
+  return activeObjective === 'alert_optimization' ? 'alert_optimization' : 'cost_impact';
+}
+
 function buildObjectiveAwareAssistPrompt(request) {
   const evidence = compactObservedAssistEvidence(request || {});
   const personaLabel = persona || 'executive';
-  const objective = activeObjective || 'cost_impact';
+  const objective = activeAssistObjective();
   const prompt = `You are OpInt Assist. A recurring pattern has been identified by OpInt.
 Recommend practical next actions for the active persona and objective
 using only the supplied signals. Everything must trace to supplied evidence.
@@ -2139,11 +2281,6 @@ Consolidation signal:
     Recommend: consolidate into a single detector with by:{dimension} grouping
     instead of N separate detectors firing independently on the same entity
 
-remediation -> identify what to fix and how hard. For each action assess whether
-remediation effort is proportionate to recurrence and cost signals.
-Default high-effort actions to STRATEGIC unless evidence demands otherwise.
-Rank by effort-to-value ratio, not severity alone.
-
 Apply persona and objective simultaneously.
 
 SIGNALS
@@ -2178,7 +2315,7 @@ Return valid JSON only:
     }
   ],
   "remediationContext": {
-    "include only when objective = remediation": "",
+    "include only when directly supported by supplied signals": "",
     "horizon": "IMMEDIATE | SHORT_TERM | STRATEGIC",
     "effortJustification": "why this effort level given the evidence",
     "blockers": ["what must be true before remediation can start"]
@@ -2965,6 +3102,8 @@ function renderAIPanel(ps){
       ['Connecting to external AI provider...','Preparing problem context...','Sending to '+getProviderLabel()+'...','Parsing AI response...','Structuring recommendations...']:
       ['Connecting to Davis CoPilot...','Fetching problem context...','Correlating entity signals...','Generating '+PMETA[persona].label+' analysis...','Structuring recommendations...'];
     el.innerHTML=`<div class="ai-loading"><div class="ai-ring"></div><div style="font-size:12px;color:var(--text-3)">Analysing with ${aiSrc==='external'?getProviderLabel():'Davis CoPilot'}...</div><div class="ai-steps">${steps.map((s,i)=>`<div class="ai-step ${i===0?'active':''}" id="ais-${i}"><span class="ai-step-ic">${i===0?'⟳':'○'}</span>${s}</div>`).join('')}</div></div>`;
+    const aiLoadingHost = el.querySelector('.ai-loading');
+    if (aiLoadingHost) aiLoadingHost.insertAdjacentHTML('beforeend', renderAssistProgress('Generating analysis and recommendations'));
     let step=0;
     const iv=setInterval(()=>{
       const prev=document.getElementById(`ais-${step}`);
@@ -3318,7 +3457,7 @@ function compactAssistContext(ps) {
 function buildDeveloperAnalysisPrompt(ps) {
   const c = compactAssistContext(ps);
   const { patterns: devPatterns, sharedEntityMap: devSharedMap } = detectPatterns(ps);
-  const obj = activeObjective || 'cost_impact';
+  const obj = activeAssistObjective();
   const isNoise = obj === 'alert_optimization';
   const devSharedEntities = Object.entries(devSharedMap || {})
     .sort((a, b) => b[1] - a[1])
@@ -3354,7 +3493,7 @@ Focus on:
 - Whether the detector model is appropriate (static vs adaptive vs seasonal) given the trend
 Do NOT recommend code fixes. Recommend detector tuning actions only.
 Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.` :
-`OBJECTIVE FOCUS — cost_impact / remediation:
+`OBJECTIVE FOCUS — cost_impact:
 - what the signals are suggesting
 - what service, endpoint, or entity should be investigated first
 - whether the pattern suggests recurrence, deployment correlation, or time clustering
@@ -3384,7 +3523,7 @@ Return valid JSON only matching this schema:
 function buildSreAnalysisPrompt(ps, costs, totalCost) {
   const c = compactAssistContext(ps);
   const { patterns, sharedEntityMap } = detectPatterns(ps);
-  const obj = activeObjective || 'cost_impact';
+  const obj = activeAssistObjective();
   const isNoise = obj === 'alert_optimization';
   const sharedEntities = Object.entries(sharedEntityMap || {})
     .sort((a, b) => b[1] - a[1])
@@ -3428,7 +3567,7 @@ Identify:
 Prioritize recommendations that reduce Davis event volume without hiding genuine incidents.
 Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
 Do NOT recommend MTTR improvements, runbooks, or SLO changes.` :
-`OBJECTIVE FOCUS — cost_impact / remediation:
+`OBJECTIVE FOCUS — cost_impact:
 Focus on reliability engineering rather than incident debugging.
 Identify:
 - recurring reliability signals
@@ -3990,8 +4129,9 @@ function patternPriorityScore(pat, allPatterns=[]) {
   const maxOpen = Math.max(1, ...cohort.map(p => patternOpenCount(p)));
   const open = patternOpenCount(pat) / maxOpen;
 
-  // Fixability — discrete 3-level
-  const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.65 : 0.35;
+  // Investigation readiness - discrete 3-level, kept under the historical weight key for compatibility.
+  const readiness = pat.investigationReadiness || pat.fixability;
+  const fix = readiness === 'HIGH' ? 1 : readiness === 'MEDIUM' ? 0.65 : 0.35;
 
   // Blast radius — cohort-relative
   const blastScore = p => {
@@ -4275,7 +4415,9 @@ function rankPatterns(patterns, objective = activeObjective) {
 }
 
 function patternFixabilityScore(pat) {
-  const fix = pat.fixability === 'HIGH' ? 1 : pat.fixability === 'MEDIUM' ? 0.62 : 0.28;
+  if (Number.isFinite(pat?.investigationReadinessRaw)) return clamp(pat.investigationReadinessRaw, 0.08, 1);
+  const readiness = pat.investigationReadiness || pat.fixability;
+  const fix = readiness === 'HIGH' ? 1 : readiness === 'MEDIUM' ? 0.62 : 0.28;
   const recurrence = clamp((pat.recurrenceStability ?? 0) * 0.35 + clamp((pat.occurrences || 0) / 8, 0, 1) * 0.20, 0, 0.55);
   const rcaAvailabilitySignal = patternRcaAvailability(pat) === 'Present' ? 0.15 : 0.03;
   return clamp((fix * 0.45) + recurrence + rcaAvailabilitySignal, 0.08, 1);
@@ -4423,6 +4565,24 @@ function attrText(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
   }[ch]));
+}
+
+function stratoIcon(name) {
+  const icons = {
+    options: '<svg class="strato-icon" data-strato-icon="Options" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3.5v3"></path><path d="M12 17.5v3"></path><path d="M3.5 12h3"></path><path d="M17.5 12h3"></path><path d="M6 6l2.1 2.1"></path><path d="M15.9 15.9 18 18"></path><path d="M18 6l-2.1 2.1"></path><path d="M8.1 15.9 6 18"></path></svg>',
+    money: '<svg class="strato-icon" data-strato-icon="Money" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6.5" width="18" height="11" rx="2"></rect><circle cx="12" cy="12" r="2.4"></circle><path d="M6.5 9.2v5.6"></path><path d="M17.5 9.2v5.6"></path></svg>',
+    weights: '<svg class="strato-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14"></path><path d="M12 5v14"></path><path d="M19 5v14"></path><circle cx="5" cy="9" r="2"></circle><circle cx="12" cy="15" r="2"></circle><circle cx="19" cy="11" r="2"></circle></svg>',
+  };
+  return icons[name] || icons.options;
+}
+
+function renderConfigureControls() {
+  return `<div class="config-actions" style="display:flex;align-items:center;gap:6px;position:relative">
+    <span class="cfg-icon-label" title="Configure" aria-label="Configure">${stratoIcon('options')}</span>
+    <button class="strato-icon-btn weights${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover" title="Ranking weights" aria-label="Ranking weights">${stratoIcon('weights')}<span class="icon-label">Weights</span></button>
+    <button class="strato-icon-btn cost" data-action="toggleCfg" title="Cost model assumptions" aria-label="Cost model assumptions">${stratoIcon('money')}<span class="icon-label">Cost</span></button>
+    ${weightsPopoverOpen ? renderWeightsPopover() : ''}
+  </div>`;
 }
 
 function setIntelSummary(html='') {
@@ -4985,7 +5145,7 @@ function getExplorerRows(patterns) {
       case 'cost': return patternCost(pat);
       case 'open': return patternOpenCount(pat);
       case 'confidence': return patternConfidenceScore(pat);
-      case 'fixability': return pat.fixability === 'HIGH' ? 3 : pat.fixability === 'MEDIUM' ? 2 : 1;
+      case 'fixability': return (pat.investigationReadiness || pat.fixability) === 'HIGH' ? 3 : (pat.investigationReadiness || pat.fixability) === 'MEDIUM' ? 2 : 1;
       case 'trend': return pat.trend;
       case 'priority':
       default: return row.score;
@@ -5246,7 +5406,8 @@ function renderPatternDetailPane(pat, patterns) {
       <div class="px-section-title">Root-cause indicators</div>
       <div class="px-chip-list">
         ${rca.slice(0, 10).map(r => `<span class="px-chip">RCA: ${r}</span>`).join('') || '<span class="px-chip">RCA Availability: Missing</span>'}
-        <span class="px-chip">Fixability: ${pat.fixability}</span>
+        <span class="px-chip">Evidence Quality: ${pat.evidenceQuality || pat.fixability}</span>
+        <span class="px-chip">Investigation Readiness: ${pat.investigationReadiness || pat.fixability}</span>
         <span class="px-chip">RCA Availability: ${patternRcaAvailability(pat)}</span>
       </div>
     </div>
@@ -5339,11 +5500,33 @@ function buildPattern(problems) {
   const concentration = scoreLabel(concentrationRaw);
   const concentrationScore = concentration[0] + concentration.slice(1).toLowerCase();
 
-  // Fixability uses observed RCA availability plus recurrence regularity; it does not validate RCA correctness.
-  const rcaAvailabilitySignal = rcaAvailability === 'Present' ? 0.20 : 0.05;
-  const fixabilityRaw   = clamp(recurrenceStability * 0.35 + clusterPurity * 0.25 + dimensionPurity * 0.20 + rcaAvailabilitySignal, 0, 1);
-  const fixability = scoreLabel(fixabilityRaw);
-  const fixabilityScore = fixability[0] + fixability.slice(1).toLowerCase();
+  // Evidence quality and investigation readiness replace the old optimistic "fixability" signal.
+  // Keep fixability as a compatibility alias for existing sort/ranking paths.
+  const evidenceModel = deriveEvidenceAndReadiness({
+    problems,
+    dimensions,
+    rcaAvailability,
+    consistentRCA,
+    rcaValues,
+    recurrenceStability,
+    trend,
+    hasTimeCluster,
+    hasDayCluster,
+  });
+  const {
+    evidenceQualityRaw,
+    evidenceQuality,
+    evidenceQualityScore,
+    investigationReadinessRaw,
+    investigationReadiness,
+    investigationReadinessScore,
+    evidenceDrivers,
+    readinessDrivers,
+    evidenceCoverage,
+  } = evidenceModel;
+  const fixabilityRaw = investigationReadinessRaw;
+  const fixability = investigationReadiness;
+  const fixabilityScore = investigationReadinessScore;
 
   // Recommendation
   const rec = recommendAction({
@@ -5398,6 +5581,15 @@ function buildPattern(problems) {
     concentrationRaw,
     concentrationScore,
     concentration,
+    evidenceQualityRaw,
+    evidenceQualityScore,
+    evidenceQuality,
+    investigationReadinessRaw,
+    investigationReadinessScore,
+    investigationReadiness,
+    evidenceDrivers,
+    readinessDrivers,
+    evidenceCoverage,
     fixabilityRaw,
     fixabilityScore,
     fixability,
@@ -5538,7 +5730,7 @@ function renderPatternIntelligence() {
       ${renderPatternDimensionChips(pat)}
       <span class="trend-chip ${pat.trend}">${TREND_ICONS[pat.trend]} ${TREND_LABELS[pat.trend]}</span>
       <span class="exec-pat-chip ${pat.concentration === 'HIGH' ? 'conc-high' : pat.concentration === 'MEDIUM' ? 'conc-med' : 'conc-low'}">Conc: ${pat.concentration}</span>
-      <span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Fix: ${pat.fixability}</span>
+      <span class="exec-pat-chip ${(pat.investigationReadiness || pat.fixability) === 'HIGH' ? 'fix-high' : (pat.investigationReadiness || pat.fixability) === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Ready: ${pat.investigationReadiness || pat.fixability}</span>
       ${renderConfidenceBadge(pat.confidence, 'pattern')}
       ${pat.hasTimeCluster ? `<span class="psh-pill" style="color:var(--amber)">⏱ ${String(pat.dominantHour).padStart(2,'0')}:00</span>` : ''}
       <span class="psh-cost">${fmtC(pat.totalCost)}</span>
@@ -5753,7 +5945,7 @@ function renderExecutivePatternsBoard(patterns, ps, label='Patterns') {
     DECREASING: 'Trend: rate in second half is >30% lower than first half - pattern is improving',
   };
   const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component.';
-  const FIX_TOOLTIP  = 'Fixability: how likely a single engineering action can permanently resolve this pattern.';
+  const FIX_TOOLTIP  = 'Investigation Readiness: how prepared this pattern is for focused action based on evidence quality, recurrence, active incidents, and scoped context.';
   const totalOccurrences = patterns.reduce((s, pat) => s + pat.occurrences, 0);
   const totalPatternCost = patterns.reduce((s, pat) => s + pat.totalCost, 0);
   const emptyMessage = label === 'High-impact patterns'
@@ -5770,7 +5962,7 @@ function renderExecutivePatternsBoard(patterns, ps, label='Patterns') {
         <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
         ${isHighImpactPattern(pat, patterns) ? `<span class="exec-pat-chip trend-up" title="High impact: ${highImpactReason(pat, patterns)}">Impact: High</span>` : ''}
         <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
-        <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.investigationReadiness || pat.fixability]}" title="${FIX_TOOLTIP}">Ready: ${pat.investigationReadiness || pat.fixability}</span>
         ${d.primaryRootCause ? `<span class="exec-pat-chip exec-dim-chip">RCA: ${d.primaryRootCause}</span>` : ''}
       </div>
       <span class="exec-t2-val">${pat.occurrences}x</span>
@@ -5822,7 +6014,7 @@ function renderExecutiveMttrBoard(patterns, ps) {
       <span class="exec-t2-name" title="${pat.title}">${pat.title}</span>
       <div class="exec-t2-chips">
         <span class="exec-pat-chip ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
-        <span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Fix: ${pat.fixability}</span>
+        <span class="exec-pat-chip ${(pat.investigationReadiness || pat.fixability) === 'HIGH' ? 'fix-high' : (pat.investigationReadiness || pat.fixability) === 'MEDIUM' ? 'fix-med' : 'fix-low'}">Ready: ${pat.investigationReadiness || pat.fixability}</span>
       </div>
       <span class="exec-t2-val">${fmtM(pat.avgDur)}</span>
       <span class="exec-t2-meta">${pat.occurrences}x - ${fmtC(cost)}</span>
@@ -5885,10 +6077,13 @@ function renderPersonaKpiDetail(currentPersona, mode, ps) {
   const resolved = ps.filter(p => p.status === 'RESOLVED').length;
   const missingRca = ps.filter(p => !p.hasRCA).length;
   const noisy = ps.filter(p => p.noise).length;
-  const waste = calcRecurringWaste(ps);
+  const repeatOffenderPatterns = getRepeatOffenderPatterns(patterns);
+  const automationCandidatePatterns = getAutomationCandidatePatterns(patterns);
+  const patternRecurringWaste = calcPatternRecurringWaste(patterns);
   const topService = serviceCounts(ps)[0];
   const topSeverity = severityCounts(ps)[0];
   const topPattern = [...patterns].sort((a, b) => b.occurrences - a.occurrences)[0];
+  const topAutomationCandidate = [...automationCandidatePatterns].sort((a, b) => patternPriorityScore(b, patterns) - patternPriorityScore(a, patterns))[0];
   const emptyAction = 'No problems are available in the selected period. Adjust the time range or filters.';
 
   const details = {
@@ -5944,23 +6139,27 @@ function renderPersonaKpiDetail(currentPersona, mode, ps) {
     },
     'sre-waste': {
       title: 'Automation Candidates',
-      value: fmtC(waste),
-      why: 'Recurring waste indicates where automation or prevention could reduce repeated operational effort.',
+      value: `${automationCandidatePatterns.length} candidate patterns`,
+      why: activeObjective === 'alert_optimization'
+        ? 'Candidates are recurring patterns whose observed signals suggest alert tuning may reduce event volume without hiding higher-impact incidents.'
+        : 'Candidates are recurring patterns with enough RCA and evidence quality to consider prevention or automation work.',
       drivers: [
-        { label:'Recurring patterns', value:`${patterns.length}` },
-        { label:'Top repeat offender', value:topPattern ? `${topPattern.title} (${topPattern.occurrences}x)` : 'No recurring pattern' },
+        { label:'Repeat offenders screened', value:`${repeatOffenderPatterns.length}` },
+        { label:'Modeled repeat exposure', value:fmtC(patternRecurringWaste) },
+        { label:'Top candidate', value:topAutomationCandidate ? `${topAutomationCandidate.title} (${topAutomationCandidate.occurrences}x)` : 'No qualified candidate' },
       ],
-      action: patterns.length ? 'Select the highest-repeat pattern and decide whether to automate, assign ownership, or tune alerting.' : emptyAction,
+      action: automationCandidatePatterns.length ? 'Select the top candidate and decide whether to automate, assign ownership, or tune alerting.' : patterns.length ? 'Review repeat offenders and improve evidence quality before automation.' : emptyAction,
     },
     'sre-noise': {
       title: 'Repeat Offenders',
-      value: `${noisy} noise candidates`,
-      why: 'Noise candidates consume on-call attention and can hide real reliability risk.',
+      value: `${repeatOffenderPatterns.length} recurring patterns`,
+      why: 'Repeat offenders are pattern-engine groups that occur at least twice in the selected period.',
       drivers: [
-        { label:'Noisy share', value:`${ps.length ? Math.round(noisy / ps.length * 100) : 0}% of problems` },
-        { label:'Top service', value:topService ? `${topService[0]} (${topService[1]})` : 'No service data' },
+        { label:'Grouped occurrences', value:`${repeatOffenderPatterns.reduce((sum, pat) => sum + (pat.occurrences || 0), 0)}` },
+        { label:'Top repeat offender', value:topPattern ? `${topPattern.title} (${topPattern.occurrences}x)` : 'No recurring pattern' },
+        { label:'Legacy Davis frequent-event flags', value:`${noisy}` },
       ],
-      action: ps.length ? 'Review recurring low-impact alerts for suppression windows or threshold tuning.' : emptyAction,
+      action: repeatOffenderPatterns.length ? 'Start with the highest-repeat pattern and review reliability signals in the context panel.' : emptyAction,
     },
     'sre-mttr': {
       title: 'Reliability Trend',
@@ -6025,7 +6224,7 @@ function renderWeightsPopover() {
         { key:'blastRadius', label:'Blast radius',  color:'#3C3489', txt:'#EEEDFE' },
         { key:'severity',    label:'Severity',      color:'#854F0B', txt:'#FAEEDA' },
         { key:'open',        label:'Open count',    color:'#993556', txt:'#FBEAF0' },
-        { key:'fixability',  label:'Fixability',    color:'#0F6E56', txt:'#E1F5EE' },
+        { key:'fixability',  label:'Readiness',     color:'#0F6E56', txt:'#E1F5EE' },
         { key:'trend',       label:'Trend',         color:'#3d3d3a', txt:'#F1EFE8' },
       ]
     : [
@@ -6034,7 +6233,7 @@ function renderWeightsPopover() {
         { key:'duration',        label:'Duration',   color:'#854F0B', txt:'#FAEEDA' },
         { key:'severity',        label:'Severity',   color:'#3C3489', txt:'#EEEDFE' },
         { key:'blastRadius',     label:'Blast radius',color:'#3B6D11',txt:'#EAF3DE' },
-        { key:'fixability',      label:'Fixability', color:'#0F6E56', txt:'#E1F5EE' },
+        { key:'fixability',      label:'Readiness',  color:'#0F6E56', txt:'#E1F5EE' },
       ];
 
   const segsJson = JSON.stringify(segments.map(s => ({ ...s, w: W[s.key] || 0 })));
@@ -6195,9 +6394,9 @@ function renderActFirstMap(patterns) {
         <div class="act-map-kbd">Arrow keys select - Enter opens remediation</div>
       </div>
       <div class="act-map-body">
-        <div class="act-map-plot" role="listbox" aria-label="Patterns plotted by exposure and fixability">
+        <div class="act-map-plot" role="listbox" aria-label="Patterns plotted by exposure and investigation readiness">
           <div class="act-axis-label y">Higher exposure and recoverable value</div>
-          <div class="act-axis-label x">Higher fixability and readiness to act</div>
+          <div class="act-axis-label x">Higher investigation readiness</div>
           <div class="act-quad q1">Act first</div>
           <div class="act-quad q2">Escalate</div>
           <div class="act-quad q3">Monitor</div>
@@ -6352,7 +6551,7 @@ function renderConcisePatternTable(patterns) {
   const hasOwner = patterns.some(pat => Object.prototype.hasOwnProperty.call(pat, 'owner') || Object.prototype.hasOwnProperty.call(pat, 'ownerTeam'));
   const hasStatus = patterns.some(pat => concisePatternStatus(pat));
   const header = `
-    <th>Priority</th><th>Pattern</th>${hasOwner?'<th>Owner</th>':''}<th>Occurrences</th><th>Exposure</th><th>Recoverable</th><th>Confidence%</th><th>Fixability</th><th>Trend</th><th>Priority score</th>${hasStatus?'<th>Status</th>':''}`;
+    <th>Priority</th><th>Pattern</th>${hasOwner?'<th>Owner</th>':''}<th>Occurrences</th><th>Exposure</th><th>Recoverable</th><th>Confidence%</th><th>Readiness</th><th>Trend</th><th>Priority score</th>${hasStatus?'<th>Status</th>':''}`;
   return `<section class="cx-table-card" id="patternExplorer">
     <div class="cx-section-head">
       <div><div class="cx-eyebrow">Pattern Explorer</div><h3>Which recurring issue should I fix next?</h3></div>
@@ -6373,7 +6572,7 @@ function renderConcisePatternTable(patterns) {
             <td>${fmtC(patternCost(pat))}</td>
             <td>${fmtC(patternRecoverableValue(pat))}</td>
             <td>${patternConfidenceScore(pat)}</td>
-            <td><span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">${pat.fixability}</span></td>
+            <td><span class="exec-pat-chip ${(pat.investigationReadiness || pat.fixability) === 'HIGH' ? 'fix-high' : (pat.investigationReadiness || pat.fixability) === 'MEDIUM' ? 'fix-med' : 'fix-low'}">${pat.investigationReadiness || pat.fixability}</span></td>
             <td><span class="exec-pat-chip ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend}</span></td>
             <td>${score}</td>
             ${hasStatus ? `<td>${concisePatternStatus(pat) || ''}</td>` : ''}
@@ -6442,10 +6641,17 @@ function renderExecDisclosure(title, summary, body) {
   return `<details class="cx-disclosure"><summary><span><strong>${title}</strong><small>${summary}</small></span><b>+</b></summary><div class="cx-disclosure-body">${body}</div></details>`;
 }
 
+function renderAssistProgress(label='Dynatrace Assist is working...') {
+  return `<div class="assist-progress" role="status" aria-live="polite" aria-label="${attrText(label)}">
+    <div class="assist-progress-track"><div class="assist-progress-bar"></div></div>
+    <div class="assist-progress-label">${attrText(label)}</div>
+  </div>`;
+}
+
 function renderWorkspaceAnalysisBlock(pat, intro) {
   const isCurrent = analysisPatternId === pat.id;
   if (isCurrent && aiState === 'loading') {
-    return `<div class="cx-remediation-summary"><span>Generating analysis from Dynatrace Assist...</span></div>`;
+    return `<div class="cx-remediation-summary"><span>Generating analysis from Dynatrace Assist...</span>${renderAssistProgress('Preparing scoped pattern evidence and generating analysis')}</div>`;
   }
   if (isCurrent && lastAnalysisResult) {
     const result = lastAnalysisResult;
@@ -6508,7 +6714,8 @@ function renderWorkspaceAnalysisBlock(pat, intro) {
 function renderWorkspaceRemediationBlock(pat) {
   const isCurrent = remediationState.patternId === pat.id && remediationState.persona === persona;
   if (isCurrent && remediationState.status === 'loading') {
-    return `<div class="cx-remediation-summary"><span>Generating remediation path from Dynatrace Assist...</span></div>`;
+    const isRecommendations = activeObjective === 'alert_optimization';
+    return `<div class="cx-remediation-summary"><span>${isRecommendations ? 'Generating recommendations from Dynatrace Assist...' : 'Generating remediation path from Dynatrace Assist...'}</span>${renderAssistProgress(isRecommendations ? 'Evaluating alert signals and tuning options' : 'Preparing scoped pattern evidence and remediation path')}</div>`;
   }
   if (isCurrent && remediationState.status === 'error') {
     return `<div class="cx-remediation-summary"><strong>Remediation unavailable</strong><p>${remediationState.error?.message || remediationState.error || 'Dynatrace Assist is unavailable, try again.'}</p></div>`;
@@ -6729,7 +6936,7 @@ function renderDecisionDetailPanel(pat, patterns) {
   const priority = executivePriorityLevel(pat, patterns);
   const hasObservedRca = rcaAvailability === 'Present';
   // Without RCA, effort cannot be Low — we don't know what to fix
-  const effortRaw = remediationEffortLabel(pat.fixability);
+  const effortRaw = remediationEffortLabel(pat.investigationReadiness || pat.fixability);
   const effort = !hasObservedRca && effortRaw === 'Low' ? 'Medium' : effortRaw;
   const totalExposure = patterns.reduce((sum, pattern) => sum + patternCost(pattern), 0);
   const exposureShare = totalExposure ? Math.round(exposure / totalExposure * 100) : 0;
@@ -6741,7 +6948,7 @@ function renderDecisionDetailPanel(pat, patterns) {
     ? pat.recommendation?.text || 'Validate the identified root cause and initiate the remediation path.'
     : 'Continue investigation until Davis reports a root cause entity for this recurring pattern.';
   const complexitySummary = `${complexity.evidenceFragmentation[0].toUpperCase() + complexity.evidenceFragmentation.slice(1)} complexity | ${complexity.signalSourceCount} signal sources`;
-  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA Availability</span><strong>${rcaAvailability}</strong></div><div class="px-evidence-row"><span>Signal quality</span><strong>${confidenceLabel(confidence)} | concentration ${pat.concentration}</strong></div></div>`;
+  const evidenceBody = `<div class="px-evidence"><div class="px-evidence-row"><span>Recurrence</span><strong>${pat.occurrences} grouped incidents</strong></div><div class="px-evidence-row"><span>Trend</span><strong>${pat.trend}</strong></div><div class="px-evidence-row"><span>MTTR</span><strong>${avgMttr ? fmtM(avgMttr) : 'No resolved duration data'}</strong></div><div class="px-evidence-row"><span>RCA Availability</span><strong>${rcaAvailability}</strong></div><div class="px-evidence-row"><span>Evidence Quality</span><strong>${titleCaseScore(pat.evidenceQuality || 'LOW')} | readiness ${titleCaseScore(pat.investigationReadiness || 'LOW')}</strong></div></div>`;
   const impactedBody = `<div class="px-chip-list">${services.map(s => `<span class="px-chip">Service: ${s}</span>`).join('') || '<span class="px-chip">No service entity</span>'}${entities.map(entity => `<span class="px-chip">${entity}</span>`).join('')}</div>`;
   const remediationPanel = renderWorkspaceRemediationBlock(pat);
   const showRemediation = remediationPanel && remediationPanel.trim().length > 0;
@@ -6758,9 +6965,9 @@ function renderDecisionDetailPanel(pat, patterns) {
     <div class="cx-detail-label">Technical Actionability${infoPill('How ready this pattern is for action based on effort, confidence, priority, and investigation friction.', 'technical-actionability')}</div>
     <div class="cx-detail-tiles actionability">
       ${tileTraffic(effort,              'Remediation Effort',    effort === 'Low' ? 'ok' : effort === 'Medium' ? 'warn' : 'bad')}
-      ${tileTraffic(confidenceLabel(confidence), 'Confidence',   confidence >= 0.65 ? 'ok' : confidence >= 0.4 ? 'warn' : 'bad')}
+      ${tileTraffic(titleCaseScore(pat.evidenceQuality || 'LOW'), 'Evidence Quality',   pat.evidenceQuality === 'HIGH' ? 'ok' : pat.evidenceQuality === 'MEDIUM' ? 'warn' : 'bad')}
       ${tileTraffic(priority,            'Priority',              priority === 'High' ? 'bad' : priority === 'Medium' ? 'warn' : 'ok')}
-      ${tileTraffic((!hasObservedRca && complexity.evidenceFragmentation === 'low' ? 'Medium' : complexity.evidenceFragmentation.charAt(0).toUpperCase() + complexity.evidenceFragmentation.slice(1)), 'Investigation Friction', (!hasObservedRca && complexity.evidenceFragmentation === 'low') || complexity.evidenceFragmentation === 'high' ? 'bad' : complexity.evidenceFragmentation === 'medium' ? 'warn' : 'ok')}
+      ${tileTraffic(titleCaseScore(pat.investigationReadiness || 'LOW'), 'Investigation Readiness', pat.investigationReadiness === 'HIGH' ? 'ok' : pat.investigationReadiness === 'MEDIUM' ? 'warn' : 'bad')}
     </div>
     <div class="cx-complexity-summary"><span>Pattern Timeline${infoPill('Pattern-specific recurrence distribution across the selected timeframe. Empty bucket labels are hidden to reduce clutter.', 'pattern-timeline')}</span><strong>Appeared ${pat.occurrences} time${pat.occurrences === 1 ? '' : 's'} in the selected timeframe</strong>${timelineBody}</div>
     <div class="cx-action-block ${hasObservedRca ? '' : 'low'}"><div class="cx-eyebrow">Recommended Action</div><strong>${recommendedAction}</strong>${showRemediation ? '' : `<div style="margin-top:8px"><button class="snap-cta rem" data-action="getPatternRemediation" data-pid="${pat.id}"${remBtnLabel()}</button></div>`}</div>
@@ -7070,12 +7277,7 @@ function renderSreWorkspaceHeader(patterns, ps) {
       <button class="${sreAnalyticalView === 'matrix' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="matrix">Reliability Risk Matrix</button>
       <button class="${sreAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setSreAnalyticalView" data-mode="explorer">Operational Debt Explorer</button>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;position:relative">
-      <span class="cfg-label">Configure:</span>
-      <button class="weights-btn${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover">Ranking weights</button>
-      <button class="snap-cta" data-action="toggleCfg">Cost model</button>
-      ${weightsPopoverOpen ? renderWeightsPopover() : ''}
-    </div>
+    ${renderConfigureControls()}
   </section>`;
 }
 
@@ -7233,10 +7435,7 @@ function renderDeveloperWorkspaceHeader(patterns) {
     </div>
     <div style="display:flex;align-items:center;gap:6px;position:relative">
       <span class="cx-scope-label">${scopeLabel !== 'All Developer Scope' ? scopeLabel : ''}</span>
-      <span class="cfg-label">Configure:</span>
-      <button class="weights-btn${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover">Ranking weights</button>
-      <button class="snap-cta" data-action="toggleCfg">Cost model</button>
-      ${weightsPopoverOpen ? renderWeightsPopover() : ''}
+      ${renderConfigureControls()}
     </div>
   </section>`;
 }
@@ -7391,12 +7590,7 @@ function renderDecisionFirstExecView(patterns, ps) {
             <button class="${execAnalyticalView === 'explorer' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="explorer">Pattern Explorer</button>
             <button class="${execAnalyticalView === 'map' ? 'active' : ''}" data-action="setExecAnalyticalView" data-mode="map">Act-First Map</button>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;position:relative">
-            <span class="cfg-label">Configure:</span>
-            <button class="weights-btn${weightsPopoverOpen ? ' active' : ''}" data-action="toggleWeightsPopover">Ranking weights</button>
-            <button class="snap-cta" data-action="toggleCfg">Cost model</button>
-            ${weightsPopoverOpen ? renderWeightsPopover() : ''}
-          </div>
+          ${renderConfigureControls()}
         </section>
         <div class="cx-selected-view">${selectedView}</div>
       </div>
@@ -7439,7 +7633,7 @@ function renderExecutivePatternView(patterns, ps) {
         <td><span class="px-num">${fmtC(patternCost(pat))}</span></td>
         <td><span class="px-num">${patternOpenCount(pat)}</span></td>
         <td><span class="px-num">${patternConfidenceScore(pat)}</span></td>
-        <td><span class="exec-pat-chip ${pat.fixability === 'HIGH' ? 'fix-high' : pat.fixability === 'MEDIUM' ? 'fix-med' : 'fix-low'}">${pat.fixability}</span></td>
+            <td><span class="exec-pat-chip ${(pat.investigationReadiness || pat.fixability) === 'HIGH' ? 'fix-high' : (pat.investigationReadiness || pat.fixability) === 'MEDIUM' ? 'fix-med' : 'fix-low'}">${pat.investigationReadiness || pat.fixability}</span></td>
         <td><span class="exec-pat-chip ${pat.trend === 'INCREASING' ? 'trend-up' : pat.trend === 'DECREASING' ? 'trend-dn' : 'trend-stable'}">${pat.trend[0] + pat.trend.slice(1).toLowerCase()}</span></td>
       </tr>`).join('');
     document.getElementById('patternGrid').innerHTML = `
@@ -7485,7 +7679,7 @@ function renderExecutivePatternView(patterns, ps) {
                   <th data-action="sortPatternTable" data-sort="cost">Cost Impact${sortMark('cost')}</th>
                   <th data-action="sortPatternTable" data-sort="open">Open Incidents${sortMark('open')}</th>
                   <th data-action="sortPatternTable" data-sort="confidence">Confidence${sortMark('confidence')}</th>
-                  <th data-action="sortPatternTable" data-sort="fixability">Fixability${sortMark('fixability')}</th>
+                  <th data-action="sortPatternTable" data-sort="fixability">Readiness${sortMark('fixability')}</th>
                   <th data-action="sortPatternTable" data-sort="trend">Trend${sortMark('trend')}</th>
                 </tr></thead>
                 <tbody>${rowHtml || '<tr><td colspan="8"><div class="exec-empty">No patterns match the selected filters.</div></td></tr>'}</tbody>
@@ -7651,7 +7845,7 @@ function renderExecutivePatternView(patterns, ps) {
     DECREASING: 'Trend: rate in second half is >30% lower than first half - pattern is improving',
   };
   const CONC_TOOLTIP = 'Concentration: how tightly all incidents in this pattern point to a single component. High = every occurrence implicates the same entity and costs roughly the same amount - easy to locate and fix. Low = incidents are spread across multiple components or vary widely in cost.';
-  const FIX_TOOLTIP  = 'Fixability: how likely a single engineering action can permanently resolve this pattern. High = Davis identified a consistent root cause, the pattern repeats on a stable schedule, and incidents cluster tightly on one component. Low = root cause varies or is unknown, making a permanent fix harder.';
+  const FIX_TOOLTIP  = 'Investigation Readiness: how prepared this pattern is for focused action based on evidence quality, recurrence, active incidents, and scoped context.';
 
   const driverRow = (badge, badgeCls, pat, valHtml, metaHtml) => `
     <div class="exec-t2-row">
@@ -7661,7 +7855,7 @@ function renderExecutivePatternView(patterns, ps) {
         <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
         ${isHighImpactPattern(pat, patterns) ? `<span class="exec-pat-chip trend-up" title="High impact: ${highImpactReason(pat, patterns)}">Impact: High</span>` : ''}
         <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
-        <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.investigationReadiness || pat.fixability]}" title="${FIX_TOOLTIP}">Ready: ${pat.investigationReadiness || pat.fixability}</span>
         ${renderConfidenceBadge(pat.confidence, 'pattern')}
       </div>
       <span class="exec-t2-val">${valHtml}</span>
@@ -7679,7 +7873,7 @@ function renderExecutivePatternView(patterns, ps) {
       <div class="exec-t2-chips">
         <span class="exec-pat-chip ${TREND_CLS[pat.trend]}" title="${TREND_TOOLTIP[pat.trend]}">${TREND_ICON[pat.trend]} ${pat.trend[0]+pat.trend.slice(1).toLowerCase()}</span>
         <span class="exec-pat-chip ${CONC_CLS[pat.concentration]}" title="${CONC_TOOLTIP}">Conc: ${pat.concentration}</span>
-        <span class="exec-pat-chip ${FIX_CLS[pat.fixability]}" title="${FIX_TOOLTIP}">Fix: ${pat.fixability}</span>
+        <span class="exec-pat-chip ${FIX_CLS[pat.investigationReadiness || pat.fixability]}" title="${FIX_TOOLTIP}">Ready: ${pat.investigationReadiness || pat.fixability}</span>
         ${d.primaryRootCause ? `<span class="exec-pat-chip exec-dim-chip">RCA: ${d.primaryRootCause}</span>` : ''}
       </div>
       <span class="exec-t2-val">${pat.occurrences}x</span>
@@ -8564,7 +8758,7 @@ function downloadValidationReport() {
   downloadTextFile(`opint-dql-validation-report-${filenameStamp}.html`, html, 'text/html;charset=utf-8');
 }
 function openP(id){alert(`Opens Dynatrace problem:\nhttps://your-tenant.apps.dynatrace.com/ui/problems/${id}`)}
-document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.classList.contains('cb-cfg'))p.classList.add('hidden')});
+document.addEventListener('click',e=>{const p=document.getElementById('cfgPanel');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!e.target.closest('[data-action="toggleCfg"]'))p.classList.add('hidden')});
 document.addEventListener('click',e=>{
   if (!weightsPopoverOpen) return;
   if (e.target.closest('.weights-popover') || e.target.closest('[data-action="toggleWeightsPopover"]')) return;

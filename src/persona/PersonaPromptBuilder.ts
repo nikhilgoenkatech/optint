@@ -6,7 +6,7 @@
 import { CostEstimate, DynatraceProblem, ProblemPattern } from '../models';
 import { PersonaType } from './PersonaResolver';
 
-export type ObjectiveType = 'cost_impact' | 'alert_optimization' | 'remediation';
+export type ObjectiveType = 'cost_impact' | 'alert_optimization';
 
 export interface AISummaryRequest {
   problems: DynatraceProblem[];
@@ -44,17 +44,32 @@ const PERSONA_GUIDANCE = `Executive → business cost, customer impact, risk. No
 SRE → reliability, MTTR, runbooks, SLOs, alert quality, investigation friction.
 Developer → affected service, debugging path, release validation, code ownership.`;
 
-const OBJECTIVE_GUIDANCE = `cost_impact → reduce recurring cost, customer impact, and engineering effort.
-Do not recommend alert tuning — that belongs to the alert_optimization objective.
+const OBJECTIVE_GUIDANCE = `cost_impact -> reduce recurring cost, customer impact, and engineering effort.
+Do not recommend alert tuning - that belongs to the alert_optimization objective.
 
-alert_optimization → alert tuning only. Threshold review, suppression windows,
-routing, event filter refinement. Not a service fix.
-Use "short-lived" not "auto-resolved".
+alert_optimization -> alert tuning only. Detector config changes, not service fixes.
+Use "short-lived" not "auto-resolved". Never recommend RCA investigation or code changes.
+Dynatrace capability must be one of: Davis AI | Workflows | AutomationEngine only.
 
-remediation → identify what to fix and how hard. For each action assess whether
-remediation effort is proportionate to recurrence and cost signals.
-Default high-effort actions to STRATEGIC unless evidence demands otherwise.
-Rank by effort-to-value ratio, not severity alone.`;
+Map recommendation_type to the exact Dynatrace tuning lever:
+  ADD_TIME_WINDOW -> dealertingSamples, seasonal baseline when day clustering is present, or suppression windows for time-bound patterns.
+  RAISE_THRESHOLD -> static threshold value, adaptive signal fluctuation count, or seasonal tolerance depending on detector model.
+  DISABLE_ALERT -> first set event.type = CUSTOM_INFO; only fully disable if still noisy.
+  TUNE_FREQUENCY -> violatingSamples, slidingWindow, dealertingSamples, or metric-key violation/dealerting windows.
+
+Detector model selection rules:
+  avg_duration < 5m -> dealertingSamples is the fix, not threshold.
+  hasDayCluster = true -> SeasonalBaselineAnomalyDetectionAnalyzer.
+  trend = STABLE -> StaticThresholdAnomalyDetectionAnalyzer.
+  trend = INCREASING/DECREASING -> AutoAdaptiveAnomalyDetectionAnalyzer.
+
+Routing triage before disabling:
+  Use dt.alert_group and event.severity >= 3 for low-urgency routing when noiseLikelihood is High and impactTier is Low.
+  Prefer matchesPhrase(smartscape.affected_entity.ids, "<entity-id>"); do not filter on root_cause_entity_id in Workflows.
+
+Consolidation signal:
+  sharedBlastRadiusPatternCount >= 2 means multiple patterns share the same root cause entity.
+  Recommend consolidating into a single detector with by:{dimension} grouping instead of separate detectors firing independently.`;
 
 const RESPONSE_SCHEMA = `{
   "objectiveAssessment": "2-3 sentences. Supplied signal values only.",
@@ -72,8 +87,8 @@ const RESPONSE_SCHEMA = `{
       "personaFit": ""
     }
   ],
-  "remediationContext": "include only when objective is remediation — omit otherwise: { horizon, effortJustification, blockers[] }",
-  "risks": ["unresolved evidence only — no future inference"],
+  "remediationContext": "optional: include only when directly supported by supplied signals: { horizon, effortJustification, blockers[] }",
+  "risks": ["unresolved evidence only - no future inference"],
   "dataGaps": ["absent or insufficient signal"]
 }`;
 

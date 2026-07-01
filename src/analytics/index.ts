@@ -10,6 +10,75 @@ function level(score: number): 'HIGH' | 'MEDIUM' | 'LOW' {
   return score >= 0.65 ? 'HIGH' : score >= 0.4 ? 'MEDIUM' : 'LOW';
 }
 
+function clamp(n: number, min = 0, max = 1): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function purityFor(values: Array<string | undefined | null>): number {
+  const clean = values.map(v => String(v || '').trim()).filter(Boolean);
+  if (!clean.length) return 0.5;
+  const counts = new Map<string, number>();
+  clean.forEach(v => counts.set(v, (counts.get(v) || 0) + 1));
+  return Math.max(...counts.values()) / clean.length;
+}
+
+function deriveEvidenceAndReadiness(input: {
+  problems: DynatraceProblem[];
+  rcaValues: string[];
+  consistentRCA: boolean;
+  recurrenceStability: number;
+  trend: ProblemPattern['trend'];
+  hasTimeCluster: boolean;
+}): { evidenceQuality: 'HIGH' | 'MEDIUM' | 'LOW'; investigationReadiness: 'HIGH' | 'MEDIUM' | 'LOW' } {
+  const { problems, rcaValues, consistentRCA, recurrenceStability, trend, hasTimeCluster } = input;
+  const total = Math.max(1, problems.length);
+  const coverage = (predicate: (problem: DynatraceProblem) => boolean) => problems.filter(predicate).length / total;
+  const rcaAvailable = rcaValues.length > 0;
+  const rcaConsistencyScore = consistentRCA ? 1 : rcaValues.length > 1 ? 0.35 : 0;
+  const serviceCoverage = coverage(p => p.impactedEntities.some(e => Boolean(e.name)) || Boolean(p.rootCauseEntity?.name));
+  const categoryConsistency = purityFor(problems.map(p => p.severity));
+  const validTimestampCoverage = coverage(p => Number.isFinite(p.startTime) && p.startTime > 0);
+  const durationCoverage = coverage(p => Number.isFinite(p.duration || NaN) && (p.duration || 0) > 0);
+  const impactCoverage = coverage(p => (p.affectedUsers || 0) > 0 || p.impactedEntities.length > 0 || (p.operationalImpactScore || 0) > 0);
+  const problemIdCoverage = coverage(p => Boolean(p.problemId));
+
+  let evidenceQualityRaw = clamp(
+    (rcaAvailable ? 1 : 0) * 0.20 +
+    rcaConsistencyScore * 0.20 +
+    serviceCoverage * 0.20 +
+    categoryConsistency * 0.15 +
+    validTimestampCoverage * 0.10 +
+    durationCoverage * 0.05 +
+    impactCoverage * 0.05 +
+    problemIdCoverage * 0.05
+  );
+  if (!rcaAvailable) evidenceQualityRaw = Math.min(evidenceQualityRaw, 0.62);
+  if (validTimestampCoverage < 0.5) evidenceQualityRaw = Math.min(evidenceQualityRaw, 0.58);
+  if (serviceCoverage < 0.5) evidenceQualityRaw = Math.min(evidenceQualityRaw, 0.55);
+
+  const recurrenceStrength = clamp((problems.length - 1) / 7);
+  const openSignal = clamp(problems.filter(p => p.status === 'OPEN').length / 3);
+  const timeTrendSignal = hasTimeCluster ? 1 : trend === 'INCREASING' ? 0.85 : trend === 'STABLE' ? 0.55 : 0.35;
+  const assistContextCompleteness = clamp((problemIdCoverage + validTimestampCoverage + categoryConsistency + serviceCoverage) / 4);
+  let investigationReadinessRaw = clamp(
+    evidenceQualityRaw * 0.35 +
+    recurrenceStrength * 0.15 +
+    openSignal * 0.10 +
+    serviceCoverage * 0.10 +
+    timeTrendSignal * 0.10 +
+    recurrenceStability * 0.10 +
+    assistContextCompleteness * 0.10
+  );
+  if (problems.length < 3) investigationReadinessRaw = Math.min(investigationReadinessRaw, 0.62);
+  if (validTimestampCoverage < 0.7) investigationReadinessRaw = Math.min(investigationReadinessRaw, 0.58);
+  if (!rcaAvailable && evidenceQualityRaw < 0.5) investigationReadinessRaw = Math.min(investigationReadinessRaw, 0.50);
+
+  return {
+    evidenceQuality: level(evidenceQualityRaw),
+    investigationReadiness: level(investigationReadinessRaw),
+  };
+}
+
 // ── MTTR analytics ────────────────────────────────────────
 
 export function calculateMTTR(problems: DynatraceProblem[]): {
@@ -196,10 +265,22 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
   const dimensions = buildPatternDimensions(problems);
   const uniqueTitles = new Set(problems.map(p => normaliseTitle(p.title))).size;
   const clusterPurity = Math.max(0, Math.min(1, 1 - ((uniqueTitles - 1) / problems.length)));
+  const gaps = times.slice(1).map((t, i) => t - times[i]);
+  const gapMean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
+  const gapVariance = gaps.length > 1 ? gaps.reduce((sum, gap) => sum + Math.pow(gap - gapMean, 2), 0) / gaps.length : 0;
+  const recurrenceStability = clamp(1 - (gapMean ? Math.sqrt(gapVariance) / gapMean : 1), 0, 1);
   const rcaConsistency = rcaValues.length === 1 ? 1 : rcaValues.length > 1 ? 0.5 : 0;
   const dimensionPurity = dimensions.dimensionPurity;
   const concentration = level(clusterPurity * 0.3 + (rcaConsistency || 0.2) * 0.3 + dimensionPurity * 0.4);
-  const fixability = level(rcaConsistency * 0.45 + (recScore / 100) * 0.2 + clusterPurity * 0.15 + dimensionPurity * 0.2);
+  const evidenceModel = deriveEvidenceAndReadiness({
+    problems,
+    rcaValues,
+    consistentRCA: rcaValues.length === 1,
+    recurrenceStability,
+    trend: trend as ProblemPattern['trend'],
+    hasTimeCluster,
+  });
+  const fixability = evidenceModel.investigationReadiness;
   const confidence = level(clusterPurity * 0.25 + rcaConsistency * 0.3 + dimensionPurity * 0.2 + Math.min(problems.length / 5, 1) * 0.25);
 
   const recommendation = recommendAction({
@@ -236,6 +317,8 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
     problems,
     trend:           trend as ProblemPattern['trend'],
     concentration,
+    evidenceQuality: evidenceModel.evidenceQuality,
+    investigationReadiness: evidenceModel.investigationReadiness,
     fixability,
     confidence,
     recurrenceScore: recScore,

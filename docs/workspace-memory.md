@@ -148,6 +148,13 @@ Assist behavior must be persona-specific.
 
 Do not reuse Developer prompts for SRE or Executive.
 
+Active recommendation objectives are limited to:
+
+- `cost_impact`
+- `alert_optimization`
+
+Remediation remains a right-panel workflow action, but it is not a top-level recommendation objective. Runtime prompt generation should clamp unknown objective values back to `cost_impact` so stale or experimental objective values cannot leak into Assist prompts.
+
 ### Executive Assist
 
 Executive Assist should produce a C-level briefing:
