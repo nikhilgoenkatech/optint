@@ -2,8 +2,8 @@ import React from 'react';
 import { Flex } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
-import { ObjectiveType, DeveloperKPIs, PatternRow, PatternDetail, WorkspaceViewModel } from '../../types/views';
-import { samplePatternRows, samplePatternDetail } from '../../fixtures/patterns.sample';
+import { ObjectiveType, DeveloperKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
+import { samplePatternRows } from '../../fixtures/patterns.sample';
 
 interface DeveloperViewProps {
   objective: ObjectiveType;
@@ -13,7 +13,6 @@ interface DeveloperViewProps {
 
 export function DeveloperView({ objective, onObjectiveChange, viewModel }: DeveloperViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
-  const selectedPattern: PatternDetail | undefined = viewModel?.selectedPattern ?? samplePatternDetail;
   const loading = false;
 
   if (loading) {
@@ -27,14 +26,14 @@ export function DeveloperView({ objective, onObjectiveChange, viewModel }: Devel
   return (
     <Flex flexDirection="column" gap={16} padding={24}>
       <Heading level={2}>Developer View</Heading>
-      {/* KPI cards — Phase 6 */}
-      {/* Developer Heat Map — Phase 7 */}
-      {/* Pattern table — Phase 5 */}
-      {/* Persistent right panel — Phase 8 */}
+      {/* Phase 6: KPI cards */}
+      {/* Phase 7: Developer Heat Map */}
+      {/* Phase 5: Pattern table */}
+      {/* Phase 8: Persistent right panel */}
       <Text>
-        {patterns.length} patterns · {objective} objective
+        {patterns.length} patterns · <strong>{objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization'}</strong>
       </Text>
-      <Text color="text-secondary" style={{ fontSize: 12 }}>
+      <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
         Shell — fixture data. Codex wires viewModel prop.
       </Text>
     </Flex>

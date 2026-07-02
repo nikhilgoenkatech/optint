@@ -1,0 +1,16 @@
+/*
+ * Global layout resets for the Strato app shell.
+ * Keeps the body and root filling the viewport; everything else is Strato's responsibility.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+}

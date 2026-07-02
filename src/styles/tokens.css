@@ -1,0 +1,34 @@
+/*
+ * Token foundation — maps Calibrate's legacy custom vars to Strato design tokens.
+ * All new components use these vars directly; old ui/app.js vars are not loaded
+ * in the Strato build so there is no conflict.
+ */
+
+:root {
+  /* Surfaces */
+  --bg-base:       var(--dt-colors-background-base-default);
+  --bg-surface:    var(--dt-colors-background-surface-default);
+  --bg-container:  var(--dt-colors-background-container-neutral-default);
+  --bg-subdued:    var(--dt-colors-background-container-neutral-subdued);
+
+  /* Text */
+  --text-primary:  var(--dt-colors-text-neutral-default);
+  --text-muted:    var(--dt-colors-text-neutral-subdued);
+  --text-on-accent:var(--dt-colors-text-neutral-on-accent-default);
+
+  /* Interactive / accent */
+  --accent:        var(--dt-colors-background-container-primary-accent);
+  --accent-subtle: var(--dt-colors-background-container-primary-default);
+
+  /* Borders */
+  --border:        var(--dt-colors-border-neutral-default);
+  --border-subdued:var(--dt-colors-border-neutral-subdued);
+
+  /* Status */
+  --success:       var(--dt-colors-text-success-default);
+  --success-bg:    var(--dt-colors-background-container-success-default);
+  --warning:       var(--dt-colors-text-warning-default);
+  --warning-bg:    var(--dt-colors-background-container-warning-default);
+  --danger:        var(--dt-colors-text-critical-default);
+  --danger-bg:     var(--dt-colors-background-container-critical-default);
+}
