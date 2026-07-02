@@ -80,7 +80,7 @@ Replace custom-built primitives with Strato equivalents. No logic changes.
 | Component | Import path | Key props |
 |-----------|-------------|-----------|
 | `Button` | `@dynatrace/strato-components/buttons` | `variant="accent"\|"default"` |
-| `Badge` | `@dynatrace/strato-components/content` | `color`, `emphasis` |
+| `Chip` | `@dynatrace/strato-components/content` | `color`, `variant` |
 | `Tooltip` | `@dynatrace/strato-components/content` | `text` |
 | `ProgressCircle` | `@dynatrace/strato-components/content` | `size` |
 | `SegmentedControl` | `@dynatrace/strato-components/forms` | `value`, `onChange` |
@@ -89,7 +89,7 @@ Replace custom-built primitives with Strato equivalents. No logic changes.
 
 **Before starting Phase 4:** verify each import path compiles — re-run `npx tsc --noEmit` after adding each component.
 
-**Codex action for Phase 4:** Review Badge color/variant mapping against `DisplayLevel` and `TrendDirection` types in `src/types/views.ts` — confirm they match before Claude implements.
+**Codex action for Phase 4:** Review Chip color/variant mapping against `DisplayLevel` and `TrendDirection` types in `src/types/views.ts` — confirmed in `src/components/atoms/StatusChip.tsx`.
 
 ---
 
@@ -109,9 +109,9 @@ export const patternColumns = [
   { id: 'cost',      header: 'Cost',           accessor: 'costFormatted' },
   { id: 'recur',     header: 'Recurrences',    accessor: 'recurrenceCount' },
   { id: 'blast',     header: 'Blast radius',   accessor: 'blastRadius' },
-  { id: 'severity',  header: 'Severity',       accessor: 'severity',  cell: SeverityBadge },
-  { id: 'trend',     header: 'Trend',          accessor: 'trend',     cell: TrendIndicator },
-  { id: 'evidence',  header: 'Evidence',       accessor: 'evidenceQuality', cell: EvidenceBadge },
+  { id: 'severity',  header: 'Severity',       accessor: 'severity',  cell: SeverityChip },
+  { id: 'trend',     header: 'Trend',          accessor: 'trend',     cell: TrendChip },
+  { id: 'evidence',  header: 'Evidence',       accessor: 'evidenceQuality', cell: EvidenceChip },
   { id: 'actions',   header: '',               cell: ActionMenu },
 ];
 ```
