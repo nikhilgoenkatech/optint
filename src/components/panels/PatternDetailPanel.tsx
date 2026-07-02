@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Flex, Surface, Divider } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { Button } from '@dynatrace/strato-components/buttons';
@@ -14,6 +14,127 @@ const ACCENT = 'var(--dt-colors-background-container-primary-accent, #1496ff)';
 interface PatternDetailPanelProps {
   pattern: PatternDetail | null;
   onClose: () => void;
+}
+
+type RecommendationStatus = 'idle' | 'loading' | 'ready' | 'insufficient';
+
+type RecommendationResult = {
+  assessment: string;
+  drivers: Array<{ signal: string; value: string; whyItMatters: string }>;
+  action: {
+    priority: 'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+    title: string;
+    strength: 'Evidence-backed' | 'Candidate' | 'Data-gap';
+    reason: string;
+    capability: string;
+  };
+  dataGaps: string[];
+};
+
+type RecommendationState = {
+  status: RecommendationStatus;
+  result?: RecommendationResult;
+};
+
+function isMeaningfulSignal(value: string | number | string[] | null | undefined): boolean {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.trim() !== '' && value.trim().toLowerCase() !== 'absent';
+  return Number.isFinite(value);
+}
+
+function signalText(value: string | number | string[] | null | undefined): string {
+  if (Array.isArray(value)) return value.join(', ');
+  if (value === null || value === undefined || value === '') return 'absent';
+  return String(value);
+}
+
+function formatObjective(objective: PatternDetail['assistContext']['objective']): string {
+  return objective.replace('_', ' ');
+}
+
+function buildRecommendation(pattern: PatternDetail): RecommendationResult | null {
+  const evidence = pattern.assistContext.evidence;
+  const objective = pattern.assistContext.objective;
+  const signals = Object.entries(evidence).filter(([, value]) => isMeaningfulSignal(value));
+
+  if (signals.length < 3) return null;
+
+  const occurrences = signalText(evidence.occurrence_count);
+  const cost = signalText(evidence.operational_cost);
+  const savings = signalText(evidence.potential_savings);
+  const users = signalText(evidence.affected_users);
+  const trend = signalText(evidence.trend);
+  const rca = signalText(evidence.rca_availability);
+
+  const drivers = [
+    isMeaningfulSignal(evidence.operational_cost)
+      ? {
+          signal: 'operational_cost',
+          value: cost,
+          whyItMatters: objective === 'cost_impact'
+            ? 'Cost is the primary executive signal for prioritising recurring risk.'
+            : 'Cost provides guardrails for how much tuning effort is justified.',
+        }
+      : null,
+    isMeaningfulSignal(evidence.occurrence_count)
+      ? {
+          signal: 'occurrence_count',
+          value: occurrences,
+          whyItMatters: objective === 'alert_optimization'
+            ? 'Repeated signals indicate whether alert tuning is worth reviewing.'
+            : 'Recurring problems multiply business exposure over the selected period.',
+        }
+      : null,
+    isMeaningfulSignal(evidence.affected_users)
+      ? {
+          signal: 'affected_users',
+          value: users,
+          whyItMatters: 'Customer impact changes the executive priority of the pattern.',
+        }
+      : null,
+    isMeaningfulSignal(evidence.trend)
+      ? {
+          signal: 'trend',
+          value: trend,
+          whyItMatters: 'Trend shows whether recurrence is improving, stable, or getting worse.',
+        }
+      : null,
+  ].filter(Boolean) as RecommendationResult['drivers'];
+
+  const dataGaps = [
+    !isMeaningfulSignal(evidence.potential_savings) ? 'potential_savings is missing.' : null,
+    !isMeaningfulSignal(evidence.affected_users) ? 'affected_users is missing.' : null,
+    !isMeaningfulSignal(evidence.root_cause_entity) ? 'root_cause_entity is missing.' : null,
+  ].filter(Boolean) as string[];
+
+  if (objective === 'alert_optimization') {
+    return {
+      assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, and trend ${trend}. Because the active objective is alert optimization, action should stay focused on signal quality and routing rather than service remediation.`,
+      drivers,
+      action: {
+        priority: drivers.length >= 3 ? 'SHORT_TERM' : 'STRATEGIC',
+        title: 'Review alert tuning for this recurring signal',
+        strength: drivers.length >= 3 ? 'Evidence-backed' : 'Candidate',
+        reason: `occurrence_count=${occurrences}; trend=${trend}; operational_cost=${cost}`,
+        capability: 'Davis AI',
+      },
+      dataGaps,
+    };
+  }
+
+  return {
+    assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, ${savings} potential savings, and ${users} affected user(s). RCA availability is ${rca}, so the recommendation stays tied to the supplied business and recurrence signals.`,
+    drivers,
+    action: {
+      priority: drivers.length >= 3 ? 'IMMEDIATE' : 'SHORT_TERM',
+      title: pattern.recommendedAction,
+      strength: drivers.length >= 3 ? 'Evidence-backed' : 'Candidate',
+      reason: `operational_cost=${cost}; occurrence_count=${occurrences}; affected_users=${users}`,
+      capability: 'Davis AI',
+    },
+    dataGaps,
+  };
 }
 
 function TrendArrow({ trend }: { trend: TrendDirection }) {
@@ -41,6 +162,20 @@ function StatRow({ label, value }: { label: string; value: string | number }) {
 }
 
 export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps) {
+  const [recommendation, setRecommendation] = useState<RecommendationState>({ status: 'idle' });
+
+  useEffect(() => {
+    setRecommendation({ status: 'idle' });
+  }, [pattern?.id, pattern?.assistContext.objective]);
+
+  async function generateRecommendation() {
+    if (!pattern) return;
+    setRecommendation({ status: 'loading' });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const result = buildRecommendation(pattern);
+    setRecommendation(result ? { status: 'ready', result } : { status: 'insufficient' });
+  }
+
   return (
     <Surface
       elevation="raised"
@@ -189,19 +324,57 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
 
         {/* Assist */}
         <Flex flexDirection="column" gap={8}>
-          <SectionLabel>Assist</SectionLabel>
+          <SectionLabel>Recommendation</SectionLabel>
           <Container color="neutral" variant="emphasized" padding={12}>
             <Flex flexDirection="column" gap={8}>
               <span style={{ fontSize: 11, color: MUTED }}>
-                Davis Copilot · {pattern.assistContext.persona} · {pattern.assistContext.objective.replace('_', ' ')}
+                Calibrate Assist · {pattern.assistContext.persona} · {formatObjective(pattern.assistContext.objective)}
               </span>
               <Text textStyle="small">
-                Ask Davis to investigate this pattern across {pattern.assistContext.problemIds.length} problem
-                {pattern.assistContext.problemIds.length !== 1 ? 's' : ''}.
+                Generate an evidence-gated recommendation from the selected pattern and its observed signals.
               </Text>
-              <Button variant="accent" style={{ alignSelf: 'flex-start' }}>
-                Open in Davis Copilot
+              <Button
+                variant="accent"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={generateRecommendation}
+                disabled={recommendation.status === 'loading'}
+              >
+                {recommendation.status === 'loading' ? 'Generating...' : 'Generate Recommendation'}
               </Button>
+              {recommendation.status === 'insufficient' && (
+                <Container color="critical" variant="default" padding={8}>
+                  <Text textStyle="small">
+                    Insufficient signal data. Add at least three meaningful observed signals before generating a recommendation.
+                  </Text>
+                </Container>
+              )}
+              {recommendation.status === 'ready' && recommendation.result && (
+                <Container color="neutral" variant="default" padding={8}>
+                  <Flex flexDirection="column" gap={8}>
+                    <Text textStyle="small">{recommendation.result.assessment}</Text>
+                    <Flex flexDirection="column" gap={4}>
+                      {recommendation.result.drivers.slice(0, 3).map(driver => (
+                        <Text key={driver.signal} textStyle="small" style={{ color: MUTED }}>
+                          <strong>{driver.signal}</strong>: {driver.value} - {driver.whyItMatters}
+                        </Text>
+                      ))}
+                    </Flex>
+                    <Divider />
+                    <Flex flexDirection="column" gap={4}>
+                      <Text textStyle="small" style={{ fontWeight: 700 }}>{recommendation.result.action.title}</Text>
+                      <Text textStyle="small" style={{ color: MUTED }}>
+                        {recommendation.result.action.priority} · {recommendation.result.action.strength} · {recommendation.result.action.capability}
+                      </Text>
+                      <Text textStyle="small">{recommendation.result.action.reason}</Text>
+                    </Flex>
+                    {recommendation.result.dataGaps.length > 0 && (
+                      <Text textStyle="small" style={{ color: MUTED }}>
+                        Data gaps: {recommendation.result.dataGaps.join(' ')}
+                      </Text>
+                    )}
+                  </Flex>
+                </Container>
+              )}
             </Flex>
           </Container>
         </Flex>

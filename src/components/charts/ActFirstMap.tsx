@@ -24,6 +24,15 @@ type MapPoint = {
   radius: number;
 };
 
+type PopupPosition = {
+  left: string;
+  top?: string;
+  bottom?: string;
+};
+
+const POPUP_WIDTH = 250;
+const POPUP_GAP = 14;
+
 const PRIORITY_STYLE: Record<PriorityLevel, { border: string; background: string; text: string; glow: string }> = {
   High: {
     border: 'var(--dt-colors-border-critical-default, #c41a00)',
@@ -98,6 +107,31 @@ function buildMapPoints(patterns: PatternRow[]): MapPoint[] {
       radius: bubbleRadius(pattern.recurrenceCount, recurrences),
     };
   });
+}
+
+function getSafePopupPosition(point: MapPoint): PopupPosition {
+  const inset = 8;
+  const left = `clamp(${inset}px, calc(${point.x}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
+  const verticalGap = point.radius + POPUP_GAP;
+
+  if (point.y > 64) {
+    return {
+      left,
+      top: `calc(${100 - point.y}% + ${verticalGap}px)`,
+    };
+  }
+
+  if (point.y < 30) {
+    return {
+      left,
+      bottom: `calc(${point.y}% + ${verticalGap}px)`,
+    };
+  }
+
+  return {
+    left,
+    top: `calc(${100 - point.y}% + ${verticalGap}px)`,
+  };
 }
 
 export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
@@ -223,7 +257,7 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
           color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
         }}
       >
-        Lower remediation effort →
+        Lower remediation effort -&gt;
       </div>
       <div
         style={{
@@ -236,7 +270,7 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
           color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
         }}
       >
-        Higher business impact →
+        Higher business impact -&gt;
       </div>
     </div>
   );
@@ -264,8 +298,7 @@ function QuadrantLabel({ label, left, top }: { label: string; left: string; top:
 
 function PatternPopup({ point, onClose }: { point: MapPoint; onClose: () => void }) {
   const style = PRIORITY_STYLE[point.priority];
-  const anchorAbove = point.y > 62;
-  const xTransform = point.x > 72 ? 'translate(-92%, 12px)' : point.x < 28 ? 'translate(-8%, 12px)' : 'translate(-50%, 12px)';
+  const position = getSafePopupPosition(point);
 
   return (
     <div
@@ -273,16 +306,15 @@ function PatternPopup({ point, onClose }: { point: MapPoint; onClose: () => void
       aria-label={`${point.name} pattern summary`}
       style={{
         position: 'absolute',
-        left: `${point.x}%`,
-        top: anchorAbove ? 'auto' : `${100 - point.y}%`,
-        bottom: anchorAbove ? `${point.y}%` : 'auto',
-        transform: xTransform,
-        width: 250,
+        left: position.left,
+        top: position.top,
+        bottom: position.bottom,
+        width: POPUP_WIDTH,
         padding: 12,
         border: `1px solid ${style.border}`,
         borderRadius: 8,
         background: 'var(--dt-colors-background-container-neutral-default, #ffffff)',
-        boxShadow: '0 16px 40px rgba(31, 38, 46, 0.18)',
+        boxShadow: `0 0 0 3px ${style.glow}, 0 16px 40px rgba(31, 38, 46, 0.18)`,
         zIndex: 5,
       }}
     >
@@ -321,7 +353,7 @@ function PatternPopup({ point, onClose }: { point: MapPoint; onClose: () => void
               fontWeight: 700,
             }}
           >
-            {point.priority}
+            Priority: {point.priority}
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
