@@ -5,7 +5,7 @@
 // The SDK clients are pre-authenticated by the AppEngine runtime.
 // No API keys are needed in code.
 
-// import { queryExecutionClient }    from '@dynatrace-sdk/client-query';
+import { queryExecutionClient }    from '@dynatrace-sdk/client-query';
 // import { problemsClient, businessEventsIngestClient }
 //                                    from '@dynatrace-sdk/client-classic-environment-v2';
 
@@ -21,18 +21,16 @@ import { DEFAULT_COST_CONFIG, estimateCost } from '../cost/CostModel';
 export async function fetchProblems(
   filters: FilterState
 ): Promise<DynatraceProblem[]> {
-  // Production:
-  // const result = await queryExecutionClient().queryExecute({
-  //   body: {
-  //     query: DQL_QUERIES.fetchProblems(filters),
-  //     requestTimeoutMilliseconds: 15000,
-  //     fetchTimeoutSeconds: 30,
-  //   }
-  // });
-  // const records = result.result?.records ?? [];
-  // return records.map(mapRecordToProblem);
-
-  throw new Error('DynatraceService: connect to AppEngine runtime to use live data');
+  const result = await queryExecutionClient.queryExecute({
+    body: {
+      query: DQL_QUERIES.fetchProblems(filters),
+      requestTimeoutMilliseconds: 15000,
+      fetchTimeoutSeconds: 60,
+    },
+  });
+  const records = (result.result?.records ?? [])
+    .filter(Boolean) as Array<Record<string, unknown>>;
+  return records.map(mapRecordToProblem);
 }
 
 // ── Fetch KPIs ─────────────────────────────────────────────

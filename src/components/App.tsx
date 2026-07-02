@@ -6,7 +6,7 @@ import { PersonaType, ObjectiveType } from '../types/views';
 import { ExecutiveView } from './views/ExecutiveView';
 import { SREView } from './views/SREView';
 import { DeveloperView } from './views/DeveloperView';
-import { MockDataService } from '../services/mockDataService';
+import { fetchProblems } from '../services/dynatraceService';
 import { detectPatterns } from '../analytics';
 import { DynatraceProblem, FilterState } from '../models';
 import {
@@ -51,11 +51,11 @@ export function App() {
       setLoading(true);
       setLoadError(null);
       try {
-        const rows = await MockDataService.getProblems(DEFAULT_FILTERS);
+        const rows = await fetchProblems(DEFAULT_FILTERS);
         if (!cancelled) setProblems(rows);
       } catch (error) {
-        console.error('[Strato preview] Failed to load pattern source data', error);
-        if (!cancelled) setLoadError('Pattern source data is not available.');
+        console.error('[Strato preview] Failed to load live Davis problem data', error);
+        if (!cancelled) setLoadError('Live Davis problem data is not available.');
       } finally {
         if (!cancelled) setLoading(false);
       }
