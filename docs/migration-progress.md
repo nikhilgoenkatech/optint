@@ -13,9 +13,9 @@
 | 0 — Contracts & fixtures | Codex | ✅ Done | `src/types/views.ts`, `src/fixtures/`, `src/lib/pattern-adapter.ts`, `src/lib/persona-view-models.ts` |
 | 1 — Scaffold | Claude | ✅ Done | React 18, Strato deps, `src/index.tsx`, `ui/main.tsx` wired |
 | 2 — App shell & navigation | Claude | ✅ Done | `AppHeader`, `Tabs` (3 persona tabs), view shells with fixture data |
-| 3 — Token foundation | Claude | 🔜 Next | CSS token mapping only — see details below |
-| 4 — Atomic components | Claude | ⬜ Queued | After Phase 3 |
-| 5 — Pattern table | Claude + Codex | ⬜ Queued | Strato DataTable, Codex wires data |
+| 3 — Token foundation | Claude | ✅ Done | `src/styles/tokens.css`, `src/styles/global.css` |
+| 4 — Atomic components | Claude | ✅ Done | `src/components/atoms/StatusChip.tsx`, `ObjectiveToggle.tsx` |
+| 5 — Pattern table | Claude + Codex | ✅ Shell done | `src/components/table/PatternTable.tsx` — Codex wires real data via viewModel prop |
 | 6 — KPI cards | Claude + Codex | ⬜ Queued | |
 | 7 — Visualisations | Claude + Codex | ⬜ Queued | Custom SVG wrappers |
 | 8 — Panels & popovers | Claude + Codex | ⬜ Queued | Persistent right panel for Assist |
@@ -98,23 +98,16 @@ Replace custom-built primitives with Strato equivalents. No logic changes.
 **Claude builds:** Strato `DataTable` shell consuming `PatternRow[]` from `src/fixtures/patterns.sample.ts`.  
 **Codex wires:** real `PatternRow[]` from `pattern-adapter.ts` output.
 
-Strato DataTable import path (to verify): `@dynatrace/strato-components/tables`
+**DataTable API (verified from node_modules 3.8.0):**
+- Import: `import { DataTable, DataTableColumnDef } from '@dynatrace/strato-components/tables'`
+- Props: `data: TData[]`, `columns: DataTableColumnDef<TData>[]`, `fullWidth`, `sortable`
+- `cell` in column def is `(props: { value, rowData, rowIndex, rowId, format, detectLinks, isLineWrapped }) => JSX.Element`
+- Both `data` and `columns` must be memoized (`useMemo`) for performance
 
-Column config Claude will publish:
-```ts
-// src/components/table/patternColumns.tsx
-// Codex reviews before Claude implements
-export const patternColumns = [
-  { id: 'name',      header: 'Pattern',        accessor: 'name' },
-  { id: 'cost',      header: 'Cost',           accessor: 'costFormatted' },
-  { id: 'recur',     header: 'Recurrences',    accessor: 'recurrenceCount' },
-  { id: 'blast',     header: 'Blast radius',   accessor: 'blastRadius' },
-  { id: 'severity',  header: 'Severity',       accessor: 'severity',  cell: SeverityChip },
-  { id: 'trend',     header: 'Trend',          accessor: 'trend',     cell: TrendChip },
-  { id: 'evidence',  header: 'Evidence',       accessor: 'evidenceQuality', cell: EvidenceChip },
-  { id: 'actions',   header: '',               cell: ActionMenu },
-];
-```
+**Built in `src/components/table/PatternTable.tsx`:**
+Columns: Pattern, Cost, Recurrences, Blast radius, Severity (SeverityChip), Trend (TrendChip), Evidence (EvidenceChip), Status (StatusChip), Priority (PriorityChip)
+
+**Codex action for Phase 5:** Replace fixture data in views with real `PatternRow[]` from `persona-view-models.ts`. Pass as `viewModel` prop to each view — the `patterns` array already falls back to fixture when `viewModel` is undefined, so wiring is drop-in.
 
 ---
 

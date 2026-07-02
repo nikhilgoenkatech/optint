@@ -5,7 +5,7 @@ import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
-import { SeverityChip, TrendChip, EvidenceChip } from '../atoms/StatusChip';
+import { PatternTable } from '../table/PatternTable';
 
 interface SREViewProps {
   objective: ObjectiveType;
@@ -35,17 +35,8 @@ export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProp
       {/* Phase 6: KPI cards */}
       {/* Phase 7: Reliability Risk Matrix */}
 
-      {/* Phase 5: Pattern table — preview of chips from fixture */}
-      <Flex flexDirection="column" gap={8}>
-        {patterns.slice(0, 3).map(p => (
-          <Flex key={p.id} gap={8} alignItems="center">
-            <Text>{p.name}</Text>
-            <SeverityChip value={p.severity} />
-            <TrendChip value={p.trend} />
-            <EvidenceChip value={p.evidenceQuality} />
-          </Flex>
-        ))}
-      </Flex>
+      {/* Phase 5: Pattern Explorer Table */}
+      <PatternTable data={patterns} />
 
       {/* Phase 8: Persistent right panel */}
       <Text textStyle="small">Fixture data · Codex wires viewModel prop</Text>
