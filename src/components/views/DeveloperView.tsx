@@ -6,6 +6,7 @@ import { ObjectiveType, DeveloperKPIs, PatternRow, WorkspaceViewModel } from '..
 import { samplePatternRows, sampleDeveloperKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { DeveloperKpiRow } from '../kpis/DeveloperKpiRow';
+import { DeveloperHeatMap } from '../charts/DeveloperHeatMap';
 import { PatternTable } from '../table/PatternTable';
 
 interface DeveloperViewProps {
@@ -36,7 +37,7 @@ export function DeveloperView({ objective, onObjectiveChange, viewModel }: Devel
 
       {/* Phase 6: KPI cards */}
       <DeveloperKpiRow kpis={kpis} />
-      {/* Phase 7: Developer Heat Map */}
+      <DeveloperHeatMap patterns={patterns} />
 
       {/* Phase 5: Pattern Explorer Table */}
       <PatternTable data={patterns} />

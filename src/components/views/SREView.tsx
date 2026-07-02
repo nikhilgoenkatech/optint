@@ -6,6 +6,7 @@ import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../ty
 import { samplePatternRows, sampleSREKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { SREKpiRow } from '../kpis/SREKpiRow';
+import { ReliabilityRiskMatrix } from '../charts/ReliabilityRiskMatrix';
 import { PatternTable } from '../table/PatternTable';
 
 interface SREViewProps {
@@ -36,7 +37,7 @@ export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProp
 
       {/* Phase 6: KPI cards */}
       <SREKpiRow kpis={kpis} />
-      {/* Phase 7: Reliability Risk Matrix */}
+      <ReliabilityRiskMatrix patterns={patterns} />
 
       {/* Phase 5: Pattern Explorer Table */}
       <PatternTable data={patterns} />

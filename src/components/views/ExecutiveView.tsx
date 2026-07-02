@@ -6,6 +6,7 @@ import { ObjectiveType, ExecKPIs, PatternRow, WorkspaceViewModel } from '../../t
 import { samplePatternRows, sampleExecKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { ExecKpiRow } from '../kpis/ExecKpiRow';
+import { ActFirstMap } from '../charts/ActFirstMap';
 import { PatternTable } from '../table/PatternTable';
 
 interface ExecutiveViewProps {
@@ -36,7 +37,7 @@ export function ExecutiveView({ objective, onObjectiveChange, viewModel }: Execu
 
       {/* Phase 6: KPI cards */}
       <ExecKpiRow kpis={kpis} />
-      {/* Phase 7: Act-First Map */}
+      <ActFirstMap patterns={patterns} />
 
       {/* Phase 5: Pattern Explorer Table */}
       <PatternTable data={patterns} />

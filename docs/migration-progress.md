@@ -17,7 +17,7 @@
 | 4 — Atomic components | Claude | ✅ Done | `src/components/atoms/StatusChip.tsx`, `ObjectiveToggle.tsx` |
 | 5 — Pattern table | Claude + Codex | ✅ Shell done | `src/components/table/PatternTable.tsx` — Codex wires real data via viewModel prop |
 | 6 — KPI cards | Claude + Codex | ✅ Shell done | `src/components/atoms/KpiCard.tsx`, `src/components/kpis/` — Codex wires real KPIs via viewModel |
-| 7 — Visualisations | Claude + Codex | ⬜ Queued | Custom SVG wrappers |
+| 7 — Visualisations | Claude | ✅ Done | `ActFirstMap`, `ReliabilityRiskMatrix`, `DeveloperHeatMap` — pure inline SVG in `src/components/charts/` |
 | 8 — Panels & popovers | Claude + Codex | ⬜ Queued | Persistent right panel for Assist |
 | 9 — Persona layouts | Claude + Codex | ⬜ Queued | Full Executive / SRE / Developer views |
 
