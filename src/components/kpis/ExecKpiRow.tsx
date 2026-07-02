@@ -10,10 +10,10 @@ interface ExecKpiRowProps {
 export function ExecKpiRow({ kpis }: ExecKpiRowProps) {
   return (
     <Flex gap={12}>
-      <KpiCard metric={kpis.openRiskExposure} />
-      <KpiCard metric={kpis.recoverableNow} />
-      <KpiCard metric={kpis.activePatterns} />
-      <KpiCard metric={kpis.resolutionTime} />
+      <KpiCard metric={kpis.openRiskExposure} semantic="danger" />
+      <KpiCard metric={kpis.recoverableNow}   semantic="success" />
+      <KpiCard metric={kpis.activePatterns}   semantic="warning" />
+      <KpiCard metric={kpis.resolutionTime}   semantic="neutral" />
     </Flex>
   );
 }

@@ -35,38 +35,58 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
 
   return (
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
-      <Flex flexDirection="column" gap={16} padding={24} style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Heading level={2}>Executive Overview</Heading>
+      {/* Primary decision workspace — 72% */}
+      <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
+
+        {/* Decision control strip */}
+        <Flex
+          justifyContent="space-between"
+          alignItems="center"
+          padding={16}
+          style={{ borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
+        >
+          <Flex flexDirection="column" gap={2}>
+            <Heading level={2} style={{ margin: 0 }}>Executive Overview</Heading>
+            <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
+              Prioritise by operational objective
+            </span>
+          </Flex>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
         </Flex>
 
-        <ExecKpiRow kpis={kpis} />
+        {/* KPI row */}
+        <div style={{ padding: '16px 16px 0' }}>
+          <ExecKpiRow kpis={kpis} />
+        </div>
 
-        <Tabs selectedIndex={viewTab} onChange={setViewTab}>
-          <Tab title="Act-First Map">
-            <div style={{ width: '100%' }}>
+        {/* Primary workspace tabs */}
+        <div style={{ padding: '0 16px 16px', flex: 1 }}>
+          <Tabs selectedIndex={viewTab} onChange={setViewTab}>
+            <Tab title="Act-First Map">
               <ActFirstMap
                 patterns={patterns}
                 selectedPatternId={viewModel?.selectedPatternId ?? null}
                 onPatternSelect={onPatternSelect}
               />
-            </div>
-          </Tab>
-          <Tab title="Pattern Explorer">
-            <PatternTable
-              data={patterns}
-              selectedPatternId={viewModel?.selectedPatternId ?? null}
-              onPatternSelect={onPatternSelect}
-            />
-          </Tab>
-        </Tabs>
+            </Tab>
+            <Tab title="Pattern Explorer">
+              <PatternTable
+                data={patterns}
+                selectedPatternId={viewModel?.selectedPatternId ?? null}
+                onPatternSelect={onPatternSelect}
+              />
+            </Tab>
+          </Tabs>
+        </div>
       </Flex>
 
-      <PatternDetailPanel
-        pattern={selectedPattern}
-        onClose={() => onPatternSelect?.(null)}
-      />
+      {/* Investigation panel — 28% */}
+      <div style={{ flex: '0 0 28%', minWidth: 280, height: '100%', overflow: 'hidden' }}>
+        <PatternDetailPanel
+          pattern={selectedPattern}
+          onClose={() => onPatternSelect?.(null)}
+        />
+      </div>
     </Flex>
   );
 }

@@ -35,38 +35,53 @@ export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, v
 
   return (
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
-      <Flex flexDirection="column" gap={16} padding={24} style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Heading level={2}>Developer View</Heading>
+      <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
+
+        <Flex
+          justifyContent="space-between"
+          alignItems="center"
+          padding={16}
+          style={{ borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
+        >
+          <Flex flexDirection="column" gap={2}>
+            <Heading level={2} style={{ margin: 0 }}>Developer View</Heading>
+            <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
+              Code quality and fixability signals
+            </span>
+          </Flex>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
         </Flex>
 
-        <DeveloperKpiRow kpis={kpis} />
+        <div style={{ padding: '16px 16px 0' }}>
+          <DeveloperKpiRow kpis={kpis} />
+        </div>
 
-        <Tabs selectedIndex={viewTab} onChange={setViewTab}>
-          <Tab title="Developer Heat Map">
-            <div style={{ width: '100%' }}>
+        <div style={{ padding: '0 16px 16px', flex: 1 }}>
+          <Tabs selectedIndex={viewTab} onChange={setViewTab}>
+            <Tab title="Developer Heat Map">
               <DeveloperHeatMap
                 patterns={patterns}
                 selectedPatternId={viewModel?.selectedPatternId ?? null}
                 onPatternSelect={onPatternSelect}
               />
-            </div>
-          </Tab>
-          <Tab title="Pattern Explorer">
-            <PatternTable
-              data={patterns}
-              selectedPatternId={viewModel?.selectedPatternId ?? null}
-              onPatternSelect={onPatternSelect}
-            />
-          </Tab>
-        </Tabs>
+            </Tab>
+            <Tab title="Pattern Explorer">
+              <PatternTable
+                data={patterns}
+                selectedPatternId={viewModel?.selectedPatternId ?? null}
+                onPatternSelect={onPatternSelect}
+              />
+            </Tab>
+          </Tabs>
+        </div>
       </Flex>
 
-      <PatternDetailPanel
-        pattern={selectedPattern}
-        onClose={() => onPatternSelect?.(null)}
-      />
+      <div style={{ flex: '0 0 28%', minWidth: 280, height: '100%', overflow: 'hidden' }}>
+        <PatternDetailPanel
+          pattern={selectedPattern}
+          onClose={() => onPatternSelect?.(null)}
+        />
+      </div>
     </Flex>
   );
 }

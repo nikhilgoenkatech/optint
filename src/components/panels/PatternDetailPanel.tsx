@@ -3,6 +3,7 @@ import { Flex, Surface, Divider } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { Button } from '@dynatrace/strato-components/buttons';
 import { Container } from '@dynatrace/strato-components/layouts';
+import { EmptyState } from '@dynatrace/strato-components/content';
 import { PatternDetail, TrendDirection } from '../../types/views';
 
 const MUTED  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
@@ -44,13 +45,11 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
     <Surface
       elevation="raised"
       style={{
-        width: 360,
-        minWidth: 360,
+        width: '100%',
         height: '100%',
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
-        borderLeft: '1px solid var(--dt-colors-border-neutral-default, #e0e0e0)',
       }}
       padding={0}
     >
@@ -73,12 +72,40 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
         )}
       </Flex>
 
-      {/* Empty state */}
+      {/* Empty state — rich preview sections */}
       {!pattern && (
-        <Flex flexDirection="column" alignItems="center" justifyContent="center"
-          gap={12} padding={24} style={{ flex: 1, textAlign: 'center' }}>
-          <span style={{ fontSize: 32 }}>☰</span>
-          <Text>Select a row from the pattern table, or click a bubble or cell in the chart above to explore a pattern.</Text>
+        <Flex flexDirection="column" gap={12} padding={16} style={{ flex: 1 }}>
+          <EmptyState size="small">
+            <EmptyState.Visual>
+              <EmptyState.VisualPreset context="chart" type="no-result" />
+            </EmptyState.Visual>
+            <EmptyState.Title>No pattern selected</EmptyState.Title>
+            <EmptyState.Details>Select a bubble from the Act-First Map or a row from the Pattern Explorer to see investigation details.</EmptyState.Details>
+          </EmptyState>
+
+          {/* Preview section placeholders */}
+          <Divider />
+          <Text textStyle="small" style={{ color: MUTED, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', fontSize: 10 }}>
+            When selected, you'll see:
+          </Text>
+
+          {[
+            { icon: '💰', title: 'Business Impact', desc: 'Risk exposure, recoverable value, affected users' },
+            { icon: '🔄', title: 'Recurrence Timeline', desc: 'Occurrence history and trend direction' },
+            { icon: '🔍', title: 'Investigation Friction', desc: 'Evidence quality, readiness, remediation effort' },
+            { icon: '⚡', title: 'Recommended Remediation', desc: 'Davis-backed action with confidence score' },
+          ].map(section => (
+            <Container key={section.title} color="neutral" variant="default" padding={12}
+              style={{ opacity: 0.6 }}>
+              <Flex alignItems="flex-start" gap={8}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>{section.icon}</span>
+                <Flex flexDirection="column" gap={2}>
+                  <Text textStyle="small" style={{ fontWeight: 600 }}>{section.title}</Text>
+                  <Text textStyle="small" style={{ color: MUTED }}>{section.desc}</Text>
+                </Flex>
+              </Flex>
+            </Container>
+          ))}
         </Flex>
       )}
 

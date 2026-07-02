@@ -19,9 +19,7 @@ type MapMarker = {
   recurrenceCount: number;
   openProblemCount: number;
   x0: number;
-  x1: number;
   y0: number;
-  y1: number;
 };
 
 function parseCost(costFormatted: string): number {
@@ -36,7 +34,7 @@ function normalize(value: number, values: number[], fallback: number): number {
   const min = Math.min(...finiteValues);
   const max = Math.max(...finiteValues);
   if (!finiteValues.length || min === max) return fallback;
-  return 12 + ((value - min) / (max - min)) * 76;
+  return 10 + ((value - min) / (max - min)) * 80;
 }
 
 function severityValue(pattern: PatternRow): number {
@@ -47,10 +45,18 @@ function actionButton(id: string, onPatternSelect?: (id: string) => void) {
   if (!onPatternSelect) return <></>;
   return (
     <Button variant="accent" onClick={() => onPatternSelect(id)}>
-      Select pattern
+      Investigate
     </Button>
   );
 }
+
+// Quadrant label overlay — positioned over the chart SVG using absolute CSS
+const QUADRANT_LABELS = [
+  { label: 'Plan & Fund',   left: '5%',  top: '5%'  },
+  { label: 'Act Now',       left: '55%', top: '5%'  },
+  { label: 'Deprioritize',  left: '5%',  top: '55%' },
+  { label: 'Quick Win',     left: '55%', top: '55%' },
+];
 
 export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
   const data = useMemo<MapMarker[]>(() => {
@@ -59,9 +65,8 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
 
     return patterns.map(pattern => {
       const cost = parseCost(pattern.costFormatted);
-      const x = normalize(cost, costs, 72);
-      const y = normalize(pattern.blastRadius, impacts, 72);
-      const halfSize = pattern.id === selectedPatternId ? 2.8 : 2.2;
+      const x = normalize(cost, costs, 55);
+      const y = normalize(pattern.blastRadius, impacts, 55);
 
       return {
         id: pattern.id,
@@ -72,13 +77,11 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
         severityValue: severityValue(pattern),
         recurrenceCount: pattern.recurrenceCount,
         openProblemCount: pattern.openProblemCount,
-        x0: Math.max(0, x - halfSize),
-        x1: Math.min(100, x + halfSize),
-        y0: Math.max(0, y - halfSize),
-        y1: Math.min(100, y + halfSize),
+        x0: x,
+        y0: y,
       };
     });
-  }, [patterns, selectedPatternId]);
+  }, [patterns]);
 
   const selectedData = useMemo(
     () => data.filter(point => point.id === selectedPatternId),
@@ -87,65 +90,84 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
 
   if (patterns.length === 0) {
     return (
-      <XYChart data={[]} height={260}>
+      <XYChart data={[]} height={380}>
         <XYChart.EmptyState>No patterns to display</XYChart.EmptyState>
       </XYChart>
     );
   }
 
   return (
-    <XYChart data={data} height={320} colorPalette="red-green-inverted">
-      <XYChart.XAxis
-        id="cost-axis"
-        type="numerical"
-        position="bottom"
-        label="Relative cost impact"
-        min={0}
-        max={100}
-        formatter={(value) => `${Math.round(value)}%`}
-        allowDecimals={false}
-      />
-      <XYChart.YAxis
-        id="impact-axis"
-        type="numerical"
-        position="left"
-        label="Relative blast radius"
-        min={0}
-        max={100}
-        formatter={(value) => `${Math.round(value)}%`}
-        allowDecimals={false}
-      />
-      <XYChart.RectSeries
-        xAxisId="cost-axis"
-        yAxisId="impact-axis"
-        x0Accessor="x0"
-        x1Accessor="x1"
-        y0Accessor="y0"
-        y1Accessor="y1"
-        valueAccessor="severityValue"
-        valueAccessorLabel="Severity"
-        valueMin={1}
-        valueMax={3}
-        actions={(point) => actionButton(String(point.id), onPatternSelect)}
-      />
-      <XYChart.RectSeries
-        data={selectedData}
-        xAxisId="cost-axis"
-        yAxisId="impact-axis"
-        x0Accessor="x0"
-        x1Accessor="x1"
-        y0Accessor="y0"
-        y1Accessor="y1"
-        valueAccessor="severityValue"
-        valueAccessorLabel="Selected pattern"
-        valueMin={1}
-        valueMax={3}
-        colorPalette="blue"
-        actions={(point) => actionButton(String(point.id), onPatternSelect)}
-      />
-      <XYChart.Tooltip />
-      <XYChart.Legend position="bottom" />
-    </XYChart>
+    <div style={{ position: 'relative' }}>
+      {/* Quadrant labels */}
+      {QUADRANT_LABELS.map(q => (
+        <div
+          key={q.label}
+          style={{
+            position: 'absolute',
+            left: q.left,
+            top: q.top,
+            zIndex: 1,
+            pointerEvents: 'none',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+            opacity: 0.7,
+          }}
+        >
+          {q.label}
+        </div>
+      ))}
+      <XYChart data={data} height={380} colorPalette="red-green-inverted">
+        <XYChart.XAxis
+          id="cost-axis"
+          type="numerical"
+          position="bottom"
+          label="Cost impact →"
+          min={0}
+          max={100}
+          formatter={(value) => value === 0 ? 'Low' : value === 50 ? 'Medium' : value === 100 ? 'High' : ''}
+          allowDecimals={false}
+        />
+        <XYChart.YAxis
+          id="impact-axis"
+          type="numerical"
+          position="left"
+          label="Blast radius →"
+          min={0}
+          max={100}
+          formatter={(value) => value === 0 ? 'Contained' : value === 50 ? 'Moderate' : value === 100 ? 'Widespread' : ''}
+          allowDecimals={false}
+        />
+        <XYChart.DotSeries
+          xAxisId="cost-axis"
+          yAxisId="impact-axis"
+          x0Accessor="x0"
+          y0Accessor="y0"
+          nameAccessor="name"
+          seriesIdAccessor="id"
+          shape="circle"
+          actions={(point) => actionButton(String(point.id), onPatternSelect)}
+        />
+        {selectedData.length > 0 && (
+          <XYChart.DotSeries
+            data={selectedData}
+            xAxisId="cost-axis"
+            yAxisId="impact-axis"
+            x0Accessor="x0"
+            y0Accessor="y0"
+            nameAccessor="name"
+            seriesIdAccessor="id"
+            shape="circle"
+            colorPalette="blue"
+            actions={(point) => actionButton(String(point.id), onPatternSelect)}
+          />
+        )}
+        <XYChart.Tooltip />
+        <XYChart.Legend position="bottom" />
+      </XYChart>
+    </div>
   );
 }
 
