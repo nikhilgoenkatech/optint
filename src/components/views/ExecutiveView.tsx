@@ -12,10 +12,11 @@ import { PatternTable } from '../table/PatternTable';
 interface ExecutiveViewProps {
   objective: ObjectiveType;
   onObjectiveChange: (o: ObjectiveType) => void;
+  onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<ExecKPIs>;
 }
 
-export function ExecutiveView({ objective, onObjectiveChange, viewModel }: ExecutiveViewProps) {
+export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, viewModel }: ExecutiveViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleExecKPIs;
   const loading = false;
@@ -40,7 +41,11 @@ export function ExecutiveView({ objective, onObjectiveChange, viewModel }: Execu
       <ActFirstMap patterns={patterns} />
 
       {/* Phase 5: Pattern Explorer Table */}
-      <PatternTable data={patterns} />
+      <PatternTable
+        data={patterns}
+        selectedPatternId={viewModel?.selectedPatternId ?? null}
+        onPatternSelect={onPatternSelect}
+      />
 
       {/* Phase 8: Persistent right panel */}
       <Text textStyle="small">Pattern rows and KPIs from persona view model</Text>

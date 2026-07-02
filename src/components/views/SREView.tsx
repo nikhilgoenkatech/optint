@@ -12,10 +12,11 @@ import { PatternTable } from '../table/PatternTable';
 interface SREViewProps {
   objective: ObjectiveType;
   onObjectiveChange: (o: ObjectiveType) => void;
+  onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<SREKPIs>;
 }
 
-export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProps) {
+export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel }: SREViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const loading = false;
@@ -40,7 +41,11 @@ export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProp
       <ReliabilityRiskMatrix patterns={patterns} />
 
       {/* Phase 5: Pattern Explorer Table */}
-      <PatternTable data={patterns} />
+      <PatternTable
+        data={patterns}
+        selectedPatternId={viewModel?.selectedPatternId ?? null}
+        onPatternSelect={onPatternSelect}
+      />
 
       {/* Phase 8: Persistent right panel */}
       <Text textStyle="small">Pattern rows and KPIs from persona view model</Text>

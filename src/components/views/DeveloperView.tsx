@@ -12,10 +12,11 @@ import { PatternTable } from '../table/PatternTable';
 interface DeveloperViewProps {
   objective: ObjectiveType;
   onObjectiveChange: (o: ObjectiveType) => void;
+  onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<DeveloperKPIs>;
 }
 
-export function DeveloperView({ objective, onObjectiveChange, viewModel }: DeveloperViewProps) {
+export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, viewModel }: DeveloperViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleDeveloperKPIs;
   const loading = false;
@@ -40,7 +41,11 @@ export function DeveloperView({ objective, onObjectiveChange, viewModel }: Devel
       <DeveloperHeatMap patterns={patterns} />
 
       {/* Phase 5: Pattern Explorer Table */}
-      <PatternTable data={patterns} />
+      <PatternTable
+        data={patterns}
+        selectedPatternId={viewModel?.selectedPatternId ?? null}
+        onPatternSelect={onPatternSelect}
+      />
 
       {/* Phase 8: Persistent right panel */}
       <Text textStyle="small">Pattern rows and KPIs from persona view model</Text>

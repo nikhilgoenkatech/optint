@@ -39,6 +39,7 @@ const DEFAULT_FILTERS: FilterState = {
 export function App() {
   const [personaIndex, setPersonaIndex] = useState(0);
   const [objective, setObjective] = useState<ObjectiveType>('cost_impact');
+  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
   const [problems, setProblems] = useState<DynatraceProblem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -68,17 +69,23 @@ export function App() {
 
   const patterns = useMemo(() => detectPatterns(problems).patterns, [problems]);
 
+  useEffect(() => {
+    if (selectedPatternId && !patterns.some((pattern) => pattern.patternId === selectedPatternId)) {
+      setSelectedPatternId(null);
+    }
+  }, [patterns, selectedPatternId]);
+
   const executiveViewModel = useMemo(
-    () => buildWorkspaceViewModel('executive', objective, patterns, buildExecKPIs(patterns), null),
-    [objective, patterns],
+    () => buildWorkspaceViewModel('executive', objective, patterns, buildExecKPIs(patterns), selectedPatternId),
+    [objective, patterns, selectedPatternId],
   );
   const sreViewModel = useMemo(
-    () => buildWorkspaceViewModel('sre', objective, patterns, buildSREKPIs(patterns), null),
-    [objective, patterns],
+    () => buildWorkspaceViewModel('sre', objective, patterns, buildSREKPIs(patterns), selectedPatternId),
+    [objective, patterns, selectedPatternId],
   );
   const developerViewModel = useMemo(
-    () => buildWorkspaceViewModel('developer', objective, patterns, buildDeveloperKPIs(patterns), null),
-    [objective, patterns],
+    () => buildWorkspaceViewModel('developer', objective, patterns, buildDeveloperKPIs(patterns), selectedPatternId),
+    [objective, patterns, selectedPatternId],
   );
 
   return (
@@ -99,6 +106,7 @@ export function App() {
             <ExecutiveView
               objective={objective}
               onObjectiveChange={setObjective}
+              onPatternSelect={setSelectedPatternId}
               viewModel={executiveViewModel}
             />
           </Tab>
@@ -106,6 +114,7 @@ export function App() {
             <SREView
               objective={objective}
               onObjectiveChange={setObjective}
+              onPatternSelect={setSelectedPatternId}
               viewModel={sreViewModel}
             />
           </Tab>
@@ -113,6 +122,7 @@ export function App() {
             <DeveloperView
               objective={objective}
               onObjectiveChange={setObjective}
+              onPatternSelect={setSelectedPatternId}
               viewModel={developerViewModel}
             />
           </Tab>

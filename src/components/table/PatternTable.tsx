@@ -68,9 +68,16 @@ const columns: DataTableColumnDef<PatternRow>[] = [
 interface PatternTableProps {
   data: PatternRow[];
   sortable?: boolean;
+  selectedPatternId?: string | null;
+  onPatternSelect?: (id: string | null) => void;
 }
 
-export function PatternTable({ data, sortable = true }: PatternTableProps) {
+export function PatternTable({
+  data,
+  sortable = true,
+  selectedPatternId = null,
+  onPatternSelect,
+}: PatternTableProps) {
   const memoData = useMemo(() => data, [data]);
   const memoColumns = useMemo(() => columns, []);
 
@@ -80,6 +87,10 @@ export function PatternTable({ data, sortable = true }: PatternTableProps) {
       columns={memoColumns}
       fullWidth
       sortable={sortable}
+      rowId={(row) => row.id}
+      interactiveRows={Boolean(onPatternSelect)}
+      activeRow={selectedPatternId}
+      onActiveRowChange={(rowId) => onPatternSelect?.(rowId)}
     />
   );
 }
