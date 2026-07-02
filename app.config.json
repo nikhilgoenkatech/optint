@@ -1,12 +1,12 @@
 {
   "environmentUrl": "https://ykd61701.sprint.apps.dynatracelabs.com",
   "build": {
-    "index": "src/index.tsx"
+    "index": "ui/strato-index.html"
   },
   "app": {
     "id": "my.dynatrace.opint.strato",
     "name": "Calibrate (Strato Preview)",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "Strato migration preview - runs alongside my.dynatrace.opint for validation",
     "scopes": [
       {
