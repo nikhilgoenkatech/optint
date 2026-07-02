@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { Button } from '@dynatrace/strato-components/buttons';
+import { XYChart } from '@dynatrace/strato-components/charts';
 import { PatternRow } from '../../types/views';
 
 interface DeveloperHeatMapProps {
@@ -7,117 +9,140 @@ interface DeveloperHeatMapProps {
   selectedPatternId?: string | null;
 }
 
-const SEVERITY_COLOR: Record<PatternRow['severity'], string> = {
-  High:   '#e84626',
-  Medium: '#f5a623',
-  Low:    '#2ab06f',
+type HeatCell = {
+  id: string;
+  name: string;
+  service: string;
+  patternIndex: number;
+  serviceIndex: number;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  recurrence: number;
 };
 
-const CELL    = 28;
-const GAP     = 2;
-const LABEL_W = 140;
-const COL_H   = 72;
-const TITLE_H = 24;
+function selectAction(id: string, onPatternSelect?: (id: string) => void) {
+  if (!onPatternSelect) return <></>;
+  return (
+    <Button variant="accent" onClick={() => onPatternSelect(id)}>
+      Select service pattern
+    </Button>
+  );
+}
 
-function truncate(str: string, max: number): string {
-  return str.length > max ? str.slice(0, max - 1) + '…' : str;
+function labelForIndex(labels: string[], value: number): string {
+  const index = Math.max(0, Math.min(labels.length - 1, Math.floor(value)));
+  const label = labels[index] ?? '';
+  return label.length > 18 ? `${label.slice(0, 17)}...` : label;
 }
 
 export function DeveloperHeatMap({ patterns, onPatternSelect, selectedPatternId }: DeveloperHeatMapProps) {
-  const muted  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
-  const strong = 'var(--dt-colors-text-neutral-default, #23282d)';
-  const empty  = 'var(--dt-colors-background-container-neutral-subdued, #f5f5f5)';
-  const border = 'var(--dt-colors-border-neutral-subdued, #e0e0e0)';
+  const services = useMemo(() => {
+    const serviceSet = new Set<string>();
+    patterns.forEach(pattern => {
+      if (pattern.affectedServices.length === 0) {
+        serviceSet.add('Unscoped service');
+      } else {
+        pattern.affectedServices.forEach(service => serviceSet.add(service));
+      }
+    });
+    return Array.from(serviceSet);
+  }, [patterns]);
 
-  if (patterns.length === 0) {
+  const cells = useMemo<HeatCell[]>(() => {
+    return patterns.flatMap((pattern, patternIndex) => {
+      const affectedServices = pattern.affectedServices.length > 0
+        ? pattern.affectedServices
+        : ['Unscoped service'];
+
+      return affectedServices.map(service => {
+        const serviceIndex = Math.max(0, services.indexOf(service));
+        return {
+          id: pattern.id,
+          name: pattern.name,
+          service,
+          patternIndex,
+          serviceIndex,
+          x0: patternIndex,
+          x1: patternIndex + 0.86,
+          y0: serviceIndex,
+          y1: serviceIndex + 0.86,
+          recurrence: Math.max(1, pattern.recurrenceCount),
+        };
+      });
+    });
+  }, [patterns, services]);
+
+  const selectedCells = useMemo(
+    () => cells.filter(cell => cell.id === selectedPatternId),
+    [cells, selectedPatternId],
+  );
+
+  const height = Math.max(240, Math.min(460, services.length * 34 + 130));
+  const maxRecurrence = Math.max(1, ...cells.map(cell => cell.recurrence));
+
+  if (patterns.length === 0 || services.length === 0) {
     return (
-      <svg width="100%" viewBox="0 0 400 80">
-        <text x={200} y={40} textAnchor="middle" dominantBaseline="middle"
-          style={{ fill: muted, fontSize: 13 }}>No patterns to display</text>
-      </svg>
+      <XYChart data={[]} height={220}>
+        <XYChart.EmptyState>No service patterns to display</XYChart.EmptyState>
+      </XYChart>
     );
   }
 
-  const servicesSet = new Set<string>();
-  patterns.forEach(p => p.affectedServices.forEach(s => servicesSet.add(s)));
-  const services = Array.from(servicesSet);
-
-  const cols   = patterns.length;
-  const rows   = services.length;
-  const gridW  = cols * (CELL + GAP) - GAP;
-  const gridH  = rows * (CELL + GAP) - GAP;
-  const svgW   = LABEL_W + gridW + 16;
-  const svgH   = TITLE_H + COL_H + gridH + 8;
-  const gridX  = LABEL_W;
-  const gridY  = TITLE_H + COL_H;
-
   return (
-    <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block' }}>
-      <text x={0} y={16} style={{ fill: strong, fontSize: 13, fontWeight: 600 }}>
-        Developer Heat Map
-      </text>
-
-      {/* Column labels */}
-      {patterns.map((p, ci) => {
-        const cx = gridX + ci * (CELL + GAP) + CELL / 2;
-        const cy = gridY - 4;
-        return (
-          <text key={p.id} x={cx} y={cy} fontSize={10}
-            style={{ fill: muted }}
-            transform={`rotate(-45,${cx},${cy})`}
-            textAnchor="start">
-            {truncate(p.name, 16)}
-          </text>
-        );
-      })}
-
-      {/* Row labels */}
-      {services.map((svc, ri) => {
-        const cy = gridY + ri * (CELL + GAP) + CELL / 2;
-        return (
-          <text key={svc} x={LABEL_W - 8} y={cy} fontSize={11}
-            style={{ fill: strong }}
-            textAnchor="end" dominantBaseline="middle">
-            {svc}
-          </text>
-        );
-      })}
-
-      {/* Cells */}
-      {services.map((svc, ri) =>
-        patterns.map((p, ci) => {
-          const filled = p.affectedServices.includes(svc);
-          const x = gridX + ci * (CELL + GAP);
-          const y = gridY + ri * (CELL + GAP);
-          return (
-            <React.Fragment key={`${ri}-${ci}`}>
-              <rect x={x} y={y} width={CELL} height={CELL}
-                onClick={filled ? () => onPatternSelect?.(p.id) : undefined}
-                style={{
-                  fill: filled ? SEVERITY_COLOR[p.severity] : empty,
-                  fillOpacity: filled ? 0.85 : 1,
-                  stroke: border,
-                  strokeWidth: 1,
-                  cursor: filled && onPatternSelect ? 'pointer' : 'default',
-                }} />
-              {filled && p.id === selectedPatternId && (
-                <rect x={x} y={y} width={CELL} height={CELL}
-                  fill="none" stroke="#1496ff" strokeWidth={2} />
-              )}
-            </React.Fragment>
-          );
-        })
-      )}
-
-      {/* Legend */}
-      {(['High', 'Medium', 'Low'] as PatternRow['severity'][]).map((sev, i) => (
-        <g key={sev} transform={`translate(${LABEL_W + i * 70}, ${svgH - 2})`}>
-          <rect width={10} height={10} y={-10}
-            style={{ fill: SEVERITY_COLOR[sev], fillOpacity: 0.85 }} />
-          <text x={13} y={0} style={{ fill: muted, fontSize: 10 }}>{sev}</text>
-        </g>
-      ))}
-    </svg>
+    <XYChart data={cells} height={height} colorPalette="red">
+      <XYChart.XAxis
+        id="pattern-axis"
+        type="numerical"
+        position="bottom"
+        label="Recurring patterns"
+        min={0}
+        max={Math.max(1, patterns.length)}
+        formatter={(value) => labelForIndex(patterns.map(pattern => pattern.name), value)}
+        allowDecimals={false}
+      />
+      <XYChart.YAxis
+        id="service-axis"
+        type="numerical"
+        position="left"
+        label="Affected service"
+        min={0}
+        max={Math.max(1, services.length)}
+        formatter={(value) => labelForIndex(services, value)}
+        allowDecimals={false}
+      />
+      <XYChart.RectSeries
+        xAxisId="pattern-axis"
+        yAxisId="service-axis"
+        x0Accessor="x0"
+        x1Accessor="x1"
+        y0Accessor="y0"
+        y1Accessor="y1"
+        valueAccessor="recurrence"
+        valueAccessorLabel="Recurrences"
+        valueMin={1}
+        valueMax={maxRecurrence}
+        actions={(cell) => selectAction(String(cell.id), onPatternSelect)}
+      />
+      <XYChart.RectSeries
+        data={selectedCells}
+        xAxisId="pattern-axis"
+        yAxisId="service-axis"
+        x0Accessor="x0"
+        x1Accessor="x1"
+        y0Accessor="y0"
+        y1Accessor="y1"
+        valueAccessor="recurrence"
+        valueAccessorLabel="Selected"
+        valueMin={1}
+        valueMax={maxRecurrence}
+        colorPalette="blue"
+        actions={(cell) => selectAction(String(cell.id), onPatternSelect)}
+      />
+      <XYChart.Tooltip />
+      <XYChart.Legend position="bottom" />
+    </XYChart>
   );
 }
 

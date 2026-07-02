@@ -45,7 +45,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
 
         <Tabs selectedIndex={viewTab} onChange={setViewTab}>
           <Tab title="Act-First Map">
-            <div style={{ maxWidth: 760 }}>
+            <div style={{ width: '100%' }}>
               <ActFirstMap
                 patterns={patterns}
                 selectedPatternId={viewModel?.selectedPatternId ?? null}

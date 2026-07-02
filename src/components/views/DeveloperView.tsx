@@ -45,7 +45,7 @@ export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, v
 
         <Tabs selectedIndex={viewTab} onChange={setViewTab}>
           <Tab title="Developer Heat Map">
-            <div style={{ maxWidth: 760 }}>
+            <div style={{ width: '100%' }}>
               <DeveloperHeatMap
                 patterns={patterns}
                 selectedPatternId={viewModel?.selectedPatternId ?? null}
