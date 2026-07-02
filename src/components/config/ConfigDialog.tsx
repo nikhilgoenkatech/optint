@@ -1,5 +1,5 @@
 import React, { useRef, useCallback } from 'react';
-import { Modal, useOverlayWithTrigger } from '@dynatrace/strato-components/overlays';
+import { Modal } from '@dynatrace/strato-components/overlays';
 import { Flex, Divider } from '@dynatrace/strato-components/layouts';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { Text, Heading } from '@dynatrace/strato-components/typography';
@@ -153,8 +153,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function ConfigDialog({
   open, onClose, costConfig, onCostConfigChange, weightsConfig, onWeightsChange, objective,
 }: ConfigDialogProps) {
-  const { overlayProps } = useOverlayWithTrigger({ open });
-
   const updateCost = (key: keyof Omit<ExtendedCostConfig, 'severityMultipliers'>, value: number | null) => {
     if (value == null) return;
     onCostConfigChange({ ...costConfig, [key]: value });
@@ -181,8 +179,8 @@ export function ConfigDialog({
 
   return (
     <Modal
-      {...overlayProps}
       title="Configuration"
+      show={open}
       onDismiss={onClose}
       size="small"
     >
