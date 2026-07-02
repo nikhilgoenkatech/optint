@@ -1,3 +1,2 @@
-import './main.css';
-import './app.js';
+import '../src/index';
 export {};
