@@ -1,18 +1,18 @@
-import React, { useRef, useState, useCallback } from 'react';
-import { Modal } from '@dynatrace/strato-components/overlays';
-import { Flex } from '@dynatrace/strato-components/layouts';
+import React, { useRef, useCallback } from 'react';
+import { Modal, useOverlayWithTrigger } from '@dynatrace/strato-components/overlays';
+import { Flex, Divider } from '@dynatrace/strato-components/layouts';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
-import { Text } from '@dynatrace/strato-components/typography';
+import { Text, Heading } from '@dynatrace/strato-components/typography';
 import { Button } from '@dynatrace/strato-components/buttons';
-import { FormField, Label, TextInput } from '@dynatrace/strato-components/forms';
-import { CostConfig } from '../../models';
+import { FormField, Label, NumberInputV2 } from '@dynatrace/strato-components/forms';
+import { ExtendedCostConfig } from '../../models';
 import { ObjectiveType } from '../../types/views';
 
 // ── Types ──────────────────────────────────────────────────
 
 export interface WeightSegment {
   label: string;
-  pct: number;   // 0–100, all segments sum to 100
+  pct: number;
   color: string;
 }
 
@@ -20,6 +20,21 @@ export interface WeightsConfig {
   cost_impact: WeightSegment[];
   alert_optimization: WeightSegment[];
 }
+
+export const DEFAULT_EXTENDED_COST_CONFIG: ExtendedCostConfig = {
+  affectedUserCostPerHr:  4.8,
+  fallbackEntityCost:     0,
+  engineeringHourlyRate:  150,
+  defaultResponders:      3,
+  recoveryRatePct:        35,
+  severityMultipliers: {
+    AVAILABILITY:        1.0,
+    ERROR:               0.7,
+    PERFORMANCE:         0.3,
+    RESOURCE_CONTENTION: 0.15,
+    CUSTOM_ALERT:        0.05,
+  },
+};
 
 export const DEFAULT_WEIGHTS: WeightsConfig = {
   cost_impact: [
@@ -37,10 +52,10 @@ export const DEFAULT_WEIGHTS: WeightsConfig = {
 };
 
 interface ConfigDialogProps {
-  show: boolean;
-  onDismiss: () => void;
-  costConfig: CostConfig;
-  onCostConfigChange: (c: CostConfig) => void;
+  open: boolean;
+  onClose: () => void;
+  costConfig: ExtendedCostConfig;
+  onCostConfigChange: (c: ExtendedCostConfig) => void;
   weightsConfig: WeightsConfig;
   onWeightsChange: (w: WeightsConfig) => void;
   objective: ObjectiveType;
@@ -62,15 +77,17 @@ function AllocBar({ segments, onChange }: AllocBarProps) {
     if (!bar) return;
     const barW = bar.getBoundingClientRect().width;
     let lastX = e.clientX;
+    let current = segments.map(s => ({ ...s }));
 
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - lastX;
       lastX = ev.clientX;
       const dpct = (dx / barW) * 100;
-      const next = segments.map(s => ({ ...s }));
+      const next = current.map(s => ({ ...s }));
       const newA = Math.max(5, Math.min(next[idx].pct + dpct, next[idx].pct + next[idx + 1].pct - 5));
       next[idx + 1].pct = next[idx].pct + next[idx + 1].pct - newA;
       next[idx].pct = newA;
+      current = next;
       onChange(next);
     };
     const onUp = () => {
@@ -83,11 +100,7 @@ function AllocBar({ segments, onChange }: AllocBarProps) {
 
   return (
     <Flex flexDirection="column" gap={8}>
-      {/* Bar */}
-      <div
-        ref={barRef}
-        style={{ display: 'flex', height: 36, borderRadius: 6, overflow: 'hidden', userSelect: 'none' }}
-      >
+      <div ref={barRef} style={{ display: 'flex', height: 36, borderRadius: 6, overflow: 'hidden', userSelect: 'none' }}>
         {segments.map((seg, i) => (
           <div
             key={seg.label}
@@ -99,7 +112,6 @@ function AllocBar({ segments, onChange }: AllocBarProps) {
               alignItems: 'center',
               justifyContent: 'center',
               overflow: 'hidden',
-              transition: 'width 0.05s',
             }}
           >
             <span style={{ color: '#fff', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', padding: '0 4px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -108,23 +120,12 @@ function AllocBar({ segments, onChange }: AllocBarProps) {
             {i < segments.length - 1 && (
               <div
                 onMouseDown={(e) => startDrag(e, i)}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 6,
-                  background: 'rgba(255,255,255,0.35)',
-                  cursor: 'col-resize',
-                  zIndex: 2,
-                }}
+                style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 6, background: 'rgba(255,255,255,0.35)', cursor: 'col-resize', zIndex: 2 }}
               />
             )}
           </div>
         ))}
       </div>
-
-      {/* Legend */}
       <Flex gap={12} style={{ flexWrap: 'wrap' }}>
         {segments.map(seg => (
           <Flex key={seg.label} alignItems="center" gap={4}>
@@ -137,51 +138,139 @@ function AllocBar({ segments, onChange }: AllocBarProps) {
   );
 }
 
+// ── Section label ──────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', color: 'var(--dt-colors-text-neutral-subdued, #74777a)', textTransform: 'uppercase' }}>
+      {children}
+    </span>
+  );
+}
+
 // ── Dialog ─────────────────────────────────────────────────
 
 export function ConfigDialog({
-  show, onDismiss, costConfig, onCostConfigChange, weightsConfig, onWeightsChange, objective,
+  open, onClose, costConfig, onCostConfigChange, weightsConfig, onWeightsChange, objective,
 }: ConfigDialogProps) {
-  const [objTab, setObjTab] = useState<ObjectiveType>(objective);
+  const { overlayProps } = useOverlayWithTrigger({ open });
 
-  const updateCost = (key: keyof CostConfig, raw: string) => {
-    const val = parseFloat(raw);
-    if (!Number.isNaN(val) && val >= 0) onCostConfigChange({ ...costConfig, [key]: val });
+  const updateCost = (key: keyof Omit<ExtendedCostConfig, 'severityMultipliers'>, value: number | null) => {
+    if (value == null) return;
+    onCostConfigChange({ ...costConfig, [key]: value });
   };
 
-  const updateWeights = (segs: WeightSegment[]) => {
-    onWeightsChange({ ...weightsConfig, [objTab]: segs });
+  const updateSeverity = (sev: keyof ExtendedCostConfig['severityMultipliers'], value: number | null) => {
+    if (value == null) return;
+    onCostConfigChange({
+      ...costConfig,
+      severityMultipliers: { ...costConfig.severityMultipliers, [sev]: value },
+    });
   };
+
+  const updateWeights = (obj: ObjectiveType, segs: WeightSegment[]) => {
+    onWeightsChange({ ...weightsConfig, [obj]: segs });
+  };
+
+  const summaryText = `Standard profile: severity factors are AVAILABILITY ${costConfig.severityMultipliers.AVAILABILITY}, ` +
+    `ERROR ${costConfig.severityMultipliers.ERROR}, PERFORMANCE ${costConfig.severityMultipliers.PERFORMANCE}, ` +
+    `RESOURCE_CONTENTION ${costConfig.severityMultipliers.RESOURCE_CONTENTION}, ` +
+    `CUSTOM_ALERT ${costConfig.severityMultipliers.CUSTOM_ALERT}; ` +
+    `engineer rate $${costConfig.engineeringHourlyRate}/hr; responders ${costConfig.defaultResponders}; ` +
+    `affected user cost $${costConfig.affectedUserCostPerHr}/hr; recovery rate ${costConfig.recoveryRatePct}%.`;
 
   return (
-    <Modal title="Configuration" show={show} onDismiss={onDismiss} size="small">
+    <Modal
+      {...overlayProps}
+      title="Configuration"
+      onDismiss={onClose}
+      size="small"
+    >
       <Tabs>
-        <Tab title="Cost model">
+        <Tab title="Cost assumptions">
           <Flex flexDirection="column" gap={16} padding={4}>
-            <Text textStyle="small">
-              Used to estimate $ cost per incident pattern. Changes apply immediately.
-            </Text>
-            <FormField>
-              <Label>Revenue per user per minute ($)</Label>
-              <TextInput
-                value={String(costConfig.revenuePerUserPerMinute)}
-                onChange={(v) => updateCost('revenuePerUserPerMinute', v)}
-              />
-            </FormField>
-            <FormField>
-              <Label>Engineering hourly rate ($)</Label>
-              <TextInput
-                value={String(costConfig.engineeringHourlyRate)}
-                onChange={(v) => updateCost('engineeringHourlyRate', v)}
-              />
-            </FormField>
-            <FormField>
-              <Label>Average incident responders</Label>
-              <TextInput
-                value={String(costConfig.avgIncidentResponders)}
-                onChange={(v) => updateCost('avgIncidentResponders', v)}
-              />
-            </FormField>
+
+            <Flex flexDirection="column" gap={12}>
+              <SectionLabel>Business impact assumptions</SectionLabel>
+              <FormField>
+                <Label>Affected user cost / hr</Label>
+                <NumberInputV2
+                  value={costConfig.affectedUserCostPerHr}
+                  onChange={(v) => updateCost('affectedUserCostPerHr', v)}
+                  step={0.1}
+                  min={0}
+                />
+              </FormField>
+              <FormField>
+                <Label>Fallback entity cost</Label>
+                <NumberInputV2
+                  value={costConfig.fallbackEntityCost}
+                  onChange={(v) => updateCost('fallbackEntityCost', v)}
+                  step={1}
+                  min={0}
+                />
+              </FormField>
+            </Flex>
+
+            <Divider />
+
+            <Flex flexDirection="column" gap={12}>
+              <SectionLabel>Engineering assumptions</SectionLabel>
+              <FormField>
+                <Label>Engineer hourly rate ($)</Label>
+                <NumberInputV2
+                  value={costConfig.engineeringHourlyRate}
+                  onChange={(v) => updateCost('engineeringHourlyRate', v)}
+                  step={10}
+                  min={0}
+                />
+              </FormField>
+              <FormField>
+                <Label>Default responders</Label>
+                <NumberInputV2
+                  value={costConfig.defaultResponders}
+                  onChange={(v) => updateCost('defaultResponders', v)}
+                  step={1}
+                  min={1}
+                />
+              </FormField>
+              <FormField>
+                <Label>Recovery rate (%)</Label>
+                <NumberInputV2
+                  value={costConfig.recoveryRatePct}
+                  onChange={(v) => updateCost('recoveryRatePct', v)}
+                  step={1}
+                  min={0}
+                  max={100}
+                />
+              </FormField>
+            </Flex>
+
+            <Divider />
+
+            <Flex flexDirection="column" gap={12}>
+              <SectionLabel>Severity multipliers</SectionLabel>
+              {(Object.entries(costConfig.severityMultipliers) as [keyof ExtendedCostConfig['severityMultipliers'], number][]).map(([sev, val]) => (
+                <FormField key={sev}>
+                  <Label>{sev.charAt(0) + sev.slice(1).toLowerCase().replace('_', ' ')}</Label>
+                  <NumberInputV2
+                    value={val}
+                    onChange={(v) => updateSeverity(sev, v)}
+                    step={0.05}
+                    min={0}
+                    max={1}
+                  />
+                </FormField>
+              ))}
+            </Flex>
+
+            <Divider />
+            <Text textStyle="small">{summaryText}</Text>
+            <Text textStyle="small">These values are modeled estimates based on configured assumptions and available Davis problem data.</Text>
+
+            <Button variant="accent" onClick={onClose} style={{ width: '100%' }}>
+              Apply &amp; Recalculate
+            </Button>
           </Flex>
         </Tab>
 
@@ -190,28 +279,27 @@ export function ConfigDialog({
             <Text textStyle="small">
               Drag segment handles to redistribute ranking weight. Total is always 100%.
             </Text>
-            <Flex gap={8}>
-              {(['cost_impact', 'alert_optimization'] as ObjectiveType[]).map(obj => (
-                <Button
-                  key={obj}
-                  variant={objTab === obj ? 'accent' : 'default'}
-                  onClick={() => setObjTab(obj)}
-                >
-                  {obj === 'cost_impact' ? 'Cost impact' : 'Alert optimization'}
-                </Button>
-              ))}
+
+            <Flex flexDirection="column" gap={12}>
+              <SectionLabel>Cost impact</SectionLabel>
+              <AllocBar
+                segments={weightsConfig.cost_impact}
+                onChange={(segs) => updateWeights('cost_impact', segs)}
+              />
             </Flex>
-            <AllocBar
-              segments={weightsConfig[objTab]}
-              onChange={updateWeights}
-            />
+
+            <Divider />
+
+            <Flex flexDirection="column" gap={12}>
+              <SectionLabel>Alert optimization</SectionLabel>
+              <AllocBar
+                segments={weightsConfig.alert_optimization}
+                onChange={(segs) => updateWeights('alert_optimization', segs)}
+              />
+            </Flex>
           </Flex>
         </Tab>
       </Tabs>
-
-      <Flex justifyContent="flex-end" padding={4}>
-        <Button variant="accent" onClick={onDismiss}>Done</Button>
-      </Flex>
     </Modal>
   );
 }

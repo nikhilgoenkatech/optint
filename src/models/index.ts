@@ -253,6 +253,24 @@ export interface CostConfig {
   avgIncidentResponders:   number;
 }
 
+export interface ExtendedCostConfig {
+  // Business Impact
+  affectedUserCostPerHr:  number;
+  fallbackEntityCost:     number;
+  // Engineering
+  engineeringHourlyRate:  number;
+  defaultResponders:      number;
+  recoveryRatePct:        number;
+  // Severity multipliers
+  severityMultipliers: {
+    AVAILABILITY:        number;
+    ERROR:               number;
+    PERFORMANCE:         number;
+    RESOURCE_CONTENTION: number;
+    CUSTOM_ALERT:        number;
+  };
+}
+
 // ── Progress tracking ──────────────────────────────────────
 export interface WeeklySnapshot {
   weekStart:      number;

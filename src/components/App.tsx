@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AppHeader } from '@dynatrace/strato-components/layouts';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
-import { Select, SelectOption } from '@dynatrace/strato-components/forms';
+import { TimeframeSelector } from '@dynatrace/strato-components/filters';
+import type { Timeframe } from '@dynatrace/strato-components/core';
 import { SettingIcon } from '@dynatrace/strato-icons';
 import { PersonaType, ObjectiveType } from '../types/views';
 import { ExecutiveView } from './views/ExecutiveView';
@@ -10,28 +11,21 @@ import { SREView } from './views/SREView';
 import { DeveloperView } from './views/DeveloperView';
 import { fetchProblems } from '../services/dynatraceService';
 import { detectPatterns } from '../analytics';
-import { DynatraceProblem, FilterState, CostConfig } from '../models';
+import { DynatraceProblem, FilterState } from '../models';
 import {
   buildDeveloperKPIs,
   buildExecKPIs,
   buildSREKPIs,
   buildWorkspaceViewModel,
 } from '../lib/persona-view-models';
-import { DEFAULT_COST_CONFIG } from '../cost/CostModel';
-import { ConfigDialog, DEFAULT_WEIGHTS, WeightsConfig } from './config/ConfigDialog';
+import { ConfigDialog, DEFAULT_EXTENDED_COST_CONFIG, DEFAULT_WEIGHTS, WeightsConfig } from './config/ConfigDialog';
+import { ExtendedCostConfig } from '../models';
 
 const PERSONA_LABELS: Record<PersonaType, string> = {
   executive: 'Executive',
   sre: 'SRE',
   developer: 'Developer',
 };
-
-const TIMEFRAME_OPTIONS = [
-  { label: 'Last 24 hours', from: 'now-24h', to: 'now' },
-  { label: 'Last 7 days',   from: 'now-7d',  to: 'now' },
-  { label: 'Last 30 days',  from: 'now-30d', to: 'now' },
-  { label: 'Last 90 days',  from: 'now-90d', to: 'now' },
-];
 
 function makeFilters(from: string, to: string, label: string): FilterState {
   return { timeRange: { from, to, label }, applications: [], tags: [], managementZones: [], severities: [], statuses: [], searchText: '' };
@@ -44,20 +38,21 @@ export function App() {
   const [problems, setProblems] = useState<DynatraceProblem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [timeframeIdx, setTimeframeIdx] = useState(1); // default: Last 7 days
-  const [costConfig, setCostConfig] = useState<CostConfig>(DEFAULT_COST_CONFIG);
+  const [timeframe, setTimeframe] = useState<Timeframe | null>(null);
+  const [costConfig, setCostConfig] = useState<ExtendedCostConfig>(DEFAULT_EXTENDED_COST_CONFIG);
   const [weightsConfig, setWeightsConfig] = useState<WeightsConfig>(DEFAULT_WEIGHTS);
   const [configOpen, setConfigOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const tf = TIMEFRAME_OPTIONS[timeframeIdx];
+    const from = timeframe?.from?.absoluteDate ?? 'now-7d';
+    const to   = timeframe?.to?.absoluteDate   ?? 'now';
 
     async function loadProblems() {
       setLoading(true);
       setLoadError(null);
       try {
-        const rows = await fetchProblems(makeFilters(tf.from, tf.to, tf.label));
+        const rows = await fetchProblems(makeFilters(from, to, `${from} to ${to}`));
         if (!cancelled) setProblems(rows);
       } catch (error) {
         console.error('[Strato preview] Failed to load live Davis problem data', error);
@@ -71,7 +66,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [timeframeIdx]);
+  }, [timeframe]);
 
   const patterns = useMemo(() => detectPatterns(problems).patterns, [problems]);
 
@@ -99,14 +94,7 @@ export function App() {
       <AppHeader>
         <AppHeader.Logo>Calibrate</AppHeader.Logo>
         <AppHeader.ActionItems>
-          <Select
-            value={String(timeframeIdx)}
-            onChange={(v) => v != null && setTimeframeIdx(Number(v))}
-          >
-            {TIMEFRAME_OPTIONS.map((tf, i) => (
-              <SelectOption key={i} value={String(i)}>{tf.label}</SelectOption>
-            ))}
-          </Select>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
           <AppHeader.ActionButton
             prefixIcon={<SettingIcon />}
             onClick={() => setConfigOpen(true)}
@@ -118,8 +106,8 @@ export function App() {
       </AppHeader>
 
       <ConfigDialog
-        show={configOpen}
-        onDismiss={() => setConfigOpen(false)}
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
         costConfig={costConfig}
         onCostConfigChange={setCostConfig}
         weightsConfig={weightsConfig}
