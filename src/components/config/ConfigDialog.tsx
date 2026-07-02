@@ -38,16 +38,21 @@ export const DEFAULT_EXTENDED_COST_CONFIG: ExtendedCostConfig = {
 
 export const DEFAULT_WEIGHTS: WeightsConfig = {
   cost_impact: [
-    { label: 'Estimated cost', pct: 30, color: '#1a6af4' },
-    { label: 'Recurrence',     pct: 27, color: '#7c4dff' },
-    { label: 'Blast radius',   pct: 23, color: '#00897b' },
-    { label: 'Actionability',  pct: 20, color: '#ef6c00' },
+    { label: 'Cost share',  pct: 30, color: '#1a6af4' },
+    { label: 'Recurrence',  pct: 20, color: '#7c4dff' },
+    { label: 'Blast radius',pct: 20, color: '#00897b' },
+    { label: 'Severity',    pct: 10, color: '#ef6c00' },
+    { label: 'Open count',  pct: 10, color: '#c2185b' },
+    { label: 'Readiness',   pct:  5, color: '#0097a7' },
+    { label: 'Trend',       pct:  5, color: '#558b2f' },
   ],
   alert_optimization: [
-    { label: 'Noise likelihood',  pct: 32, color: '#1a6af4' },
-    { label: 'Alert frequency',   pct: 28, color: '#7c4dff' },
-    { label: 'Auto-resolve rate', pct: 25, color: '#00897b' },
-    { label: 'Blast radius',      pct: 15, color: '#ef6c00' },
+    { label: 'Noise',       pct: 35, color: '#1a6af4' },
+    { label: 'Recurrence',  pct: 25, color: '#7c4dff' },
+    { label: 'Duration',    pct: 15, color: '#00897b' },
+    { label: 'Severity',    pct: 10, color: '#ef6c00' },
+    { label: 'Blast radius',pct: 10, color: '#c2185b' },
+    { label: 'Readiness',   pct:  5, color: '#0097a7' },
   ],
 };
 
@@ -295,6 +300,10 @@ export function ConfigDialog({
                 onChange={(segs) => updateWeights('alert_optimization', segs)}
               />
             </Flex>
+
+            <Button variant="accent" onClick={onClose} style={{ width: '100%' }}>
+              Apply &amp; Recalculate
+            </Button>
           </Flex>
         </Tab>
       </Tabs>
