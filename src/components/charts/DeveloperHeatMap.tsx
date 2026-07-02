@@ -3,6 +3,8 @@ import { PatternRow } from '../../types/views';
 
 interface DeveloperHeatMapProps {
   patterns: PatternRow[];
+  onPatternSelect?: (id: string) => void;
+  selectedPatternId?: string | null;
 }
 
 const SEVERITY_COLOR: Record<PatternRow['severity'], string> = {
@@ -21,7 +23,7 @@ function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max - 1) + '…' : str;
 }
 
-export function DeveloperHeatMap({ patterns }: DeveloperHeatMapProps) {
+export function DeveloperHeatMap({ patterns, onPatternSelect, selectedPatternId }: DeveloperHeatMapProps) {
   const muted  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
   const strong = 'var(--dt-colors-text-neutral-default, #23282d)';
   const empty  = 'var(--dt-colors-background-container-neutral-subdued, #f5f5f5)';
@@ -88,13 +90,21 @@ export function DeveloperHeatMap({ patterns }: DeveloperHeatMapProps) {
           const x = gridX + ci * (CELL + GAP);
           const y = gridY + ri * (CELL + GAP);
           return (
-            <rect key={`${ri}-${ci}`} x={x} y={y} width={CELL} height={CELL}
-              style={{
-                fill: filled ? SEVERITY_COLOR[p.severity] : empty,
-                fillOpacity: filled ? 0.85 : 1,
-                stroke: border,
-                strokeWidth: 1,
-              }} />
+            <React.Fragment key={`${ri}-${ci}`}>
+              <rect x={x} y={y} width={CELL} height={CELL}
+                onClick={filled ? () => onPatternSelect?.(p.id) : undefined}
+                style={{
+                  fill: filled ? SEVERITY_COLOR[p.severity] : empty,
+                  fillOpacity: filled ? 0.85 : 1,
+                  stroke: border,
+                  strokeWidth: 1,
+                  cursor: filled && onPatternSelect ? 'pointer' : 'default',
+                }} />
+              {filled && p.id === selectedPatternId && (
+                <rect x={x} y={y} width={CELL} height={CELL}
+                  fill="none" stroke="#1496ff" strokeWidth={2} />
+              )}
+            </React.Fragment>
           );
         })
       )}

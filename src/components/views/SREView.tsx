@@ -40,7 +40,13 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
         </Flex>
 
         <SREKpiRow kpis={kpis} />
-        <ReliabilityRiskMatrix patterns={patterns} />
+        <div style={{ maxWidth: 640 }}>
+          <ReliabilityRiskMatrix
+            patterns={patterns}
+            selectedPatternId={viewModel?.selectedPatternId ?? null}
+            onPatternSelect={onPatternSelect}
+          />
+        </div>
 
         <PatternTable
           data={patterns}
@@ -49,12 +55,10 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
         />
       </Flex>
 
-      {selectedPattern && (
-        <PatternDetailPanel
-          pattern={selectedPattern}
-          onClose={() => onPatternSelect?.(null)}
-        />
-      )}
+      <PatternDetailPanel
+        pattern={selectedPattern}
+        onClose={() => onPatternSelect?.(null)}
+      />
     </Flex>
   );
 }

@@ -3,6 +3,8 @@ import { PatternRow, DisplayLevel } from '../../types/views';
 
 interface ActFirstMapProps {
   patterns: PatternRow[];
+  onPatternSelect?: (id: string) => void;
+  selectedPatternId?: string | null;
 }
 
 function parseCost(costFormatted: string): number {
@@ -44,7 +46,7 @@ function fmtCost(v: number): string {
   return `$${Math.round(v)}`;
 }
 
-export function ActFirstMap({ patterns }: ActFirstMapProps) {
+export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
   if (patterns.length === 0) {
     return (
       <svg viewBox={`0 0 ${VIEW_W} 120`} width="100%">
@@ -118,7 +120,10 @@ export function ActFirstMap({ patterns }: ActFirstMapProps) {
         const label = p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name;
         const fill = SEVERITY_COLOR[p.severity];
         return (
-          <g key={p.id}>
+          <g key={p.id} onClick={() => onPatternSelect?.(p.id)} style={{ cursor: onPatternSelect ? 'pointer' : 'default' }}>
+            {p.id === selectedPatternId && (
+              <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke="#1496ff" strokeWidth={2} />
+            )}
             <circle cx={cx} cy={cy} r={r}
               style={{ fill, fillOpacity: 0.85, stroke: 'rgba(0,0,0,0.15)', strokeWidth: 1 }} />
             <text x={cx} y={cy + r + 11} textAnchor="middle"

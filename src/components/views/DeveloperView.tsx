@@ -40,7 +40,13 @@ export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, v
         </Flex>
 
         <DeveloperKpiRow kpis={kpis} />
-        <DeveloperHeatMap patterns={patterns} />
+        <div style={{ maxWidth: 640 }}>
+          <DeveloperHeatMap
+            patterns={patterns}
+            selectedPatternId={viewModel?.selectedPatternId ?? null}
+            onPatternSelect={onPatternSelect}
+          />
+        </div>
 
         <PatternTable
           data={patterns}
@@ -49,12 +55,10 @@ export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, v
         />
       </Flex>
 
-      {selectedPattern && (
-        <PatternDetailPanel
-          pattern={selectedPattern}
-          onClose={() => onPatternSelect?.(null)}
-        />
-      )}
+      <PatternDetailPanel
+        pattern={selectedPattern}
+        onClose={() => onPatternSelect?.(null)}
+      />
     </Flex>
   );
 }

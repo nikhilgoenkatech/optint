@@ -41,7 +41,13 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
         </Flex>
 
         <ExecKpiRow kpis={kpis} />
-        <ActFirstMap patterns={patterns} />
+        <div style={{ maxWidth: 640 }}>
+          <ActFirstMap
+            patterns={patterns}
+            selectedPatternId={viewModel?.selectedPatternId ?? null}
+            onPatternSelect={onPatternSelect}
+          />
+        </div>
 
         <PatternTable
           data={patterns}
@@ -50,13 +56,11 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
         />
       </Flex>
 
-      {/* Persistent right panel */}
-      {selectedPattern && (
-        <PatternDetailPanel
-          pattern={selectedPattern}
-          onClose={() => onPatternSelect?.(null)}
-        />
-      )}
+      {/* Persistent right panel — always visible */}
+      <PatternDetailPanel
+        pattern={selectedPattern}
+        onClose={() => onPatternSelect?.(null)}
+      />
     </Flex>
   );
 }

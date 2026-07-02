@@ -11,7 +11,7 @@ const OK     = 'var(--dt-colors-text-success-default, #1a7a4a)';
 const ACCENT = 'var(--dt-colors-background-container-primary-accent, #1496ff)';
 
 interface PatternDetailPanelProps {
-  pattern: PatternDetail;
+  pattern: PatternDetail | null;
   onClose: () => void;
 }
 
@@ -63,12 +63,26 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
       >
         <Flex flexDirection="column" gap={4} style={{ flex: 1, minWidth: 0 }}>
           <span style={{ fontSize: 11, color: MUTED }}>Pattern detail</span>
-          <Heading level={4}>{pattern.title}</Heading>
+          {pattern
+            ? <Heading level={4}>{pattern.title}</Heading>
+            : <span style={{ fontSize: 13, color: MUTED }}>No pattern selected</span>
+          }
         </Flex>
-        <Button variant="default" onClick={onClose} style={{ marginLeft: 8, flexShrink: 0 }}>✕</Button>
+        {pattern && (
+          <Button variant="default" onClick={onClose} style={{ marginLeft: 8, flexShrink: 0 }}>✕</Button>
+        )}
       </Flex>
 
-      <Flex flexDirection="column" gap={16} padding={16}>
+      {/* Empty state */}
+      {!pattern && (
+        <Flex flexDirection="column" alignItems="center" justifyContent="center"
+          gap={12} padding={24} style={{ flex: 1, textAlign: 'center' }}>
+          <span style={{ fontSize: 32 }}>☰</span>
+          <Text>Select a row from the pattern table, or click a bubble or cell in the chart above to explore a pattern.</Text>
+        </Flex>
+      )}
+
+      {pattern && <Flex flexDirection="column" gap={16} padding={16}>
 
         {/* Business Impact */}
         <Flex flexDirection="column" gap={8}>
@@ -165,7 +179,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
           </Container>
         </Flex>
 
-      </Flex>
+      </Flex>}
     </Surface>
   );
 }

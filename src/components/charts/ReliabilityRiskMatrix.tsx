@@ -3,6 +3,8 @@ import { PatternRow } from '../../types/views';
 
 interface ReliabilityRiskMatrixProps {
   patterns: PatternRow[];
+  onPatternSelect?: (id: string) => void;
+  selectedPatternId?: string | null;
 }
 
 const TREND_COLOR: Record<string, string> = {
@@ -25,7 +27,7 @@ function expandDomain(min: number, max: number): [number, number] {
   return [min, max];
 }
 
-export function ReliabilityRiskMatrix({ patterns }: ReliabilityRiskMatrixProps) {
+export function ReliabilityRiskMatrix({ patterns, onPatternSelect, selectedPatternId }: ReliabilityRiskMatrixProps) {
   const muted  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
   const axis   = 'var(--dt-colors-border-neutral-subdued, #e0e0e0)';
   const strong = 'var(--dt-colors-text-neutral-default, #23282d)';
@@ -45,6 +47,7 @@ export function ReliabilityRiskMatrix({ patterns }: ReliabilityRiskMatrixProps) 
 
     return {
       points: patterns.map(p => ({
+        id: p.id,
         cx: toX(p.evidenceQualityScore),
         cy: toY(p.recurrenceCount),
         color: TREND_COLOR[p.trend] ?? TREND_COLOR.Stable,
@@ -119,7 +122,12 @@ export function ReliabilityRiskMatrix({ patterns }: ReliabilityRiskMatrixProps) 
 
         {/* Points */}
         {points.map((pt, i) => (
-          <g key={i}>
+          <g key={i}
+            onClick={() => onPatternSelect?.(pt.id)}
+            style={{ cursor: onPatternSelect ? 'pointer' : 'default' }}>
+            {pt.id === selectedPatternId && (
+              <circle cx={pt.cx} cy={pt.cy} r={11} fill="none" stroke="#1496ff" strokeWidth={2} />
+            )}
             <circle cx={pt.cx} cy={pt.cy} r={7}
               style={{ fill: pt.color, fillOpacity: 0.9, stroke: 'rgba(0,0,0,0.15)', strokeWidth: 1 }} />
             <text x={pt.cx + 10} y={pt.cy + 4}
