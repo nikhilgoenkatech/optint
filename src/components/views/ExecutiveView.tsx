@@ -45,11 +45,13 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
 
         <Tabs selectedIndex={viewTab} onChange={setViewTab}>
           <Tab title="Act-First Map">
-            <ActFirstMap
-              patterns={patterns}
-              selectedPatternId={viewModel?.selectedPatternId ?? null}
-              onPatternSelect={onPatternSelect}
-            />
+            <div style={{ maxWidth: 760 }}>
+              <ActFirstMap
+                patterns={patterns}
+                selectedPatternId={viewModel?.selectedPatternId ?? null}
+                onPatternSelect={onPatternSelect}
+              />
+            </div>
           </Tab>
           <Tab title="Pattern Explorer">
             <PatternTable

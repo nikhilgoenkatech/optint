@@ -45,11 +45,13 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
 
         <Tabs selectedIndex={viewTab} onChange={setViewTab}>
           <Tab title="Reliability Risk Matrix">
-            <ReliabilityRiskMatrix
-              patterns={patterns}
-              selectedPatternId={viewModel?.selectedPatternId ?? null}
-              onPatternSelect={onPatternSelect}
-            />
+            <div style={{ maxWidth: 760 }}>
+              <ReliabilityRiskMatrix
+                patterns={patterns}
+                selectedPatternId={viewModel?.selectedPatternId ?? null}
+                onPatternSelect={onPatternSelect}
+              />
+            </div>
           </Tab>
           <Tab title="Pattern Explorer">
             <PatternTable

@@ -45,11 +45,13 @@ export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, v
 
         <Tabs selectedIndex={viewTab} onChange={setViewTab}>
           <Tab title="Developer Heat Map">
-            <DeveloperHeatMap
-              patterns={patterns}
-              selectedPatternId={viewModel?.selectedPatternId ?? null}
-              onPatternSelect={onPatternSelect}
-            />
+            <div style={{ maxWidth: 760 }}>
+              <DeveloperHeatMap
+                patterns={patterns}
+                selectedPatternId={viewModel?.selectedPatternId ?? null}
+                onPatternSelect={onPatternSelect}
+              />
+            </div>
           </Tab>
           <Tab title="Pattern Explorer">
             <PatternTable
