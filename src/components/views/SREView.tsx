@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flex } from '@dynatrace/strato-components/layouts';
-import { Heading, Text } from '@dynatrace/strato-components/typography';
+import { Heading } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows, sampleSREKPIs } from '../../fixtures/patterns.sample';
@@ -8,6 +8,7 @@ import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { SREKpiRow } from '../kpis/SREKpiRow';
 import { ReliabilityRiskMatrix } from '../charts/ReliabilityRiskMatrix';
 import { PatternTable } from '../table/PatternTable';
+import { PatternDetailPanel } from '../panels/PatternDetailPanel';
 
 interface SREViewProps {
   objective: ObjectiveType;
@@ -19,6 +20,7 @@ interface SREViewProps {
 export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel }: SREViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
+  const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
 
   if (loading) {
@@ -30,25 +32,29 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
   }
 
   return (
-    <Flex flexDirection="column" gap={16} padding={24}>
-      <Flex justifyContent="space-between" alignItems="center">
-        <Heading level={2}>SRE View</Heading>
-        <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
+    <Flex style={{ height: '100%', overflow: 'hidden' }}>
+      <Flex flexDirection="column" gap={16} padding={24} style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+        <Flex justifyContent="space-between" alignItems="center">
+          <Heading level={2}>SRE View</Heading>
+          <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
+        </Flex>
+
+        <SREKpiRow kpis={kpis} />
+        <ReliabilityRiskMatrix patterns={patterns} />
+
+        <PatternTable
+          data={patterns}
+          selectedPatternId={viewModel?.selectedPatternId ?? null}
+          onPatternSelect={onPatternSelect}
+        />
       </Flex>
 
-      {/* Phase 6: KPI cards */}
-      <SREKpiRow kpis={kpis} />
-      <ReliabilityRiskMatrix patterns={patterns} />
-
-      {/* Phase 5: Pattern Explorer Table */}
-      <PatternTable
-        data={patterns}
-        selectedPatternId={viewModel?.selectedPatternId ?? null}
-        onPatternSelect={onPatternSelect}
-      />
-
-      {/* Phase 8: Persistent right panel */}
-      <Text textStyle="small">Pattern rows and KPIs from persona view model</Text>
+      {selectedPattern && (
+        <PatternDetailPanel
+          pattern={selectedPattern}
+          onClose={() => onPatternSelect?.(null)}
+        />
+      )}
     </Flex>
   );
 }
