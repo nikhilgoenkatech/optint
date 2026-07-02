@@ -19,7 +19,7 @@
 | 6 — KPI cards | Claude + Codex | ✅ Shell done | `src/components/atoms/KpiCard.tsx`, `src/components/kpis/` — Codex wires real KPIs via viewModel |
 | 7 — Visualisations | Claude | ✅ Done | `ActFirstMap`, `ReliabilityRiskMatrix`, `DeveloperHeatMap` — pure inline SVG in `src/components/charts/` |
 | 8 — Panels & popovers | Claude + Codex | ✅ Shell done | `src/components/panels/PatternDetailPanel.tsx` — Codex wires selectedPattern via viewModel |
-| 9 — Persona layouts | Claude + Codex | ⬜ Queued | Full Executive / SRE / Developer views |
+| 9 — Persona layouts | Claude | ✅ Done | UI polish pass — SVG colors fixed, chart scaling, panel Strato-safe markup |
 
 ---
 

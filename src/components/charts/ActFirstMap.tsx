@@ -7,229 +7,133 @@ interface ActFirstMapProps {
 
 function parseCost(costFormatted: string): number {
   const s = costFormatted.trim().replace(/^\$/, '');
-  if (s.endsWith('K')) {
-    return parseFloat(s.slice(0, -1)) * 1000;
-  }
-  if (s.endsWith('M')) {
-    return parseFloat(s.slice(0, -1)) * 1_000_000;
-  }
+  if (s.endsWith('K')) return parseFloat(s) * 1000;
+  if (s.endsWith('M')) return parseFloat(s) * 1_000_000;
   return parseFloat(s) || 0;
 }
 
-function severityColor(severity: DisplayLevel): string {
-  switch (severity) {
-    case 'High':
-      return 'var(--dt-colors-background-container-critical-default)';
-    case 'Medium':
-      return 'var(--dt-colors-background-container-warning-default)';
-    case 'Low':
-    default:
-      return 'var(--dt-colors-background-container-success-default)';
-  }
-}
+const SEVERITY_COLOR: Record<DisplayLevel, string> = {
+  High:   '#e84626',
+  Medium: '#f5a623',
+  Low:    '#2ab06f',
+};
 
-const VIEW_WIDTH = 560;
-const VIEW_HEIGHT = 320;
-const MARGIN = { left: 48, right: 24, top: 24, bottom: 40 };
-const PLOT_W = VIEW_WIDTH - MARGIN.left - MARGIN.right;
-const PLOT_H = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
+const VIEW_W = 560;
+const VIEW_H = 240;
+const M = { left: 52, right: 24, top: 32, bottom: 44 };
+const PW = VIEW_W - M.left - M.right;
+const PH = VIEW_H - M.top - M.bottom;
 const MIN_R = 8;
-const MAX_R = 22;
-const TICK_COUNT = 4;
+const MAX_R = 20;
 
-function linScale(value: number, domainMin: number, domainMax: number, rangeMin: number, rangeMax: number): number {
-  if (domainMax === domainMin) return (rangeMin + rangeMax) / 2;
-  return rangeMin + ((value - domainMin) / (domainMax - domainMin)) * (rangeMax - rangeMin);
+function scale(v: number, dMin: number, dMax: number, rMin: number, rMax: number): number {
+  if (dMax === dMin) return (rMin + rMax) / 2;
+  return rMin + ((v - dMin) / (dMax - dMin)) * (rMax - rMin);
 }
 
-function niceTickValues(min: number, max: number, count: number): number[] {
-  if (min === max) return [min];
-  const step = (max - min) / (count - 1);
-  return Array.from({ length: count }, (_, i) => min + i * step);
+function expandDomain(min: number, max: number): [number, number] {
+  if (min === max) {
+    const pad = min === 0 ? 1 : Math.abs(min) * 0.5;
+    return [min - pad, max + pad];
+  }
+  return [min, max];
 }
 
-function formatCostLabel(value: number): string {
-  if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}K`;
-  return `$${Math.round(value)}`;
+function fmtCost(v: number): string {
+  if (v >= 1000) return `$${(v / 1000).toFixed(1)}K`;
+  return `$${Math.round(v)}`;
 }
 
-export function ActFirstMap({ patterns }: ActFirstMapProps): React.ReactElement {
+export function ActFirstMap({ patterns }: ActFirstMapProps) {
   if (patterns.length === 0) {
     return (
-      <svg viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} width="100%">
-        <text
-          x={VIEW_WIDTH / 2}
-          y={VIEW_HEIGHT / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={13}
-          fill="var(--dt-colors-text-neutral-subdued)"
-        >
-          No patterns to display
-        </text>
+      <svg viewBox={`0 0 ${VIEW_W} 120`} width="100%">
+        <text x={VIEW_W / 2} y={60} textAnchor="middle" dominantBaseline="middle"
+          style={{ fill: '#74777a', fontSize: 13 }}>No patterns to display</text>
       </svg>
     );
   }
 
-  const costs = patterns.map((p) => parseCost(p.costFormatted));
-  const blastRadii = patterns.map((p) => p.blastRadius);
-  const recurrences = patterns.map((p) => p.recurrenceCount);
+  const costs  = patterns.map(p => parseCost(p.costFormatted));
+  const blasts = patterns.map(p => p.blastRadius);
+  const recs   = patterns.map(p => p.recurrenceCount);
 
-  const costMin = Math.min(...costs);
-  const costMax = Math.max(...costs);
-  const blastMin = Math.min(...blastRadii);
-  const blastMax = Math.max(...blastRadii);
-  const recMin = Math.min(...recurrences);
-  const recMax = Math.max(...recurrences);
+  const [costMin, costMax]   = expandDomain(Math.min(...costs),  Math.max(...costs));
+  const [blastMin, blastMax] = expandDomain(Math.min(...blasts), Math.max(...blasts));
+  const [recMin, recMax]     = expandDomain(Math.min(...recs),   Math.max(...recs));
 
-  const xTicks = niceTickValues(costMin, costMax, TICK_COUNT);
-  const yTicks = niceTickValues(blastMin, blastMax, TICK_COUNT);
+  const xTicks = [0, 0.25, 0.5, 0.75, 1].map(t => costMin + t * (costMax - costMin));
+  const yTicks = [0, 0.5, 1].map(t => blastMin + t * (blastMax - blastMin));
+
+  const muted  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
+  const axis   = 'var(--dt-colors-border-neutral-subdued, #e0e0e0)';
+  const strong = 'var(--dt-colors-text-neutral-default, #23282d)';
 
   return (
-    <svg viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} width="100%">
-      {/* Chart title */}
-      <text
-        x={MARGIN.left}
-        y={MARGIN.top - 6}
-        fontSize={14}
-        fontWeight="bold"
-        fill="var(--dt-colors-text-neutral-default)"
-      >
-        Act-First Map
-      </text>
+    <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" style={{ display: 'block' }}>
+      <text x={M.left} y={16} style={{ fill: strong, fontSize: 13, fontWeight: 600 }}>Act-First Map</text>
 
-      {/* X axis line */}
-      <line
-        x1={MARGIN.left}
-        y1={MARGIN.top + PLOT_H}
-        x2={MARGIN.left + PLOT_W}
-        y2={MARGIN.top + PLOT_H}
-        stroke="var(--dt-colors-border-neutral-subdued)"
-        strokeWidth={1}
-      />
+      {/* Axes */}
+      <line x1={M.left} y1={M.top + PH} x2={M.left + PW} y2={M.top + PH}
+        stroke={axis} strokeWidth={1} />
+      <line x1={M.left} y1={M.top} x2={M.left} y2={M.top + PH}
+        stroke={axis} strokeWidth={1} />
 
-      {/* Y axis line */}
-      <line
-        x1={MARGIN.left}
-        y1={MARGIN.top}
-        x2={MARGIN.left}
-        y2={MARGIN.top + PLOT_H}
-        stroke="var(--dt-colors-border-neutral-subdued)"
-        strokeWidth={1}
-      />
-
-      {/* X axis ticks and labels */}
-      {xTicks.map((tick, i) => {
-        const cx = MARGIN.left + linScale(tick, costMin, costMax, 0, PLOT_W);
+      {/* X ticks */}
+      {xTicks.map((v, i) => {
+        const x = M.left + scale(v, costMin, costMax, 0, PW);
         return (
-          <g key={`xtick-${i}`}>
-            <line
-              x1={cx}
-              y1={MARGIN.top + PLOT_H}
-              x2={cx}
-              y2={MARGIN.top + PLOT_H + 4}
-              stroke="var(--dt-colors-border-neutral-subdued)"
-              strokeWidth={1}
-            />
-            <text
-              x={cx}
-              y={MARGIN.top + PLOT_H + 14}
-              textAnchor="middle"
-              fontSize={10}
-              fill="var(--dt-colors-text-neutral-subdued)"
-            >
-              {formatCostLabel(tick)}
-            </text>
+          <g key={i}>
+            <line x1={x} y1={M.top + PH} x2={x} y2={M.top + PH + 4} stroke={axis} strokeWidth={1} />
+            <text x={x} y={M.top + PH + 14} textAnchor="middle"
+              style={{ fill: muted, fontSize: 10 }}>{fmtCost(v)}</text>
           </g>
         );
       })}
 
-      {/* X axis label */}
-      <text
-        x={MARGIN.left + PLOT_W / 2}
-        y={VIEW_HEIGHT - 4}
-        textAnchor="middle"
-        fontSize={11}
-        fill="var(--dt-colors-text-neutral-subdued)"
-      >
-        Estimated Cost
-      </text>
-
-      {/* Y axis ticks and labels */}
-      {yTicks.map((tick, i) => {
-        const cy = MARGIN.top + linScale(tick, blastMin, blastMax, PLOT_H, 0);
+      {/* Y ticks */}
+      {yTicks.map((v, i) => {
+        const y = M.top + scale(v, blastMin, blastMax, PH, 0);
         return (
-          <g key={`ytick-${i}`}>
-            <line
-              x1={MARGIN.left - 4}
-              y1={cy}
-              x2={MARGIN.left}
-              y2={cy}
-              stroke="var(--dt-colors-border-neutral-subdued)"
-              strokeWidth={1}
-            />
-            <text
-              x={MARGIN.left - 7}
-              y={cy}
-              textAnchor="end"
-              dominantBaseline="middle"
-              fontSize={10}
-              fill="var(--dt-colors-text-neutral-subdued)"
-            >
-              {Math.round(tick)}
-            </text>
+          <g key={i}>
+            <line x1={M.left - 4} y1={y} x2={M.left} y2={y} stroke={axis} strokeWidth={1} />
+            <text x={M.left - 8} y={y} textAnchor="end" dominantBaseline="middle"
+              style={{ fill: muted, fontSize: 10 }}>{Math.round(v)}</text>
           </g>
         );
       })}
 
-      {/* Y axis label */}
-      <text
-        x={10}
-        y={MARGIN.top + PLOT_H / 2}
-        textAnchor="middle"
-        fontSize={11}
-        fill="var(--dt-colors-text-neutral-subdued)"
-        transform={`rotate(-90, 10, ${MARGIN.top + PLOT_H / 2})`}
-      >
-        Blast Radius
-      </text>
+      {/* Axis labels */}
+      <text x={M.left + PW / 2} y={VIEW_H - 4} textAnchor="middle"
+        style={{ fill: muted, fontSize: 11 }}>Estimated Cost</text>
+      <text x={12} y={M.top + PH / 2} textAnchor="middle"
+        style={{ fill: muted, fontSize: 11 }}
+        transform={`rotate(-90,12,${M.top + PH / 2})`}>Blast Radius</text>
 
       {/* Bubbles */}
-      {patterns.map((pattern, i) => {
-        const cost = costs[i];
-        const radius = linScale(pattern.recurrenceCount, recMin, recMax, MIN_R, MAX_R);
-
-        const rawCx = MARGIN.left + linScale(cost, costMin, costMax, 0, PLOT_W);
-        const rawCy = MARGIN.top + linScale(pattern.blastRadius, blastMin, blastMax, PLOT_H, 0);
-
-        // Clamp to keep bubbles within plot area
-        const cx = Math.min(Math.max(rawCx, MARGIN.left + radius), MARGIN.left + PLOT_W - radius);
-        const cy = Math.min(Math.max(rawCy, MARGIN.top + radius), MARGIN.top + PLOT_H - radius);
-
-        const label = pattern.name.length > 20 ? pattern.name.slice(0, 20) + '…' : pattern.name;
-
+      {patterns.map((p, i) => {
+        const r  = scale(recs[i], recMin, recMax, MIN_R, MAX_R);
+        const cx = Math.min(Math.max(M.left + scale(costs[i], costMin, costMax, 0, PW), M.left + r), M.left + PW - r);
+        const cy = Math.min(Math.max(M.top + scale(blasts[i], blastMin, blastMax, PH, 0), M.top + r), M.top + PH - r);
+        const label = p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name;
+        const fill = SEVERITY_COLOR[p.severity];
         return (
-          <g key={pattern.id}>
-            <circle
-              cx={cx}
-              cy={cy}
-              r={radius}
-              fill={severityColor(pattern.severity)}
-              stroke="var(--dt-colors-border-neutral-default)"
-              strokeWidth={1}
-            />
-            <text
-              x={cx}
-              y={cy + radius + 11}
-              textAnchor="middle"
-              fontSize={10}
-              fill="var(--dt-colors-text-neutral-subdued)"
-            >
-              {label}
-            </text>
+          <g key={p.id}>
+            <circle cx={cx} cy={cy} r={r}
+              style={{ fill, fillOpacity: 0.85, stroke: 'rgba(0,0,0,0.15)', strokeWidth: 1 }} />
+            <text x={cx} y={cy + r + 11} textAnchor="middle"
+              style={{ fill: muted, fontSize: 10 }}>{label}</text>
           </g>
         );
       })}
+
+      {/* Legend */}
+      {(['High', 'Medium', 'Low'] as DisplayLevel[]).map((sev, i) => (
+        <g key={sev} transform={`translate(${M.left + i * 80}, ${VIEW_H - 6})`}>
+          <circle cx={5} cy={-3} r={5} style={{ fill: SEVERITY_COLOR[sev] }} />
+          <text x={13} y={0} style={{ fill: muted, fontSize: 10 }}>{sev}</text>
+        </g>
+      ))}
     </svg>
   );
 }

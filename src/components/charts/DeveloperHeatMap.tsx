@@ -5,144 +5,110 @@ interface DeveloperHeatMapProps {
   patterns: PatternRow[];
 }
 
-const CELL_SIZE = 28;
-const LEFT_LABEL_WIDTH = 140;
-const TOP_LABEL_HEIGHT = 80;
-const TITLE_HEIGHT = 24;
-const CELL_GAP = 2;
+const SEVERITY_COLOR: Record<PatternRow['severity'], string> = {
+  High:   '#e84626',
+  Medium: '#f5a623',
+  Low:    '#2ab06f',
+};
 
-function truncate(str: string, maxLen: number): string {
-  return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
+const CELL    = 28;
+const GAP     = 2;
+const LABEL_W = 140;
+const COL_H   = 72;
+const TITLE_H = 24;
+
+function truncate(str: string, max: number): string {
+  return str.length > max ? str.slice(0, max - 1) + '…' : str;
 }
 
-function severityColor(severity: PatternRow['severity']): string {
-  switch (severity) {
-    case 'High':
-      return 'var(--dt-colors-background-container-critical-default)';
-    case 'Medium':
-      return 'var(--dt-colors-background-container-warning-default)';
-    case 'Low':
-    default:
-      return 'var(--dt-colors-background-container-success-default)';
-  }
-}
+export function DeveloperHeatMap({ patterns }: DeveloperHeatMapProps) {
+  const muted  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
+  const strong = 'var(--dt-colors-text-neutral-default, #23282d)';
+  const empty  = 'var(--dt-colors-background-container-neutral-subdued, #f5f5f5)';
+  const border = 'var(--dt-colors-border-neutral-subdued, #e0e0e0)';
 
-export const DeveloperHeatMap: React.FC<DeveloperHeatMapProps> = ({ patterns }) => {
   if (patterns.length === 0) {
     return (
-      <svg width="100%" viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg">
-        <text
-          x="200"
-          y="50"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize="13"
-          fill="var(--dt-colors-text-neutral-default)"
-        >
-          No patterns to display
-        </text>
+      <svg width="100%" viewBox="0 0 400 80">
+        <text x={200} y={40} textAnchor="middle" dominantBaseline="middle"
+          style={{ fill: muted, fontSize: 13 }}>No patterns to display</text>
       </svg>
     );
   }
 
-  // Collect unique services preserving first-seen order
   const servicesSet = new Set<string>();
-  patterns.forEach((p) => p.affectedServices.forEach((s) => servicesSet.add(s)));
+  patterns.forEach(p => p.affectedServices.forEach(s => servicesSet.add(s)));
   const services = Array.from(servicesSet);
 
-  const numCols = patterns.length;
-  const numRows = services.length;
-
-  const gridWidth = numCols * (CELL_SIZE + CELL_GAP) - CELL_GAP;
-  const gridHeight = numRows * (CELL_SIZE + CELL_GAP) - CELL_GAP;
-
-  const svgWidth = LEFT_LABEL_WIDTH + gridWidth + 16;
-  const svgHeight = TITLE_HEIGHT + TOP_LABEL_HEIGHT + gridHeight + 8;
-
-  const gridOriginX = LEFT_LABEL_WIDTH;
-  const gridOriginY = TITLE_HEIGHT + TOP_LABEL_HEIGHT;
+  const cols   = patterns.length;
+  const rows   = services.length;
+  const gridW  = cols * (CELL + GAP) - GAP;
+  const gridH  = rows * (CELL + GAP) - GAP;
+  const svgW   = LABEL_W + gridW + 16;
+  const svgH   = TITLE_H + COL_H + gridH + 8;
+  const gridX  = LABEL_W;
+  const gridY  = TITLE_H + COL_H;
 
   return (
-    <svg
-      width="100%"
-      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="Developer Heat Map"
-    >
-      {/* Title */}
-      <text
-        x="0"
-        y="16"
-        fontSize="14"
-        fontWeight="bold"
-        fill="var(--dt-colors-text-neutral-default)"
-      >
+    <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block' }}>
+      <text x={0} y={16} style={{ fill: strong, fontSize: 13, fontWeight: 600 }}>
         Developer Heat Map
       </text>
 
-      {/* Column labels (pattern names, rotated -45°) */}
-      {patterns.map((pattern, colIdx) => {
-        const cx = gridOriginX + colIdx * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
-        const cy = gridOriginY - 4;
+      {/* Column labels */}
+      {patterns.map((p, ci) => {
+        const cx = gridX + ci * (CELL + GAP) + CELL / 2;
+        const cy = gridY - 4;
         return (
-          <text
-            key={`col-label-${pattern.id}`}
-            x={cx}
-            y={cy}
-            fontSize="10"
-            fill="var(--dt-colors-text-neutral-subdued)"
-            transform={`rotate(-45, ${cx}, ${cy})`}
-            textAnchor="start"
-          >
-            {truncate(pattern.name, 16)}
+          <text key={p.id} x={cx} y={cy} fontSize={10}
+            style={{ fill: muted }}
+            transform={`rotate(-45,${cx},${cy})`}
+            textAnchor="start">
+            {truncate(p.name, 16)}
           </text>
         );
       })}
 
-      {/* Row labels (service names) */}
-      {services.map((service, rowIdx) => {
-        const cy = gridOriginY + rowIdx * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
+      {/* Row labels */}
+      {services.map((svc, ri) => {
+        const cy = gridY + ri * (CELL + GAP) + CELL / 2;
         return (
-          <text
-            key={`row-label-${service}`}
-            x={LEFT_LABEL_WIDTH - 8}
-            y={cy}
-            fontSize="11"
-            fill="var(--dt-colors-text-neutral-default)"
-            textAnchor="end"
-            dominantBaseline="middle"
-          >
-            {service}
+          <text key={svc} x={LABEL_W - 8} y={cy} fontSize={11}
+            style={{ fill: strong }}
+            textAnchor="end" dominantBaseline="middle">
+            {svc}
           </text>
         );
       })}
 
-      {/* Grid cells */}
-      {services.map((service, rowIdx) =>
-        patterns.map((pattern, colIdx) => {
-          const filled = pattern.affectedServices.includes(service);
-          const x = gridOriginX + colIdx * (CELL_SIZE + CELL_GAP);
-          const y = gridOriginY + rowIdx * (CELL_SIZE + CELL_GAP);
+      {/* Cells */}
+      {services.map((svc, ri) =>
+        patterns.map((p, ci) => {
+          const filled = p.affectedServices.includes(svc);
+          const x = gridX + ci * (CELL + GAP);
+          const y = gridY + ri * (CELL + GAP);
           return (
-            <rect
-              key={`cell-${rowIdx}-${colIdx}`}
-              x={x}
-              y={y}
-              width={CELL_SIZE}
-              height={CELL_SIZE}
-              fill={
-                filled
-                  ? severityColor(pattern.severity)
-                  : 'var(--dt-colors-background-container-neutral-subdued)'
-              }
-              stroke="var(--dt-colors-border-neutral-subdued)"
-              strokeWidth="1"
-            />
+            <rect key={`${ri}-${ci}`} x={x} y={y} width={CELL} height={CELL}
+              style={{
+                fill: filled ? SEVERITY_COLOR[p.severity] : empty,
+                fillOpacity: filled ? 0.85 : 1,
+                stroke: border,
+                strokeWidth: 1,
+              }} />
           );
         })
       )}
+
+      {/* Legend */}
+      {(['High', 'Medium', 'Low'] as PatternRow['severity'][]).map((sev, i) => (
+        <g key={sev} transform={`translate(${LABEL_W + i * 70}, ${svgH - 2})`}>
+          <rect width={10} height={10} y={-10}
+            style={{ fill: SEVERITY_COLOR[sev], fillOpacity: 0.85 }} />
+          <text x={13} y={0} style={{ fill: muted, fontSize: 10 }}>{sev}</text>
+        </g>
+      ))}
     </svg>
   );
-};
+}
 
 export default DeveloperHeatMap;
