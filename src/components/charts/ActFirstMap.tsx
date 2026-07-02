@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@dynatrace/strato-components/buttons';
 import { XYChart } from '@dynatrace/strato-components/charts';
 import { PatternRow } from '../../types/views';
@@ -20,6 +20,8 @@ type MapMarker = {
   openProblemCount: number;
   x0: number;
   y0: number;
+  xPct: number;
+  yPct: number;
 };
 
 function parseCost(costFormatted: string): number {
@@ -59,6 +61,9 @@ const QUADRANT_LABELS = [
 ];
 
 export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
+
   const data = useMemo<MapMarker[]>(() => {
     const costs = patterns.map(pattern => parseCost(pattern.costFormatted));
     const impacts = patterns.map(pattern => pattern.blastRadius);
@@ -79,6 +84,8 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
         openProblemCount: pattern.openProblemCount,
         x0: x,
         y0: y,
+        xPct: x,
+        yPct: y,
       };
     });
   }, [patterns]);
@@ -87,6 +94,37 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
     () => data.filter(point => point.id === selectedPatternId),
     [data, selectedPatternId],
   );
+  const selectedPoint = selectedData[0] ?? null;
+
+  useEffect(() => {
+    setClosedPopupId(null);
+  }, [selectedPatternId]);
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (!mapRef.current?.contains(event.target as Node)) {
+        setClosedPopupId(selectedPatternId ?? null);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setClosedPopupId(selectedPatternId ?? null);
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectedPatternId]);
+
+  function selectPattern(id: string) {
+    setClosedPopupId(null);
+    onPatternSelect?.(id);
+  }
 
   if (patterns.length === 0) {
     return (
@@ -97,7 +135,7 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
   }
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={mapRef} style={{ position: 'relative' }}>
       {/* Quadrant labels */}
       {QUADRANT_LABELS.map(q => (
         <div
@@ -167,8 +205,119 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
         <XYChart.Tooltip />
         <XYChart.Legend position="bottom" />
       </XYChart>
+      {data.map((point) => {
+        const selected = point.id === selectedPatternId;
+        const size = selected ? 18 : 14;
+        return (
+          <button
+            key={point.id}
+            type="button"
+            aria-label={`Select ${point.name}`}
+            aria-pressed={selected}
+            onClick={() => selectPattern(point.id)}
+            style={{
+              position: 'absolute',
+              left: `${point.xPct}%`,
+              bottom: `${point.yPct}%`,
+              width: size,
+              height: size,
+              transform: 'translate(-50%, 50%)',
+              borderRadius: '999px',
+              border: selected
+                ? '2px solid var(--dt-colors-border-primary-default, #1496ff)'
+                : '1px solid transparent',
+              background: 'transparent',
+              cursor: onPatternSelect ? 'pointer' : 'default',
+              zIndex: 3,
+              padding: 0,
+              boxShadow: selected ? '0 0 0 4px rgba(20, 150, 255, 0.16)' : undefined,
+            }}
+          />
+        );
+      })}
+      {selectedPoint && closedPopupId !== selectedPoint.id && (
+        <div
+          role="dialog"
+          aria-label={`${selectedPoint.name} pattern summary`}
+          style={{
+            position: 'absolute',
+            left: `${selectedPoint.xPct}%`,
+            top: selectedPoint.yPct > 62 ? 'auto' : `${100 - selectedPoint.yPct}%`,
+            bottom: selectedPoint.yPct > 62 ? `${selectedPoint.yPct}%` : 'auto',
+            transform: selectedPoint.xPct > 72
+              ? 'translate(-92%, 12px)'
+              : selectedPoint.xPct < 28
+                ? 'translate(-8%, 12px)'
+                : 'translate(-50%, 12px)',
+            width: 248,
+            padding: 12,
+            border: '1px solid var(--dt-colors-border-neutral-default, #d5d8dc)',
+            borderRadius: 8,
+            background: 'var(--dt-colors-background-container-neutral-default, #ffffff)',
+            boxShadow: '0 16px 40px rgba(31, 38, 46, 0.18)',
+            zIndex: 4,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Close pattern popup"
+            onClick={(event) => {
+              event.stopPropagation();
+              setClosedPopupId(selectedPoint.id);
+            }}
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              border: 0,
+              background: 'transparent',
+              cursor: 'pointer',
+              color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+              fontSize: 14,
+              lineHeight: 1,
+            }}
+          >
+            x
+          </button>
+          <div style={{ paddingRight: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
+              {selectedPoint.name}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <PopupStat label="Exposure" value={selectedPoint.costLabel} />
+              <PopupStat label="Blast radius" value={selectedPoint.blastRadius} />
+              <PopupStat label="Occurrences" value={selectedPoint.recurrenceCount} />
+              <PopupStat label="Open incidents" value={selectedPoint.openProblemCount} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default ActFirstMap;
+
+function PopupStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div
+      style={{
+        border: '1px solid var(--dt-colors-border-neutral-subdued, #e7e9ec)',
+        borderRadius: 6,
+        padding: '6px 8px',
+        background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+          marginBottom: 2,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700 }}>{String(value)}</div>
+    </div>
+  );
+}
