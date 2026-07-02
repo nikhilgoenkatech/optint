@@ -9,6 +9,7 @@ import { PatternDetail, TrendDirection } from '../../types/views';
 const MUTED  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
 const DANGER = 'var(--dt-colors-text-critical-default, #c41a00)';
 const OK     = 'var(--dt-colors-text-success-default, #1a7a4a)';
+const WARNING = 'var(--dt-colors-text-warning-default, #b45309)';
 const ACCENT = 'var(--dt-colors-background-container-primary-accent, #1496ff)';
 
 interface PatternDetailPanelProps {
@@ -194,6 +195,44 @@ function StatRow({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function levelColor(value: string): string {
+  if (value === 'High' || value === 'IMMEDIATE') return DANGER;
+  if (value === 'Medium' || value === 'SHORT_TERM') return WARNING;
+  if (value === 'Low' || value === 'STRATEGIC') return OK;
+  return MUTED;
+}
+
+function SignalCard({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+  const color = tone ? levelColor(tone) : 'var(--dt-colors-border-neutral-subdued, #d5d8df)';
+  return (
+    <div
+      style={{
+        border: '1px solid var(--dt-colors-border-neutral-subdued, #d5d8df)',
+        borderLeft: `4px solid ${color}`,
+        borderRadius: 8,
+        padding: '10px 12px',
+        background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{String(value)}</div>
+      <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+function SignalGrid({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>{children}</div>;
+}
+
+function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Flex flexDirection="column" gap={8}>
+      <SectionLabel>{title}</SectionLabel>
+      {children}
+    </Flex>
+  );
+}
+
 function GeneratedOutput({ state }: { state: RecommendationState }) {
   if (state.status === 'insufficient') {
     return (
@@ -207,6 +246,50 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
 
   if (state.status !== 'ready' || !state.result) return null;
 
+  return (
+    <Flex flexDirection="column" gap={8}>
+      <PanelSection title="Summary">
+        <Container color="neutral" variant="default" padding={8}>
+          <Text textStyle="small">{state.result.assessment}</Text>
+        </Container>
+      </PanelSection>
+      <PanelSection title="Observed Signals">
+        <SignalGrid>
+          {state.result.drivers.slice(0, 4).map(driver => (
+            <SignalCard key={driver.signal} label={driver.signal.replace(/_/g, ' ')} value={driver.value} />
+          ))}
+        </SignalGrid>
+      </PanelSection>
+      <PanelSection title="Next Step">
+        <Container color="neutral" variant="default" padding={8}>
+          <Flex flexDirection="column" gap={6}>
+            <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
+            <SignalGrid>
+              <SignalCard label="Priority" value={state.result.action.priority.replace('_', ' ')} tone={state.result.action.priority} />
+              <SignalCard label="Strength" value={state.result.action.strength} />
+              <SignalCard label="Capability" value={state.result.action.capability} />
+              <SignalCard label="Evidence" value={state.result.action.reason} />
+            </SignalGrid>
+          </Flex>
+        </Container>
+      </PanelSection>
+      {state.result.dataGaps.length > 0 && (
+        <PanelSection title="Missing Evidence">
+          <Container color="neutral" variant="default" padding={8}>
+            <Flex flexDirection="column" gap={4}>
+              {state.result.dataGaps.map(gap => (
+                <Text key={gap} textStyle="small" style={{ color: MUTED }}>{gap}</Text>
+              ))}
+            </Flex>
+          </Container>
+        </PanelSection>
+      )}
+    </Flex>
+  );
+}
+
+function LegacyGeneratedOutput({ state }: { state: RecommendationState }) {
+  if (state.status !== 'ready' || !state.result) return null;
   return (
     <Container color="neutral" variant="default" padding={8}>
       <Flex flexDirection="column" gap={8}>
@@ -341,19 +424,14 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
       {pattern && <Flex flexDirection="column" gap={16} padding={16}>
 
         {/* Business Impact */}
-        <Flex flexDirection="column" gap={8}>
-          <SectionLabel>Business Impact</SectionLabel>
-          <Container color="neutral" variant="default" padding={12}>
-            <Flex flexDirection="column" gap={6}>
-              <StatRow label="Risk exposure"     value={pattern.businessImpact.exposure} />
-              <StatRow label="Recoverable value" value={pattern.businessImpact.recoverableValue} />
-              <StatRow label="Open incidents"    value={pattern.businessImpact.openIncidents} />
-              {pattern.businessImpact.affectedUsers > 0 && (
-                <StatRow label="Affected users" value={pattern.businessImpact.affectedUsers} />
-              )}
-            </Flex>
-          </Container>
-        </Flex>
+        <PanelSection title={isExecutive ? 'Business Impact' : persona === 'sre' ? 'Reliability Context' : 'Developer Context'}>
+          <SignalGrid>
+            <SignalCard label="Exposure" value={pattern.businessImpact.exposure} />
+            <SignalCard label="Recoverable" value={pattern.businessImpact.recoverableValue} />
+            <SignalCard label="Open incidents" value={pattern.businessImpact.openIncidents} tone={pattern.businessImpact.openIncidents > 0 ? 'High' : 'Low'} />
+            <SignalCard label={isExecutive ? 'Affected users' : persona === 'developer' ? 'Affected services' : 'Blast radius'} value={pattern.businessImpact.affectedUsers || signalText(pattern.assistContext.evidence.affected_entity_count) || 0} />
+          </SignalGrid>
+        </PanelSection>
 
         <Divider />
 
@@ -388,8 +466,14 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
 
         {/* Actionability */}
         <Flex flexDirection="column" gap={8}>
-          <SectionLabel>Actionability</SectionLabel>
-          <Container color="neutral" variant="default" padding={12}>
+          <SectionLabel>{isExecutive ? 'Technical Actionability' : persona === 'sre' ? 'Operational Debt' : 'Investigation Complexity'}</SectionLabel>
+          <SignalGrid>
+            <SignalCard label="Remediation effort" value={pattern.technicalActionability.remediationEffort} tone={pattern.technicalActionability.remediationEffort} />
+            <SignalCard label="Evidence quality" value={pattern.technicalActionability.evidenceQuality} tone={pattern.technicalActionability.evidenceQuality} />
+            <SignalCard label="Investigation readiness" value={pattern.technicalActionability.investigationReadiness} tone={pattern.technicalActionability.investigationReadiness} />
+            <SignalCard label="RCA" value={pattern.assistContext.evidence.rca_availability === 'Present' ? 'Present' : 'Missing'} tone={pattern.assistContext.evidence.rca_availability === 'Present' ? 'Low' : 'High'} />
+          </SignalGrid>
+          <Container color="neutral" variant="default" padding={12} style={{ display: 'none' }}>
             <Flex flexDirection="column" gap={6}>
               <StatRow label="Evidence quality"        value={pattern.technicalActionability.evidenceQuality} />
               <StatRow label="Investigation readiness" value={pattern.technicalActionability.investigationReadiness} />
