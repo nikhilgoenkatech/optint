@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@dynatrace/strato-components/buttons';
-import { XYChart } from '@dynatrace/strato-components/charts';
-import { PatternRow } from '../../types/views';
+import { PatternRow, DisplayLevel } from '../../types/views';
 
 interface ActFirstMapProps {
   patterns: PatternRow[];
@@ -9,19 +7,42 @@ interface ActFirstMapProps {
   selectedPatternId?: string | null;
 }
 
-type MapMarker = {
+type PriorityLevel = 'High' | 'Medium' | 'Low';
+
+type MapPoint = {
   id: string;
   name: string;
   cost: number;
   costLabel: string;
   blastRadius: number;
-  severityValue: number;
   recurrenceCount: number;
   openProblemCount: number;
-  x0: number;
-  y0: number;
-  xPct: number;
-  yPct: number;
+  priority: PriorityLevel;
+  severity: DisplayLevel;
+  x: number;
+  y: number;
+  radius: number;
+};
+
+const PRIORITY_STYLE: Record<PriorityLevel, { border: string; background: string; text: string; glow: string }> = {
+  High: {
+    border: 'var(--dt-colors-border-critical-default, #c41a00)',
+    background: 'rgba(196, 26, 0, 0.16)',
+    text: 'var(--dt-colors-text-critical-default, #c41a00)',
+    glow: 'rgba(196, 26, 0, 0.24)',
+  },
+  Medium: {
+    border: 'var(--dt-colors-border-warning-default, #b45309)',
+    background: 'rgba(180, 83, 9, 0.16)',
+    text: 'var(--dt-colors-text-warning-default, #b45309)',
+    glow: 'rgba(180, 83, 9, 0.24)',
+  },
+  Low: {
+    border: 'var(--dt-colors-border-success-default, #1a7a4a)',
+    background: 'rgba(26, 122, 74, 0.14)',
+    text: 'var(--dt-colors-text-success-default, #1a7a4a)',
+    glow: 'rgba(26, 122, 74, 0.22)',
+  },
 };
 
 function parseCost(costFormatted: string): number {
@@ -33,68 +54,61 @@ function parseCost(costFormatted: string): number {
 
 function normalize(value: number, values: number[], fallback: number): number {
   const finiteValues = values.filter(Number.isFinite);
+  if (!finiteValues.length) return fallback;
   const min = Math.min(...finiteValues);
   const max = Math.max(...finiteValues);
-  if (!finiteValues.length || min === max) return fallback;
-  return 10 + ((value - min) / (max - min)) * 80;
+  if (min === max) return fallback;
+  return 12 + ((value - min) / (max - min)) * 76;
 }
 
-function severityValue(pattern: PatternRow): number {
-  return pattern.severity === 'High' ? 3 : pattern.severity === 'Medium' ? 2 : 1;
+function bubbleRadius(value: number, values: number[]): number {
+  const finiteValues = values.filter(Number.isFinite);
+  if (!finiteValues.length) return 14;
+  const min = Math.min(...finiteValues);
+  const max = Math.max(...finiteValues);
+  if (min === max) return 16;
+  return 12 + ((value - min) / (max - min)) * 12;
 }
 
-function actionButton(id: string, onPatternSelect?: (id: string) => void) {
-  if (!onPatternSelect) return <></>;
-  return (
-    <Button variant="accent" onClick={() => onPatternSelect(id)}>
-      Investigate
-    </Button>
-  );
+function priorityFor(pattern: PatternRow): PriorityLevel {
+  if (pattern.severity === 'High' || pattern.priority === 'Immediate') return 'High';
+  if (pattern.severity === 'Medium' || pattern.priority === 'Short term') return 'Medium';
+  return 'Low';
 }
 
-// Quadrant label overlay — positioned over the chart SVG using absolute CSS
-const QUADRANT_LABELS = [
-  { label: 'Plan & Fund',   left: '5%',  top: '5%'  },
-  { label: 'Act Now',       left: '55%', top: '5%'  },
-  { label: 'Deprioritize',  left: '5%',  top: '55%' },
-  { label: 'Quick Win',     left: '55%', top: '55%' },
-];
+function buildMapPoints(patterns: PatternRow[]): MapPoint[] {
+  const costs = patterns.map(pattern => parseCost(pattern.costFormatted));
+  const impacts = patterns.map(pattern => pattern.blastRadius);
+  const recurrences = patterns.map(pattern => pattern.recurrenceCount);
+
+  return patterns.map(pattern => {
+    const cost = parseCost(pattern.costFormatted);
+    return {
+      id: pattern.id,
+      name: pattern.name,
+      cost,
+      costLabel: pattern.costFormatted,
+      blastRadius: pattern.blastRadius,
+      recurrenceCount: pattern.recurrenceCount,
+      openProblemCount: pattern.openProblemCount,
+      priority: priorityFor(pattern),
+      severity: pattern.severity,
+      x: normalize(cost, costs, 72),
+      y: normalize(pattern.blastRadius, impacts, 72),
+      radius: bubbleRadius(pattern.recurrenceCount, recurrences),
+    };
+  });
+}
 
 export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
 
-  const data = useMemo<MapMarker[]>(() => {
-    const costs = patterns.map(pattern => parseCost(pattern.costFormatted));
-    const impacts = patterns.map(pattern => pattern.blastRadius);
-
-    return patterns.map(pattern => {
-      const cost = parseCost(pattern.costFormatted);
-      const x = normalize(cost, costs, 55);
-      const y = normalize(pattern.blastRadius, impacts, 55);
-
-      return {
-        id: pattern.id,
-        name: pattern.name,
-        cost,
-        costLabel: pattern.costFormatted,
-        blastRadius: pattern.blastRadius,
-        severityValue: severityValue(pattern),
-        recurrenceCount: pattern.recurrenceCount,
-        openProblemCount: pattern.openProblemCount,
-        x0: x,
-        y0: y,
-        xPct: x,
-        yPct: y,
-      };
-    });
-  }, [patterns]);
-
-  const selectedData = useMemo(
-    () => data.filter(point => point.id === selectedPatternId),
-    [data, selectedPatternId],
+  const points = useMemo(() => buildMapPoints(patterns), [patterns]);
+  const selectedPoint = useMemo(
+    () => points.find(point => point.id === selectedPatternId) ?? null,
+    [points, selectedPatternId],
   );
-  const selectedPoint = selectedData[0] ?? null;
 
   useEffect(() => {
     setClosedPopupId(null);
@@ -121,182 +135,205 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
     };
   }, [selectedPatternId]);
 
-  function selectPattern(id: string) {
+  function selectPoint(point: MapPoint) {
     setClosedPopupId(null);
-    onPatternSelect?.(id);
+    onPatternSelect?.(point.id);
   }
 
   if (patterns.length === 0) {
     return (
-      <XYChart data={[]} height={380}>
-        <XYChart.EmptyState>No patterns to display</XYChart.EmptyState>
-      </XYChart>
+      <div style={{ minHeight: 320, display: 'grid', placeItems: 'center' }}>
+        No patterns to display
+      </div>
     );
   }
 
   return (
-    <div ref={mapRef} style={{ position: 'relative' }}>
-      {/* Quadrant labels */}
-      {QUADRANT_LABELS.map(q => (
-        <div
-          key={q.label}
-          style={{
-            position: 'absolute',
-            left: q.left,
-            top: q.top,
-            zIndex: 1,
-            pointerEvents: 'none',
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
-            opacity: 0.7,
-          }}
-        >
-          {q.label}
-        </div>
-      ))}
-      <XYChart data={data} height={380} colorPalette="red-green-inverted">
-        <XYChart.XAxis
-          id="cost-axis"
-          type="numerical"
-          position="bottom"
-          label="Cost impact →"
-          min={0}
-          max={100}
-          formatter={(value) => value === 0 ? 'Low' : value === 50 ? 'Medium' : value === 100 ? 'High' : ''}
-          allowDecimals={false}
-        />
-        <XYChart.YAxis
-          id="impact-axis"
-          type="numerical"
-          position="left"
-          label="Blast radius →"
-          min={0}
-          max={100}
-          formatter={(value) => value === 0 ? 'Contained' : value === 50 ? 'Moderate' : value === 100 ? 'Widespread' : ''}
-          allowDecimals={false}
-        />
-        <XYChart.DotSeries
-          xAxisId="cost-axis"
-          yAxisId="impact-axis"
-          x0Accessor="x0"
-          y0Accessor="y0"
-          nameAccessor="name"
-          seriesIdAccessor="id"
-          shape="circle"
-          actions={(point) => actionButton(String(point.id), onPatternSelect)}
-        />
-        {selectedData.length > 0 && (
-          <XYChart.DotSeries
-            data={selectedData}
-            xAxisId="cost-axis"
-            yAxisId="impact-axis"
-            x0Accessor="x0"
-            y0Accessor="y0"
-            nameAccessor="name"
-            seriesIdAccessor="id"
-            shape="circle"
-            colorPalette="blue"
-            actions={(point) => actionButton(String(point.id), onPatternSelect)}
+    <div
+      ref={mapRef}
+      style={{
+        position: 'relative',
+        minHeight: 390,
+        padding: '20px 24px 38px 54px',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          height: 320,
+          borderLeft: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+          borderBottom: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+          background:
+            'linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px)), ' +
+            'linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px)), ' +
+            'linear-gradient(90deg, transparent calc(25% - 0.5px), rgba(104, 112, 122, 0.10) calc(25% - 0.5px), rgba(104, 112, 122, 0.10) calc(25% + 0.5px), transparent calc(25% + 0.5px)), ' +
+            'linear-gradient(90deg, transparent calc(75% - 0.5px), rgba(104, 112, 122, 0.10) calc(75% - 0.5px), rgba(104, 112, 122, 0.10) calc(75% + 0.5px), transparent calc(75% + 0.5px))',
+        }}
+      >
+        <QuadrantLabel label="Plan & Fund" left="6%" top="8%" />
+        <QuadrantLabel label="Act Now" left="58%" top="8%" />
+        <QuadrantLabel label="Deprioritize" left="6%" top="78%" />
+        <QuadrantLabel label="Quick Win" left="58%" top="78%" />
+
+        {points.map(point => {
+          const selected = point.id === selectedPatternId;
+          const style = PRIORITY_STYLE[point.priority];
+          const diameter = selected ? point.radius + 8 : point.radius;
+          return (
+            <button
+              key={point.id}
+              type="button"
+              aria-label={`Select ${point.name}`}
+              aria-pressed={selected}
+              onClick={() => selectPoint(point)}
+              style={{
+                position: 'absolute',
+                left: `${point.x}%`,
+                bottom: `${point.y}%`,
+                width: diameter,
+                height: diameter,
+                transform: 'translate(-50%, 50%)',
+                borderRadius: '999px',
+                border: selected ? `2px solid ${style.border}` : `1px solid ${style.border}`,
+                background: style.background,
+                cursor: onPatternSelect ? 'pointer' : 'default',
+                boxShadow: selected ? `0 0 0 5px ${style.glow}, 0 8px 22px rgba(31, 38, 46, 0.18)` : '0 4px 12px rgba(31, 38, 46, 0.10)',
+                padding: 0,
+                zIndex: selected ? 4 : 3,
+              }}
+            />
+          );
+        })}
+
+        {selectedPoint && closedPopupId !== selectedPoint.id && (
+          <PatternPopup
+            point={selectedPoint}
+            onClose={() => setClosedPopupId(selectedPoint.id)}
           />
         )}
-        <XYChart.Tooltip />
-        <XYChart.Legend position="bottom" />
-      </XYChart>
-      {data.map((point) => {
-        const selected = point.id === selectedPatternId;
-        const size = selected ? 18 : 14;
-        return (
-          <button
-            key={point.id}
-            type="button"
-            aria-label={`Select ${point.name}`}
-            aria-pressed={selected}
-            onClick={() => selectPattern(point.id)}
-            style={{
-              position: 'absolute',
-              left: `${point.xPct}%`,
-              bottom: `${point.yPct}%`,
-              width: size,
-              height: size,
-              transform: 'translate(-50%, 50%)',
-              borderRadius: '999px',
-              border: selected
-                ? '2px solid var(--dt-colors-border-primary-default, #1496ff)'
-                : '1px solid transparent',
-              background: 'transparent',
-              cursor: onPatternSelect ? 'pointer' : 'default',
-              zIndex: 3,
-              padding: 0,
-              boxShadow: selected ? '0 0 0 4px rgba(20, 150, 255, 0.16)' : undefined,
-            }}
-          />
-        );
-      })}
-      {selectedPoint && closedPopupId !== selectedPoint.id && (
-        <div
-          role="dialog"
-          aria-label={`${selectedPoint.name} pattern summary`}
-          style={{
-            position: 'absolute',
-            left: `${selectedPoint.xPct}%`,
-            top: selectedPoint.yPct > 62 ? 'auto' : `${100 - selectedPoint.yPct}%`,
-            bottom: selectedPoint.yPct > 62 ? `${selectedPoint.yPct}%` : 'auto',
-            transform: selectedPoint.xPct > 72
-              ? 'translate(-92%, 12px)'
-              : selectedPoint.xPct < 28
-                ? 'translate(-8%, 12px)'
-                : 'translate(-50%, 12px)',
-            width: 248,
-            padding: 12,
-            border: '1px solid var(--dt-colors-border-neutral-default, #d5d8dc)',
-            borderRadius: 8,
-            background: 'var(--dt-colors-background-container-neutral-default, #ffffff)',
-            boxShadow: '0 16px 40px rgba(31, 38, 46, 0.18)',
-            zIndex: 4,
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Close pattern popup"
-            onClick={(event) => {
-              event.stopPropagation();
-              setClosedPopupId(selectedPoint.id);
-            }}
-            style={{
-              position: 'absolute',
-              top: 6,
-              right: 6,
-              border: 0,
-              background: 'transparent',
-              cursor: 'pointer',
-              color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
-              fontSize: 14,
-              lineHeight: 1,
-            }}
-          >
-            x
-          </button>
-          <div style={{ paddingRight: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
-              {selectedPoint.name}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <PopupStat label="Exposure" value={selectedPoint.costLabel} />
-              <PopupStat label="Blast radius" value={selectedPoint.blastRadius} />
-              <PopupStat label="Occurrences" value={selectedPoint.recurrenceCount} />
-              <PopupStat label="Open incidents" value={selectedPoint.openProblemCount} />
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          bottom: 4,
+          transform: 'translateX(-50%)',
+          fontSize: 12,
+          color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+        }}
+      >
+        Lower remediation effort →
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: 4,
+          top: '50%',
+          transform: 'translateY(-50%) rotate(-90deg)',
+          transformOrigin: 'center',
+          fontSize: 12,
+          color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+        }}
+      >
+        Higher business impact →
+      </div>
     </div>
   );
 }
 
-export default ActFirstMap;
+function QuadrantLabel({ label, left, top }: { label: string; left: string; top: string }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left,
+        top,
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+        pointerEvents: 'none',
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+function PatternPopup({ point, onClose }: { point: MapPoint; onClose: () => void }) {
+  const style = PRIORITY_STYLE[point.priority];
+  const anchorAbove = point.y > 62;
+  const xTransform = point.x > 72 ? 'translate(-92%, 12px)' : point.x < 28 ? 'translate(-8%, 12px)' : 'translate(-50%, 12px)';
+
+  return (
+    <div
+      role="dialog"
+      aria-label={`${point.name} pattern summary`}
+      style={{
+        position: 'absolute',
+        left: `${point.x}%`,
+        top: anchorAbove ? 'auto' : `${100 - point.y}%`,
+        bottom: anchorAbove ? `${point.y}%` : 'auto',
+        transform: xTransform,
+        width: 250,
+        padding: 12,
+        border: `1px solid ${style.border}`,
+        borderRadius: 8,
+        background: 'var(--dt-colors-background-container-neutral-default, #ffffff)',
+        boxShadow: '0 16px 40px rgba(31, 38, 46, 0.18)',
+        zIndex: 5,
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Close pattern popup"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          border: 0,
+          background: 'transparent',
+          cursor: 'pointer',
+          color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+          fontSize: 14,
+          lineHeight: 1,
+        }}
+      >
+        x
+      </button>
+      <div style={{ paddingRight: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{point.name}</div>
+          <span
+            style={{
+              color: style.text,
+              border: `1px solid ${style.border}`,
+              background: style.background,
+              borderRadius: 999,
+              padding: '2px 8px',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            {point.priority}
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <PopupStat label="Exposure" value={point.costLabel} />
+          <PopupStat label="Blast radius" value={point.blastRadius} />
+          <PopupStat label="Occurrences" value={point.recurrenceCount} />
+          <PopupStat label="Open incidents" value={point.openProblemCount} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function PopupStat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -321,3 +358,5 @@ function PopupStat({ label, value }: { label: string; value: string | number }) 
     </div>
   );
 }
+
+export default ActFirstMap;
