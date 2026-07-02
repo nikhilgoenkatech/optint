@@ -1,4 +1,4 @@
-import { PatternDetail, PatternRow } from '../types/views';
+import { PatternDetail, PatternRow, ExecKPIs, SREKPIs, DeveloperKPIs } from '../types/views';
 
 export const samplePatternRows: PatternRow[] = [
   {
@@ -124,4 +124,25 @@ export const samplePatternDetail: PatternDetail = {
       root_cause_entity: null,
     },
   },
+};
+
+export const sampleExecKPIs: ExecKPIs = {
+  openRiskExposure:  { id: 'exec-risk',       label: 'Open risk exposure',  value: '$3.5K',   helper: 'Across 3 active patterns', level: 'High' },
+  recoverableNow:    { id: 'exec-recover',     label: 'Recoverable now',     value: '$1.2K',   helper: '35% of exposure',          level: 'Medium' },
+  activePatterns:    { id: 'exec-patterns',    label: 'Active patterns',     value: '3',       helper: '1 critical, 2 stable' },
+  resolutionTime:    { id: 'exec-resolution',  label: 'Avg resolution time', value: '4.2 days',helper: 'Last 30 days' },
+};
+
+export const sampleSREKPIs: SREKPIs = {
+  operationalDebt:       { id: 'sre-debt',        label: 'Operational debt',      value: '14 h/wk', helper: 'Engineer hours lost to recurring alerts', level: 'High' },
+  automationCandidates:  { id: 'sre-automation',  label: 'Automation candidates', value: '2',       helper: 'Patterns with high evidence quality' },
+  repeatOffenders:       { id: 'sre-repeat',      label: 'Repeat offenders',      value: '1',       helper: 'Fired 4+ times in 30 days',              level: 'Medium' },
+  medianMttr:            { id: 'sre-mttr',         label: 'Median MTTR',           value: '2.1 days',helper: 'Across open patterns' },
+};
+
+export const sampleDeveloperKPIs: DeveloperKPIs = {
+  openErrors:            { id: 'dev-errors',       label: 'Open errors',           value: '9',       helper: 'Browser monitor + failure rate',         level: 'High' },
+  servicesImpacted:      { id: 'dev-services',     label: 'Services impacted',     value: '2',       helper: 'CustomerFrontendREST, Browser monitor' },
+  needsInvestigation:    { id: 'dev-investigate',  label: 'Needs investigation',   value: '1',       helper: 'Low evidence quality',                   level: 'Medium' },
+  medianResolutionTime:  { id: 'dev-resolution',   label: 'Median resolution time',value: '3.5 days',helper: 'Last 30 days' },
 };

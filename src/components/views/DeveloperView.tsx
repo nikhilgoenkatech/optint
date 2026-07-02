@@ -3,8 +3,9 @@ import { Flex } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { ObjectiveType, DeveloperKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
-import { samplePatternRows } from '../../fixtures/patterns.sample';
+import { samplePatternRows, sampleDeveloperKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
+import { DeveloperKpiRow } from '../kpis/DeveloperKpiRow';
 import { PatternTable } from '../table/PatternTable';
 
 interface DeveloperViewProps {
@@ -15,6 +16,7 @@ interface DeveloperViewProps {
 
 export function DeveloperView({ objective, onObjectiveChange, viewModel }: DeveloperViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
+  const kpis = viewModel?.kpis ?? sampleDeveloperKPIs;
   const loading = false;
 
   if (loading) {
@@ -33,6 +35,7 @@ export function DeveloperView({ objective, onObjectiveChange, viewModel }: Devel
       </Flex>
 
       {/* Phase 6: KPI cards */}
+      <DeveloperKpiRow kpis={kpis} />
       {/* Phase 7: Developer Heat Map */}
 
       {/* Phase 5: Pattern Explorer Table */}

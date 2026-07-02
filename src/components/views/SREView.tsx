@@ -3,8 +3,9 @@ import { Flex } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
-import { samplePatternRows } from '../../fixtures/patterns.sample';
+import { samplePatternRows, sampleSREKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
+import { SREKpiRow } from '../kpis/SREKpiRow';
 import { PatternTable } from '../table/PatternTable';
 
 interface SREViewProps {
@@ -15,6 +16,7 @@ interface SREViewProps {
 
 export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
+  const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const loading = false;
 
   if (loading) {
@@ -33,6 +35,7 @@ export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProp
       </Flex>
 
       {/* Phase 6: KPI cards */}
+      <SREKpiRow kpis={kpis} />
       {/* Phase 7: Reliability Risk Matrix */}
 
       {/* Phase 5: Pattern Explorer Table */}

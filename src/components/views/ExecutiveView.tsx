@@ -3,8 +3,9 @@ import { Flex } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { ObjectiveType, ExecKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
-import { samplePatternRows } from '../../fixtures/patterns.sample';
+import { samplePatternRows, sampleExecKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
+import { ExecKpiRow } from '../kpis/ExecKpiRow';
 import { PatternTable } from '../table/PatternTable';
 
 interface ExecutiveViewProps {
@@ -15,6 +16,7 @@ interface ExecutiveViewProps {
 
 export function ExecutiveView({ objective, onObjectiveChange, viewModel }: ExecutiveViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
+  const kpis = viewModel?.kpis ?? sampleExecKPIs;
   const loading = false;
 
   if (loading) {
@@ -33,6 +35,7 @@ export function ExecutiveView({ objective, onObjectiveChange, viewModel }: Execu
       </Flex>
 
       {/* Phase 6: KPI cards */}
+      <ExecKpiRow kpis={kpis} />
       {/* Phase 7: Act-First Map */}
 
       {/* Phase 5: Pattern Explorer Table */}
