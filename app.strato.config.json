@@ -1,0 +1,26 @@
+{
+  "environmentUrl": "https://ykd61701.sprint.apps.dynatracelabs.com",
+  "build": {
+    "index": "src/index.tsx"
+  },
+  "app": {
+    "id": "my.dynatrace.opint.strato",
+    "name": "Calibrate (Strato Preview)",
+    "version": "2.0.0",
+    "description": "Strato migration preview - runs alongside my.dynatrace.opint for validation",
+    "scopes": [
+      {
+        "name": "storage:events:read",
+        "comment": "Read Davis problem events via DQL from Grail"
+      },
+      {
+        "name": "storage:buckets:read",
+        "comment": "Access Grail storage buckets for DQL queries"
+      },
+      {
+        "name": "davis-copilot:conversations:execute",
+        "comment": "Davis CoPilot conversational analysis for pattern insights"
+      }
+    ]
+  }
+}
