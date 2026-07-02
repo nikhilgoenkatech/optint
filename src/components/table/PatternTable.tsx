@@ -90,7 +90,11 @@ export function PatternTable({
       rowId={(row) => row.id}
       interactiveRows={Boolean(onPatternSelect)}
       activeRow={selectedPatternId}
-      onActiveRowChange={(rowId) => onPatternSelect?.(rowId)}
+      onActiveRowChange={(rowId) => {
+        // DataTable emits null when its data prop changes; workspace selection
+        // should only change when the user chooses a concrete pattern row.
+        if (rowId) onPatternSelect?.(rowId);
+      }}
     />
   );
 }
