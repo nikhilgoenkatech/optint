@@ -8,8 +8,16 @@ import { FilterState } from '../models';
 
 // ── Query builder helpers ──────────────────────────────────
 
+function toDqlTimeExpression(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === 'now') return 'now()';
+  if (trimmed.startsWith('now-')) return `now()-${trimmed.slice(4)}`;
+  if (trimmed.startsWith('now+')) return `now()+${trimmed.slice(4)}`;
+  return `"${quoteDql(trimmed)}"`;
+}
+
 export function buildTimeFilter(from: string, to: string): string {
-  return `timeframe(from:"${from}", to:"${to}")`;
+  return `from: ${toDqlTimeExpression(from)}, to: ${toDqlTimeExpression(to)}`;
 }
 
 function quoteDql(value: string): string {
