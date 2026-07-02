@@ -17,7 +17,7 @@ export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProp
 
   if (loading) {
     return (
-      <Flex justifyContent="center" alignItems="center" style={{ height: '60vh' }}>
+      <Flex justifyContent="center" alignItems="center">
         <ProgressCircle />
       </Flex>
     );
@@ -31,9 +31,10 @@ export function SREView({ objective, onObjectiveChange, viewModel }: SREViewProp
       {/* Phase 5: Pattern table */}
       {/* Phase 8: Persistent right panel */}
       <Text>
-        {patterns.length} patterns · <strong>{objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization'}</strong>
+        {patterns.length} patterns ·{' '}
+        <strong>{objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization'}</strong>
       </Text>
-      <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+      <Text textStyle="small">
         Shell — fixture data. Codex wires viewModel prop.
       </Text>
     </Flex>

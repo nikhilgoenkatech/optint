@@ -6,7 +6,6 @@ import { ExecutiveView } from './views/ExecutiveView';
 import { SREView } from './views/SREView';
 import { DeveloperView } from './views/DeveloperView';
 
-const PERSONAS: PersonaType[] = ['executive', 'sre', 'developer'];
 const PERSONA_LABELS: Record<PersonaType, string> = {
   executive: 'Executive',
   sre: 'SRE',
@@ -17,10 +16,8 @@ export function App() {
   const [personaIndex, setPersonaIndex] = useState(0);
   const [objective, setObjective] = useState<ObjectiveType>('cost_impact');
 
-  const persona = PERSONAS[personaIndex];
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <AppHeader>
         <AppHeader.Logo>Calibrate</AppHeader.Logo>
       </AppHeader>
