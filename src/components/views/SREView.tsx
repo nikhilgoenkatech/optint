@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Flex } from '@dynatrace/strato-components/layouts';
 import { Heading } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
+import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows, sampleSREKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
@@ -22,6 +23,7 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
+  const [viewTab, setViewTab] = useState(0);
 
   if (loading) {
     return (
@@ -40,19 +42,23 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
         </Flex>
 
         <SREKpiRow kpis={kpis} />
-        <div style={{ maxWidth: 640 }}>
-          <ReliabilityRiskMatrix
-            patterns={patterns}
-            selectedPatternId={viewModel?.selectedPatternId ?? null}
-            onPatternSelect={onPatternSelect}
-          />
-        </div>
 
-        <PatternTable
-          data={patterns}
-          selectedPatternId={viewModel?.selectedPatternId ?? null}
-          onPatternSelect={onPatternSelect}
-        />
+        <Tabs selectedIndex={viewTab} onChange={setViewTab}>
+          <Tab title="Reliability Risk Matrix">
+            <ReliabilityRiskMatrix
+              patterns={patterns}
+              selectedPatternId={viewModel?.selectedPatternId ?? null}
+              onPatternSelect={onPatternSelect}
+            />
+          </Tab>
+          <Tab title="Pattern Explorer">
+            <PatternTable
+              data={patterns}
+              selectedPatternId={viewModel?.selectedPatternId ?? null}
+              onPatternSelect={onPatternSelect}
+            />
+          </Tab>
+        </Tabs>
       </Flex>
 
       <PatternDetailPanel

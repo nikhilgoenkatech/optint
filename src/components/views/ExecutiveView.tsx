@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Flex } from '@dynatrace/strato-components/layouts';
 import { Heading } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
+import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, ExecKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows, sampleExecKPIs } from '../../fixtures/patterns.sample';
 import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
@@ -22,6 +23,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
   const kpis = viewModel?.kpis ?? sampleExecKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
+  const [viewTab, setViewTab] = useState(0);
 
   if (loading) {
     return (
@@ -33,7 +35,6 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
 
   return (
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
-      {/* Main content */}
       <Flex flexDirection="column" gap={16} padding={24} style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
         <Flex justifyContent="space-between" alignItems="center">
           <Heading level={2}>Executive Overview</Heading>
@@ -41,22 +42,25 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
         </Flex>
 
         <ExecKpiRow kpis={kpis} />
-        <div style={{ maxWidth: 640 }}>
-          <ActFirstMap
-            patterns={patterns}
-            selectedPatternId={viewModel?.selectedPatternId ?? null}
-            onPatternSelect={onPatternSelect}
-          />
-        </div>
 
-        <PatternTable
-          data={patterns}
-          selectedPatternId={viewModel?.selectedPatternId ?? null}
-          onPatternSelect={onPatternSelect}
-        />
+        <Tabs selectedIndex={viewTab} onChange={setViewTab}>
+          <Tab title="Act-First Map">
+            <ActFirstMap
+              patterns={patterns}
+              selectedPatternId={viewModel?.selectedPatternId ?? null}
+              onPatternSelect={onPatternSelect}
+            />
+          </Tab>
+          <Tab title="Pattern Explorer">
+            <PatternTable
+              data={patterns}
+              selectedPatternId={viewModel?.selectedPatternId ?? null}
+              onPatternSelect={onPatternSelect}
+            />
+          </Tab>
+        </Tabs>
       </Flex>
 
-      {/* Persistent right panel — always visible */}
       <PatternDetailPanel
         pattern={selectedPattern}
         onClose={() => onPatternSelect?.(null)}
