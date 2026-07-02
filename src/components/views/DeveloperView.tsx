@@ -42,7 +42,7 @@ export function DeveloperView({ objective, onObjectiveChange, viewModel }: Devel
       <PatternTable data={patterns} />
 
       {/* Phase 8: Persistent right panel */}
-      <Text textStyle="small">Fixture data · Codex wires viewModel prop</Text>
+      <Text textStyle="small">Pattern rows and KPIs from persona view model</Text>
     </Flex>
   );
 }
