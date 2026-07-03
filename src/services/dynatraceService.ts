@@ -101,12 +101,35 @@ function toMinutes(value: unknown): number | undefined {
   if (typeof value === 'number') {
     return value > 10000 ? Math.round(value / 60000) : value;
   }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric > 10000 ? Math.round(numeric / 60000) : numeric;
+
+    const iso = trimmed.match(/^P(?:T)?(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+    if (iso) {
+      const hours = Number(iso[1] || 0);
+      const minutes = Number(iso[2] || 0);
+      const seconds = Number(iso[3] || 0);
+      const total = hours * 60 + minutes + seconds / 60;
+      return total > 0 ? Math.round(total) : undefined;
+    }
+
+    const withUnit = trimmed.match(/^(\d+(?:\.\d+)?)\s*(ms|millisecond|milliseconds|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/i);
+    if (withUnit) {
+      const amount = Number(withUnit[1]);
+      const unit = withUnit[2].toLowerCase();
+      if (unit.startsWith('ms')) return Math.max(1, Math.round(amount / 60000));
+      if (unit === 's' || unit.startsWith('sec')) return Math.max(1, Math.round(amount / 60));
+      if (unit === 'm' || unit.startsWith('min')) return Math.round(amount);
+      if (unit === 'h' || unit.startsWith('hr') || unit.startsWith('hour')) return Math.round(amount * 60);
+    }
+  }
   const ms = toEpochMs(value);
   return ms ? Math.round(ms / 60000) : undefined;
 }
 
 function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
-  const duration      = toMinutes(r['duration']);
   const affectedUsers = r['affectedUsers'] ? Number(r['affectedUsers']) : 0;
   const severityMap: Record<string, DynatraceProblem['severity']> = {
     ERROR: 'ERROR',
@@ -124,6 +147,13 @@ function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
   };
   const severity = severityMap[String(r['severityLevel'] ?? '').toUpperCase()] ?? 'CUSTOM_ALERT';
   const status = statusMap[String(r['status'] ?? '').toUpperCase()] ?? 'OPEN';
+  const startTime = toEpochMs(r['startTime']) ?? Date.now();
+  const endTime = toEpochMs(r['endTime']);
+  const rawDuration = toMinutes(r['duration']);
+  const fallbackDuration = status === 'RESOLVED' && endTime && startTime && endTime > startTime
+    ? Math.round((endTime - startTime) / 60000)
+    : undefined;
+  const duration = rawDuration ?? fallbackDuration;
   const recurrence   = computeRecurrenceScore(1, 7); // will be re-scored by pattern engine
   const rootCauseName = r['rootCauseEntityName'] ? String(r['rootCauseEntityName']) : '';
   const rootCauseId = r['rootCauseEntityId'] ? String(r['rootCauseEntityId']) : rootCauseName;
@@ -139,8 +169,8 @@ function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
     title:            String(r['title'] ?? ''),
     status,
     severity,
-    startTime:        toEpochMs(r['startTime']) ?? Date.now(),
-    endTime:          toEpochMs(r['endTime']),
+    startTime,
+    endTime,
     duration,
     impactedEntities: impactedIds.map((entityId, index) => {
       const type = entityTypeFromId(impactedTypes[index] || entityId);
