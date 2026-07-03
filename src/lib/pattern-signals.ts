@@ -37,6 +37,14 @@ function unique(values: string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))];
 }
 
+function readableServiceName(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized || /^unknown\s/i.test(normalized)) return false;
+  if (/^[A-Z_]+-[A-Za-z0-9]/.test(normalized)) return false;
+  if (['SERVICE', 'HOST', 'APPLICATION', 'PROCESS_GROUP'].includes(normalized.toUpperCase())) return false;
+  return true;
+}
+
 function scopeTier(entityCount: number): string {
   if (entityCount >= 8) return 'broad';
   if (entityCount >= 2) return 'scoped';
@@ -67,10 +75,12 @@ export function extractPatternSignals(
   config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG,
 ): PatternSignals {
   const services = unique([
+    ...pattern.dimensions.rootCauseEntities,
     ...pattern.affectedServices,
     ...pattern.dimensions.impactedServices,
+    ...pattern.problems.map(problem => problem.rootCauseEntity?.name || ''),
     ...pattern.problems.flatMap(problem => problem.impactedEntities.map(entity => entity.name)),
-  ]).filter(service => !/^unknown\s/i.test(service));
+  ]).filter(readableServiceName);
   const affectedEntityCount = unique(pattern.problems.flatMap(problem => problem.impactedEntities.map(entity => entity.entityId))).length || services.length;
   const affectedUsers = pattern.problems.reduce((sum, problem) => sum + (problem.affectedUsers || 0), 0);
   const operationalCost = configuredPatternCost(pattern, config);

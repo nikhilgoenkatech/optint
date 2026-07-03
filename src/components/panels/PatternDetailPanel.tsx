@@ -364,12 +364,17 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
 
   if (objective === 'alert_optimization') {
     const strength = drivers.length >= 3 ? 'Evidence-backed' : 'Candidate';
+    const title = persona === 'executive'
+      ? 'Decide whether alert noise reduction is justified by observed recurrence'
+      : 'Review alert tuning for this recurring signal';
     return {
-      assessment: `This recurring signal appeared ${occurrences} time(s) with ${displaySignalValue('operational_cost', cost)} in modeled operational cost and a ${displaySignalValue('trend', trend)} trend. Because the objective is alert optimization, the recommendation focuses on signal quality, routing, and scoped tuning rather than service remediation.`,
+      assessment: persona === 'executive'
+        ? `This recurring signal appeared ${occurrences} time(s) with ${displaySignalValue('operational_cost', cost)} in modeled operational cost and a ${displaySignalValue('trend', trend)} trend. Because the goal is alert optimization, the executive recommendation focuses on whether noise reduction is worth sponsoring, not on detector configuration.`
+        : `This recurring signal appeared ${occurrences} time(s) with ${displaySignalValue('operational_cost', cost)} in modeled operational cost and a ${displaySignalValue('trend', trend)} trend. Because the objective is alert optimization, the recommendation focuses on signal quality, routing, and scoped tuning rather than service remediation.`,
       drivers,
       action: {
         priority: strength === 'Evidence-backed' ? 'SHORT_TERM' : 'STRATEGIC',
-        title: 'Review alert tuning for this recurring signal',
+        title,
         strength,
         reason: `occurrence_count=${occurrences}; trend=${trend}; recommendation_type=${recommendationType}`,
         capability: personaCapability(persona, kind, objective),
@@ -546,6 +551,7 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
 
   if (state.status !== 'ready' || !state.result) return null;
   const parsedEvidence = evidenceItems(state.result.action.reason);
+  const primaryDriver = state.result.drivers[0];
 
   return (
     <Flex flexDirection="column" gap={8}>
@@ -565,13 +571,27 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
           ))}
         </SignalGrid>
       </PanelSection>
-      <PanelSection title="Next Step">
+      <PanelSection title="Recommendation">
         <Container color="neutral" variant="default" padding={8}>
           <Flex flexDirection="column" gap={6}>
-            <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
-            <SignalGrid>
+            <Flex justifyContent="space-between" alignItems="flex-start" gap={8}>
+              <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
               <SignalCard label="Priority" value={displayPriority(state.result.action.priority)} tone={state.result.action.priority} />
-              <SignalCard label="Strength" value={displayStrength(state.result.action.strength)} />
+            </Flex>
+            {primaryDriver && (
+              <Container color="neutral" variant="emphasized" padding={8}>
+                <Flex flexDirection="column" gap={4}>
+                  <Text textStyle="small" style={{ fontWeight: 600 }}>Why it matters</Text>
+                  <Text textStyle="small" style={{ color: MUTED }}>{primaryDriver.whyItMatters}</Text>
+                </Flex>
+              </Container>
+            )}
+            <Flex flexDirection="column" gap={4}>
+              <Text textStyle="small" style={{ fontWeight: 600 }}>Recommended action</Text>
+              <Text textStyle="small">{state.result.action.title}</Text>
+            </Flex>
+            <SignalGrid>
+              <SignalCard label="Recommendation strength" value={displayStrength(state.result.action.strength)} />
               <SignalCard label="Dynatrace capability" value={state.result.action.capability} />
             </SignalGrid>
             {parsedEvidence.length > 0 && (

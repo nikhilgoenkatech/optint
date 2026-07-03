@@ -40,6 +40,14 @@ export function DeveloperView({
   const goalHint = objective === 'cost_impact'
     ? 'Optimising triage by recurring cost, affected services, and recoverable work.'
     : 'Optimising triage by noisy recurrence and alert-quality signals before code-level work.';
+  const scopeGroups: Array<{ type: DeveloperScopeOption['type']; label: string }> = [
+    { type: 'service', label: 'Services' },
+    { type: 'team', label: 'Teams' },
+    { type: 'owner', label: 'Owners' },
+    { type: 'namespace', label: 'Namespaces' },
+    { type: 'application', label: 'Applications' },
+    { type: 'environment', label: 'Environments' },
+  ];
 
   if (loading) {
     return (
@@ -83,9 +91,17 @@ export function DeveloperView({
                 }}
               >
                 <option value="">{developerScopes.length ? 'All Developer Scope' : 'No developer scopes found'}</option>
-                {developerScopes.map(scope => (
-                  <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
-                ))}
+                {scopeGroups.map(group => {
+                  const scopes = developerScopes.filter(scope => scope.type === group.type);
+                  if (!scopes.length) return null;
+                  return (
+                    <optgroup key={group.type} label={group.label}>
+                      {scopes.map(scope => (
+                        <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             </label>
             <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
