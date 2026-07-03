@@ -6,6 +6,7 @@ import { TimeframeSelector } from '@dynatrace/strato-components/filters';
 import type { Timeframe } from '@dynatrace/strato-components/core';
 import { useCurrentTheme } from '@dynatrace/strato-components/core';
 import { SettingIcon } from '@dynatrace/strato-icons';
+import { CalibrateLogo } from './atoms/CalibrateLogo';
 import { PersonaType, ObjectiveType } from '../types/views';
 import { ExecutiveView } from './views/ExecutiveView';
 import { SREView } from './views/SREView';
@@ -117,9 +118,12 @@ export function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <AppHeader>
-        <AppHeader.Logo>Calibrate</AppHeader.Logo>
+        <AppHeader.Logo>
+          <CalibrateLogo />
+        </AppHeader.Logo>
         <AppHeader.ActionItems>
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+          <div style={{ width: 1, height: 20, background: 'var(--dt-colors-border-neutral-default, #cfd3d8)', margin: '0 4px' }} />
           <AppHeader.ActionButton
             prefixIcon={<SettingIcon />}
             onClick={() => setConfigOpen(true)}

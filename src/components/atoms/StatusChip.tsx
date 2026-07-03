@@ -11,8 +11,18 @@ export function SeverityChip({ value }: { value: DisplayLevel }) {
 }
 
 export function TrendChip({ value }: { value: TrendDirection }) {
-  const color = value === 'Increasing' ? 'critical' : value === 'Decreasing' ? 'success' : 'neutral';
-  return <Chip color={color} variant="emphasized">{value}</Chip>;
+  const dotColor = value === 'Increasing'
+    ? 'var(--dt-colors-text-critical-default, #c41a00)'
+    : value === 'Decreasing'
+      ? 'var(--dt-colors-text-success-default, #1a7a4a)'
+      : 'var(--dt-colors-text-neutral-subdued, #74777a)';
+  const arrow = value === 'Increasing' ? '↑' : value === 'Decreasing' ? '↓' : '→';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+      <span style={{ color: dotColor, fontWeight: 700, fontSize: 13 }}>{arrow}</span>
+      <span style={{ color: dotColor }}>{value}</span>
+    </span>
+  );
 }
 
 export function StatusChip({ value }: { value: PatternStatus }) {
