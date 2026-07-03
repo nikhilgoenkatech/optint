@@ -98,6 +98,7 @@ export interface PatternDetail {
     objective: ObjectiveType;
     problemIds: string[];
     evidence: Record<string, string | number | string[] | null>;
+    lineage?: Record<string, { sourceField: string; transformation: string; fallbackUsed?: string; missingReason?: string }>;
   };
 }
 
@@ -108,6 +109,16 @@ export interface WorkspaceViewModel<TKpis> {
   patterns: PatternRow[];
   selectedPatternId: string | null;
   selectedPattern?: PatternDetail;
+  rawProblemRecords?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    category: string;
+    exposure: string;
+    users: number;
+    duration: string;
+    seen: string;
+  }>;
   emptyState: {
     title: string;
     description: string;

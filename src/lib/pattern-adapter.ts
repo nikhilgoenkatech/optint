@@ -1,4 +1,4 @@
-import { ProblemPattern } from '../models';
+import { ExtendedCostConfig, ProblemPattern } from '../models';
 import {
   DisplayLevel,
   ObjectiveType,
@@ -9,15 +9,9 @@ import {
   TrendDirection,
   confidenceToDisplayLevel,
 } from '../types/views';
-
-const DEFAULT_RECOVERY_RATE = 0.35;
-
-function formatCurrency(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '$0';
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${Math.round(value)}`;
-}
+import { DEFAULT_EXTENDED_COST_CONFIG } from '../components/config/ConfigDialog';
+import { extractPatternSignals, PatternSignals, signalsToEvidence } from './pattern-signals';
+import { formatCurrency } from './formatting';
 
 function levelToScore(level: ProblemPattern['confidence']): number {
   if (level === 'HIGH') return 0.9;
@@ -31,9 +25,10 @@ function trendToView(trend: ProblemPattern['trend']): TrendDirection {
   return 'Stable';
 }
 
-function severityToLevel(pattern: ProblemPattern): DisplayLevel {
-  if (pattern.totalCost >= 10_000 || pattern.severity === 'AVAILABILITY') return 'High';
-  if (pattern.totalCost >= 2_500 || pattern.severity === 'ERROR') return 'Medium';
+function severityToLevel(pattern: ProblemPattern, signals: PatternSignals): DisplayLevel {
+  const cost = Number(signals.operational_cost.value || 0);
+  if (cost >= 10_000 || pattern.severity === 'AVAILABILITY') return 'High';
+  if (cost >= 2_500 || pattern.severity === 'ERROR') return 'Medium';
   return 'Low';
 }
 
@@ -44,8 +39,9 @@ function statusForPattern(pattern: ProblemPattern): PatternStatus {
   return 'Mixed';
 }
 
-function recommendationPriority(pattern: ProblemPattern): PatternRow['priority'] {
-  if (pattern.totalCost >= 10_000 || pattern.trend === 'INCREASING') return 'Immediate';
+function recommendationPriority(pattern: ProblemPattern, signals: PatternSignals): PatternRow['priority'] {
+  const cost = Number(signals.operational_cost.value || 0);
+  if (cost >= 10_000 || pattern.trend === 'INCREASING') return 'Immediate';
   if (pattern.recurrenceScore >= 60 || pattern.occurrences >= 3) return 'Short term';
   if (pattern.evidenceQuality === 'LOW') return 'Monitor';
   return 'Strategic';
@@ -69,24 +65,27 @@ function buildTimeline(pattern: ProblemPattern): PatternTimelineBucket[] {
     .map(([label, count]) => ({ label, count }));
 }
 
-export function patternToRow(pattern: ProblemPattern): PatternRow {
+export function patternToRow(pattern: ProblemPattern, config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG): PatternRow {
+  const signals = extractPatternSignals(pattern, config);
   const openProblemCount = pattern.problems.filter(problem => problem.status === 'OPEN').length;
-  const recoverable = pattern.totalCost * DEFAULT_RECOVERY_RATE;
+  const cost = Number(signals.operational_cost.value || 0);
+  const recoverable = Number(signals.potential_savings.value || 0);
+  const affectedServices = signals.affected_services.value;
 
   return {
     id: pattern.patternId,
     name: pattern.title,
     category: pattern.severity,
     status: statusForPattern(pattern),
-    costFormatted: formatCurrency(pattern.totalCost),
+    costFormatted: formatCurrency(cost),
     recoverableFormatted: formatCurrency(recoverable),
     recurrenceCount: pattern.occurrences,
     openProblemCount,
     totalProblemCount: pattern.problems.length,
-    blastRadius: pattern.affectedServices.length,
-    affectedServices: pattern.affectedServices,
-    severity: severityToLevel(pattern),
-    priority: recommendationPriority(pattern),
+    blastRadius: Number(signals.affected_entity_count.value || affectedServices.length),
+    affectedServices,
+    severity: severityToLevel(pattern, signals),
+    priority: recommendationPriority(pattern, signals),
     trend: trendToView(pattern.trend),
     evidenceQuality: confidenceToDisplayLevel(pattern.evidenceQuality),
     evidenceQualityScore: levelToScore(pattern.evidenceQuality),
@@ -103,10 +102,14 @@ export function patternToDetail(
   pattern: ProblemPattern,
   persona = 'executive' as PatternDetail['assistContext']['persona'],
   objective: ObjectiveType = 'cost_impact',
+  config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG,
 ): PatternDetail {
-  const row = patternToRow(pattern);
-  const affectedUsers = pattern.problems.reduce((sum, problem) => sum + (problem.affectedUsers || 0), 0);
+  const row = patternToRow(pattern, config);
+  const signals = extractPatternSignals(pattern, config);
+  const affectedUsers = Number(signals.affected_users.value || 0);
   const problemIds = pattern.problems.map(problem => problem.problemId).filter(Boolean);
+  const evidence = signalsToEvidence(signals);
+  const lineage = Object.fromEntries(Object.entries(signals).map(([key, signal]) => [key, signal.lineage]));
 
   return {
     id: row.id,
@@ -134,22 +137,12 @@ export function patternToDetail(
       persona,
       objective,
       problemIds,
-      evidence: {
-        occurrence_count: pattern.occurrences,
-        alert_event_count: pattern.problems.length,
-        operational_cost: Math.round(pattern.totalCost),
-        affected_users: affectedUsers,
-        affected_entity_count: pattern.affectedServices.length,
-        affected_services: pattern.affectedServices,
-        event_category: pattern.severity,
-        trend: pattern.trend,
-        rca_availability: pattern.hasRCA ? 'Present' : 'Missing',
-        root_cause_entity: pattern.dimensions.primaryRootCause,
-      },
+      evidence,
+      lineage,
     },
   };
 }
 
-export function patternsToRows(patterns: ProblemPattern[]): PatternRow[] {
-  return patterns.map(patternToRow);
+export function patternsToRows(patterns: ProblemPattern[], config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG): PatternRow[] {
+  return patterns.map(pattern => patternToRow(pattern, config));
 }

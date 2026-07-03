@@ -5,6 +5,7 @@ import { Button } from '@dynatrace/strato-components/buttons';
 import { Container } from '@dynatrace/strato-components/layouts';
 import { EmptyState } from '@dynatrace/strato-components/content';
 import { PatternDetail, TrendDirection } from '../../types/views';
+import { buildSignalPrompt } from '../../persona/PersonaPromptBuilder';
 
 const MUTED  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
 const DANGER = 'var(--dt-colors-text-critical-default, #c41a00)';
@@ -327,28 +328,14 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
 }
 
 function buildRawPrompt(pattern: PatternDetail, kind: GenerationKind): string {
-  const { evidence, persona, objective } = pattern.assistContext;
-  const lines: string[] = [
-    `# Calibrate Assist — ${kind.charAt(0).toUpperCase() + kind.slice(1)}`,
-    `Pattern: ${pattern.title}`,
-    `Persona: ${persona} | Objective: ${formatObjective(objective)}`,
-    '',
-    '## Observed signals',
-  ];
-  for (const [key, val] of Object.entries(evidence)) {
-    if (isMeaningfulSignal(val)) {
-      lines.push(`- ${signalLabel(key)}: ${displaySignalValue(key, signalText(val))}`);
-    }
-  }
-  lines.push('', '## Recommended action', pattern.recommendedAction);
-  if (kind === 'analysis') {
-    lines.push('', '## Instruction', `Generate a ${persona}-specific analysis. Focus on investigation starting point, recurrence signals, and next observable step. Do not infer root causes not present in the evidence.`);
-  } else if (kind === 'remediation') {
-    lines.push('', '## Instruction', `Generate a practical remediation path for a ${persona} persona. Use only the supplied signals. Avoid code-level assumptions if root cause entity is absent.`);
-  } else {
-    lines.push('', '## Instruction', `Generate an evidence-gated executive recommendation. Prioritise based on cost, recurrence, and blast radius. Highlight data gaps and keep scope conservative.`);
-  }
-  return lines.join('\n');
+  return buildSignalPrompt({
+    persona: pattern.assistContext.persona,
+    objective: pattern.assistContext.objective,
+    evidence: pattern.assistContext.evidence,
+    patternTitle: pattern.title,
+    recommendedAction: pattern.recommendedAction,
+    kind,
+  });
 }
 
 function RawPrompt({ pattern, kind }: { pattern: PatternDetail; kind: GenerationKind }) {

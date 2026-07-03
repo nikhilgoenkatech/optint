@@ -1,5 +1,9 @@
-import { ProblemPattern } from '../models';
+import { DynatraceProblem, ExtendedCostConfig, ProblemPattern } from '../models';
+import { DEFAULT_EXTENDED_COST_CONFIG } from '../components/config/ConfigDialog';
 import { patternToDetail, patternsToRows } from './pattern-adapter';
+import { configuredPatternCost } from './pattern-signals';
+import { formatCurrency, formatMinutes, medianPositive } from './formatting';
+import { estimateCost } from '../cost/CostModel';
 import {
   DeveloperKPIs,
   ExecKPIs,
@@ -10,42 +14,35 @@ import {
   WorkspaceViewModel,
 } from '../types/views';
 
-function currency(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '$0';
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${Math.round(value)}`;
-}
-
-function minutes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '-';
-  if (value < 60) return `${Math.round(value)}m`;
-  return `${Math.round(value / 60)}h`;
-}
-
 function metric(id: string, label: string, value: string, helper?: string): MetricCardViewModel {
   return { id, label, value, helper };
-}
-
-function median(values: number[]): number {
-  const clean = values.filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
-  if (!clean.length) return 0;
-  return clean[Math.floor(clean.length / 2)];
 }
 
 function openProblems(patterns: ProblemPattern[]): number {
   return patterns.reduce((sum, pattern) => sum + pattern.problems.filter(problem => problem.status === 'OPEN').length, 0);
 }
 
-export function buildExecKPIs(patterns: ProblemPattern[]): ExecKPIs {
-  const exposure = patterns.reduce((sum, pattern) => sum + pattern.totalCost, 0);
-  const recoverable = exposure * 0.35;
-  const durations = patterns.flatMap(pattern => pattern.problems.map(problem => problem.duration || 0));
+function resolvedDurations(patterns: ProblemPattern[]): number[] {
+  return patterns.flatMap(pattern => pattern.problems
+    .filter(problem => problem.status === 'RESOLVED')
+    .map(problem => Number(problem.duration))
+    .filter(value => Number.isFinite(value) && value > 0));
+}
+
+function totalConfiguredCost(patterns: ProblemPattern[], config: ExtendedCostConfig): number {
+  return patterns.reduce((sum, pattern) => sum + configuredPatternCost(pattern, config), 0);
+}
+
+export function buildExecKPIs(patterns: ProblemPattern[], config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG): ExecKPIs {
+  const exposure = totalConfiguredCost(patterns, config);
+  const recoverable = exposure * (Math.max(0, Math.min(100, config.recoveryRatePct)) / 100);
+  const durations = resolvedDurations(patterns);
 
   return {
-    openRiskExposure: metric('open-risk-exposure', 'Open Risk Exposure', currency(exposure), `${openProblems(patterns)} open incidents`),
-    recoverableNow: metric('recoverable-now', 'Recoverable Now', currency(recoverable), 'Recovery model: 35%'),
+    openRiskExposure: metric('open-risk-exposure', 'Open Risk Exposure', formatCurrency(exposure), `${openProblems(patterns)} open incidents`),
+    recoverableNow: metric('recoverable-now', 'Recoverable Now', formatCurrency(recoverable), `Recovery model: ${config.recoveryRatePct}%`),
     activePatterns: metric('active-patterns', 'Active Patterns', String(patterns.length), 'Recurring patterns requiring attention'),
-    resolutionTime: metric('resolution-time', 'Median MTTR', minutes(median(durations)), 'Resolved problem duration'),
+    resolutionTime: metric('resolution-time', 'Median MTTR', formatMinutes(medianPositive(durations)), `${durations.length} resolved`),
   };
 }
 
@@ -53,13 +50,13 @@ export function buildSREKPIs(patterns: ProblemPattern[]): SREKPIs {
   const repeatOffenders = patterns.filter(pattern => pattern.occurrences >= 2);
   const automationCandidates = repeatOffenders.filter(pattern => pattern.investigationReadiness !== 'LOW');
   const debt = patterns.filter(pattern => pattern.evidenceQuality === 'LOW' || pattern.confidence === 'LOW');
-  const durations = patterns.flatMap(pattern => pattern.problems.map(problem => problem.duration || 0));
+  const durations = resolvedDurations(patterns);
 
   return {
     operationalDebt: metric('operational-debt', 'Operational Debt', String(debt.length), 'Low-evidence or low-confidence patterns'),
     automationCandidates: metric('automation-candidates', 'Automation Candidates', String(automationCandidates.length), 'Recurring patterns with enough evidence to automate'),
     repeatOffenders: metric('repeat-offenders', 'Repeat Offenders', String(repeatOffenders.length), 'Patterns recurring at least twice'),
-    medianMttr: metric('median-mttr', 'Median MTTR', minutes(median(durations)), 'Median resolved duration'),
+    medianMttr: metric('median-mttr', 'Median MTTR', formatMinutes(medianPositive(durations)), `${durations.length} resolved`),
   };
 }
 
@@ -70,13 +67,13 @@ export function buildDeveloperKPIs(patterns: ProblemPattern[]): DeveloperKPIs {
   );
   const services = new Set(patterns.flatMap(pattern => pattern.affectedServices));
   const needsInvestigation = patterns.filter(pattern => pattern.evidenceQuality === 'LOW' || !pattern.hasRCA).length;
-  const durations = patterns.flatMap(pattern => pattern.problems.map(problem => problem.duration || 0));
+  const durations = resolvedDurations(patterns);
 
   return {
     openErrors: metric('open-errors', 'Open Errors', String(openErrors), 'Open ERROR-category problems'),
     servicesImpacted: metric('services-impacted', 'Services Impacted', String(services.size), 'Unique services or endpoints'),
     needsInvestigation: metric('needs-investigation', 'Needs Investigation', String(needsInvestigation), 'Missing RCA or low evidence quality'),
-    medianResolutionTime: metric('median-resolution-time', 'Median Resolution Time', minutes(median(durations)), 'Median resolved duration'),
+    medianResolutionTime: metric('median-resolution-time', 'Median Resolution Time', formatMinutes(medianPositive(durations)), `${durations.length} resolved`),
   };
 }
 
@@ -86,6 +83,8 @@ export function buildWorkspaceViewModel<TKpis>(
   patterns: ProblemPattern[],
   kpis: TKpis,
   selectedPatternId: string | null,
+  config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG,
+  rawProblems: DynatraceProblem[] = [],
 ): WorkspaceViewModel<TKpis> {
   const selectedPattern = patterns.find(pattern => pattern.patternId === selectedPatternId);
 
@@ -93,9 +92,19 @@ export function buildWorkspaceViewModel<TKpis>(
     persona,
     objective,
     kpis,
-    patterns: patternsToRows(patterns),
-    selectedPatternId,
-    selectedPattern: selectedPattern ? patternToDetail(selectedPattern, persona, objective) : undefined,
+    patterns: patternsToRows(patterns, config),
+    selectedPatternId: selectedPattern ? selectedPatternId : null,
+    selectedPattern: selectedPattern ? patternToDetail(selectedPattern, persona, objective, config) : undefined,
+    rawProblemRecords: persona === 'sre' ? rawProblems.map(problem => ({
+      id: problem.problemId,
+      title: problem.businessTitle || problem.title,
+      status: problem.status,
+      category: problem.severity,
+      exposure: formatCurrency(estimateCost(problem).total),
+      users: problem.affectedUsers || 0,
+      duration: formatMinutes(problem.duration || 0),
+      seen: Number.isFinite(problem.startTime) ? new Date(problem.startTime).toLocaleString() : 'Unknown',
+    })) : undefined,
     emptyState: {
       title: 'No pattern selected',
       description: 'Select a recurring pattern to review evidence, analysis, and remediation.',

@@ -15,6 +15,7 @@ import {
 } from '../models';
 import { DQL_QUERIES, computeRecurrenceScore, computeOperationalImpactScore } from '../queries/dqlQueries';
 import { DEFAULT_COST_CONFIG, estimateCost } from '../cost/CostModel';
+import { entityTypeFromId, normalizeEntity, normalizeEntityName } from '../lib/entity-normalization';
 
 // ── Fetch problems via DQL ─────────────────────────────────
 
@@ -125,7 +126,13 @@ function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
   const status = statusMap[String(r['status'] ?? '').toUpperCase()] ?? 'OPEN';
   const recurrence   = computeRecurrenceScore(1, 7); // will be re-scored by pattern engine
   const rootCauseName = r['rootCauseEntityName'] ? String(r['rootCauseEntityName']) : '';
-  const impactedIds = Array.isArray(r['impactedEntityIds']) ? r['impactedEntityIds'].map(String) : [];
+  const rootCauseId = r['rootCauseEntityId'] ? String(r['rootCauseEntityId']) : rootCauseName;
+  const impactedIds = [
+    ...(Array.isArray(r['smartscapeAffectedEntityIds']) ? r['smartscapeAffectedEntityIds'].map(String) : []),
+    ...(Array.isArray(r['impactedEntityIds']) ? r['impactedEntityIds'].map(String) : []),
+  ].filter((value, index, all) => value && all.indexOf(value) === index);
+  const impactedNames = Array.isArray(r['affectedEntityNames']) ? r['affectedEntityNames'].map(String) : [];
+  const impactedTypes = Array.isArray(r['affectedEntityTypes']) ? r['affectedEntityTypes'].map(String) : [];
 
   return {
     problemId:        String(r['problemId'] ?? r['displayId'] ?? ''),
@@ -135,14 +142,13 @@ function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
     startTime:        toEpochMs(r['startTime']) ?? Date.now(),
     endTime:          toEpochMs(r['endTime']),
     duration,
-    impactedEntities: impactedIds.map(entityId => ({
-      entityId,
-      name: entityId,
-      type: entityId.split('-')[0] as DynatraceProblem['impactedEntities'][number]['type'],
-    })),
+    impactedEntities: impactedIds.map((entityId, index) => {
+      const type = entityTypeFromId(impactedTypes[index] || entityId);
+      return normalizeEntity(entityId, impactedNames[index] || entityId, type);
+    }),
     rootCauseEntity:  rootCauseName ? {
-      entityId: rootCauseName,
-      name: rootCauseName,
+      entityId: rootCauseId,
+      name: normalizeEntityName(rootCauseName, 'SERVICE'),
       type: 'SERVICE',
     } : undefined,
     affectedUsers,

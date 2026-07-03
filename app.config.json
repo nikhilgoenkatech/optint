@@ -6,7 +6,7 @@
   "app": {
     "id": "my.dynatrace.opint.strato",
     "name": "Calibrate (Strato Preview)",
-    "version": "2.4.13",
+    "version": "2.4.14",
     "description": "Strato migration preview - runs alongside my.dynatrace.opint for validation",
     "scopes": [
       {

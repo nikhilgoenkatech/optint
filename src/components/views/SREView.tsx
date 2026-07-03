@@ -22,6 +22,7 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
+  const rawProblemRecords = viewModel?.rawProblemRecords ?? [];
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
 
@@ -57,22 +58,26 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
         </div>
 
         <div style={{ padding: '0 16px 16px', flex: 1 }}>
-          <Tabs selectedIndex={viewTab} onChange={setViewTab}>
-            <Tab title="Reliability Risk Matrix">
-              <ReliabilityRiskMatrix
-                patterns={patterns}
-                selectedPatternId={viewModel?.selectedPatternId ?? null}
-                onPatternSelect={onPatternSelect}
-              />
-            </Tab>
-            <Tab title="Pattern Explorer">
-              <PatternTable
-                data={patterns}
-                selectedPatternId={viewModel?.selectedPatternId ?? null}
-                onPatternSelect={onPatternSelect}
-              />
-            </Tab>
-          </Tabs>
+          {patterns.length === 0 && rawProblemRecords.length > 0 ? (
+            <RawDqlFallback records={rawProblemRecords} />
+          ) : (
+            <Tabs selectedIndex={viewTab} onChange={setViewTab}>
+              <Tab title="Reliability Risk Matrix">
+                <ReliabilityRiskMatrix
+                  patterns={patterns}
+                  selectedPatternId={viewModel?.selectedPatternId ?? null}
+                  onPatternSelect={onPatternSelect}
+                />
+              </Tab>
+              <Tab title="Pattern Explorer">
+                <PatternTable
+                  data={patterns}
+                  selectedPatternId={viewModel?.selectedPatternId ?? null}
+                  onPatternSelect={onPatternSelect}
+                />
+              </Tab>
+            </Tabs>
+          )}
         </div>
       </Flex>
 
@@ -83,5 +88,39 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
         />
       </div>
     </Flex>
+  );
+}
+
+function RawDqlFallback({ records }: { records: NonNullable<WorkspaceViewModel<SREKPIs>['rawProblemRecords']> }) {
+  return (
+    <div style={{ paddingTop: 16 }}>
+      <div style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)', marginBottom: 8 }}>
+        Live DQL returned {records.length} problem record{records.length === 1 ? '' : 's'}, but no recurring pattern met the grouping threshold for this timeframe.
+      </div>
+      <div style={{ border: '1px solid var(--dt-colors-border-neutral-subdued, #d5d8df)', borderRadius: 8, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)' }}>
+              {['Status', 'Problem', 'Category', 'Exposure', 'Users', 'Duration', 'Seen'].map(header => (
+                <th key={header} style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>{header}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {records.slice(0, 25).map(record => (
+              <tr key={record.id} style={{ borderTop: '1px solid var(--dt-colors-border-neutral-subdued, #d5d8df)' }}>
+                <td style={{ padding: '8px 10px' }}>{record.status}</td>
+                <td style={{ padding: '8px 10px', fontWeight: 600 }}>{record.title}</td>
+                <td style={{ padding: '8px 10px' }}>{record.category}</td>
+                <td style={{ padding: '8px 10px' }}>{record.exposure}</td>
+                <td style={{ padding: '8px 10px' }}>{record.users}</td>
+                <td style={{ padding: '8px 10px' }}>{record.duration}</td>
+                <td style={{ padding: '8px 10px' }}>{record.seen}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

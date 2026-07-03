@@ -17,6 +17,15 @@ export interface AISummaryRequest {
   pattern?: ProblemPattern;
 }
 
+export interface SignalPromptRequest {
+  persona: PersonaType;
+  objective: ObjectiveType;
+  evidence: Record<string, string | number | string[] | null>;
+  patternTitle?: string;
+  recommendedAction?: string;
+  kind?: 'recommendation' | 'analysis' | 'remediation';
+}
+
 // ------------------------------------
 // Prompt constants
 // ------------------------------------
@@ -175,6 +184,42 @@ Apply persona and objective simultaneously.
 
 SIGNALS
 ${JSON.stringify(evidence, null, 2)}
+
+Return valid JSON only. No markdown, no commentary outside the JSON.
+
+${RESPONSE_SCHEMA}`;
+}
+
+export function buildSignalPrompt(req: SignalPromptRequest): string {
+  const kind = req.kind ?? (req.persona === 'executive' ? 'recommendation' : 'analysis');
+  const task = kind === 'remediation'
+    ? 'Generate a practical remediation path using only the supplied signals.'
+    : kind === 'analysis'
+      ? 'Generate persona-specific analysis using only the supplied signals.'
+      : 'Generate an evidence-gated recommendation using only the supplied signals.';
+
+  return `${SYSTEM_PROMPT}
+
+PERSONA: ${req.persona}
+OBJECTIVE: ${req.objective}
+
+${PERSONA_GUIDANCE}
+
+${OBJECTIVE_GUIDANCE}
+
+Apply persona and objective simultaneously.
+
+PATTERN
+${req.patternTitle || 'Selected recurring pattern'}
+
+RECOMMENDED ACTION
+${req.recommendedAction || 'Not supplied'}
+
+TASK
+${task}
+
+SIGNALS
+${JSON.stringify(req.evidence, null, 2)}
 
 Return valid JSON only. No markdown, no commentary outside the JSON.
 

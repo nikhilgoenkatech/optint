@@ -10,15 +10,27 @@ import { DeveloperKpiRow } from '../kpis/DeveloperKpiRow';
 import { DeveloperHeatMap } from '../charts/DeveloperHeatMap';
 import { PatternTable } from '../table/PatternTable';
 import { PatternDetailPanel } from '../panels/PatternDetailPanel';
+import { DeveloperScopeOption } from '../../lib/developer-scope';
 
 interface DeveloperViewProps {
   objective: ObjectiveType;
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<DeveloperKPIs>;
+  developerScopes?: DeveloperScopeOption[];
+  selectedDeveloperScopeId?: string;
+  onDeveloperScopeChange?: (scopeId: string) => void;
 }
 
-export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, viewModel }: DeveloperViewProps) {
+export function DeveloperView({
+  objective,
+  onObjectiveChange,
+  onPatternSelect,
+  viewModel,
+  developerScopes = [],
+  selectedDeveloperScopeId = '',
+  onDeveloperScopeChange,
+}: DeveloperViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleDeveloperKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -49,7 +61,31 @@ export function DeveloperView({ objective, onObjectiveChange, onPatternSelect, v
               Code quality and fixability signals
             </span>
           </Flex>
-          <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
+          <Flex alignItems="center" gap={12}>
+            <label style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
+              Developer Scope{' '}
+              <select
+                value={selectedDeveloperScopeId}
+                onChange={(event) => onDeveloperScopeChange?.(event.target.value)}
+                disabled={!developerScopes.length}
+                style={{
+                  marginLeft: 6,
+                  minWidth: 220,
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+                  background: 'var(--dt-colors-background-container-neutral-default, #fff)',
+                  color: 'var(--dt-colors-text-neutral-default, #23282d)',
+                }}
+              >
+                <option value="">{developerScopes.length ? 'All Developer Scope' : 'No developer scopes found'}</option>
+                {developerScopes.map(scope => (
+                  <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
+                ))}
+              </select>
+            </label>
+            <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
+          </Flex>
         </Flex>
 
         <div style={{ padding: '16px 16px 0' }}>

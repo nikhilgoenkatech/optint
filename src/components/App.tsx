@@ -21,6 +21,7 @@ import {
 } from '../lib/persona-view-models';
 import { ConfigDialog, DEFAULT_EXTENDED_COST_CONFIG, DEFAULT_WEIGHTS, WeightsConfig } from './config/ConfigDialog';
 import { ExtendedCostConfig } from '../models';
+import { applyDeveloperScopeFilter, buildDeveloperScopeTaxonomy } from '../lib/developer-scope';
 
 const PERSONA_LABELS: Record<PersonaType, string> = {
   executive: 'Executive',
@@ -49,6 +50,7 @@ export function App() {
   const [costConfig, setCostConfig] = useState<ExtendedCostConfig>(DEFAULT_EXTENDED_COST_CONFIG);
   const [weightsConfig, setWeightsConfig] = useState<WeightsConfig>(DEFAULT_WEIGHTS);
   const [configOpen, setConfigOpen] = useState(false);
+  const [developerScopeId, setDeveloperScopeId] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -75,25 +77,41 @@ export function App() {
     };
   }, [timeframe]);
 
+  const developerScopes = useMemo(() => buildDeveloperScopeTaxonomy(problems), [problems]);
+  const selectedDeveloperScope = useMemo(
+    () => developerScopes.find(scope => scope.id === developerScopeId) ?? null,
+    [developerScopes, developerScopeId],
+  );
+  const scopedDeveloperProblems = useMemo(
+    () => applyDeveloperScopeFilter(problems, selectedDeveloperScope),
+    [problems, selectedDeveloperScope],
+  );
   const patterns = useMemo(() => detectPatterns(problems).patterns, [problems]);
+  const developerPatterns = useMemo(() => detectPatterns(scopedDeveloperProblems).patterns, [scopedDeveloperProblems]);
 
   useEffect(() => {
     if (selectedPatternId && !patterns.some((pattern) => pattern.patternId === selectedPatternId)) {
       setSelectedPatternId(null);
     }
-  }, [patterns, selectedPatternId]);
+  }, [patterns, developerPatterns, selectedPatternId]);
+
+  useEffect(() => {
+    if (developerScopeId && !developerScopes.some(scope => scope.id === developerScopeId)) {
+      setDeveloperScopeId('');
+    }
+  }, [developerScopeId, developerScopes]);
 
   const executiveViewModel = useMemo(
-    () => buildWorkspaceViewModel('executive', objective, patterns, buildExecKPIs(patterns), selectedPatternId),
-    [objective, patterns, selectedPatternId],
+    () => buildWorkspaceViewModel('executive', objective, patterns, buildExecKPIs(patterns, costConfig), selectedPatternId, costConfig),
+    [objective, patterns, selectedPatternId, costConfig],
   );
   const sreViewModel = useMemo(
-    () => buildWorkspaceViewModel('sre', objective, patterns, buildSREKPIs(patterns), selectedPatternId),
-    [objective, patterns, selectedPatternId],
+    () => buildWorkspaceViewModel('sre', objective, patterns, buildSREKPIs(patterns), selectedPatternId, costConfig, problems),
+    [objective, patterns, selectedPatternId, costConfig, problems],
   );
   const developerViewModel = useMemo(
-    () => buildWorkspaceViewModel('developer', objective, patterns, buildDeveloperKPIs(patterns), selectedPatternId),
-    [objective, patterns, selectedPatternId],
+    () => buildWorkspaceViewModel('developer', objective, developerPatterns, buildDeveloperKPIs(developerPatterns), selectedPatternId, costConfig),
+    [objective, developerPatterns, selectedPatternId, costConfig],
   );
 
   return (
@@ -153,6 +171,12 @@ export function App() {
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={developerViewModel}
+              developerScopes={developerScopes}
+              selectedDeveloperScopeId={developerScopeId}
+              onDeveloperScopeChange={(scopeId: string) => {
+                setDeveloperScopeId(scopeId);
+                setSelectedPatternId(null);
+              }}
             />
           </Tab>
         </Tabs>
