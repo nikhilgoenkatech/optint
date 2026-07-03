@@ -17,7 +17,7 @@ interface PatternDetailPanelProps {
   onClose: () => void;
 }
 
-type RecommendationStatus = 'idle' | 'loading' | 'ready' | 'insufficient';
+type RecommendationStatus = 'idle' | 'loading' | 'ready' | 'insufficient' | 'error';
 
 type RecommendationResult = {
   assessment: string;
@@ -35,6 +35,7 @@ type RecommendationResult = {
 type RecommendationState = {
   status: RecommendationStatus;
   result?: RecommendationResult;
+  errorMessage?: string;
 };
 
 type GenerationKind = 'recommendation' | 'analysis' | 'remediation';
@@ -56,6 +57,51 @@ function formatObjective(objective: PatternDetail['assistContext']['objective'])
   return objective.replace('_', ' ');
 }
 
+function evidenceValue(pattern: PatternDetail, key: string): string {
+  return signalText(pattern.assistContext.evidence[key]);
+}
+
+function meaningfulDrivers(drivers: RecommendationResult['drivers']): RecommendationResult['drivers'] {
+  return drivers.filter(driver => driver.value !== 'absent' && driver.value !== '');
+}
+
+function personaCapability(persona: PatternDetail['assistContext']['persona'], kind: GenerationKind, objective: PatternDetail['assistContext']['objective']): string {
+  if (objective === 'alert_optimization') return 'Davis AI';
+  if (persona === 'developer') return kind === 'remediation' ? 'Application Observability' : 'Live Debugger';
+  if (persona === 'sre') return kind === 'remediation' ? 'Workflows' : 'Site Reliability Guardian';
+  return 'Davis AI';
+}
+
+function personaActionTitle(pattern: PatternDetail, kind: GenerationKind): string {
+  const persona = pattern.assistContext.persona;
+  const objective = pattern.assistContext.objective;
+  const rootCause = evidenceValue(pattern, 'root_cause_entity');
+  const services = evidenceValue(pattern, 'affected_services');
+
+  if (objective === 'alert_optimization') {
+    return 'Review alert tuning and routing for this recurring signal';
+  }
+
+  if (persona === 'sre') {
+    return kind === 'remediation'
+      ? 'Create a prevention path for the recurring reliability risk'
+      : 'Assess reliability drivers and automation opportunity';
+  }
+
+  if (persona === 'developer') {
+    if (kind === 'remediation') {
+      return rootCause !== 'absent'
+        ? `Remediate the observed root cause: ${rootCause}`
+        : 'Prepare technical remediation after root cause is confirmed';
+    }
+    return services !== 'absent'
+      ? `Investigate affected service path: ${services}`
+      : 'Identify the affected service before code-level investigation';
+  }
+
+  return pattern.recommendedAction;
+}
+
 function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'recommendation'): RecommendationResult | null {
   const evidence = pattern.assistContext.evidence;
   const objective = pattern.assistContext.objective;
@@ -70,8 +116,12 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   const users = signalText(evidence.affected_users);
   const trend = signalText(evidence.trend);
   const rca = signalText(evidence.rca_availability);
+  const category = signalText(evidence.event_category);
+  const affectedServices = signalText(evidence.affected_services);
+  const rootCause = signalText(evidence.root_cause_entity);
+  const recommendationType = signalText(evidence.recommendation_type);
 
-  const drivers = [
+  const drivers = meaningfulDrivers([
     isMeaningfulSignal(evidence.operational_cost)
       ? {
           signal: 'operational_cost',
@@ -102,70 +152,106 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
           signal: 'trend',
           value: trend,
           whyItMatters: 'Trend shows whether recurrence is improving, stable, or getting worse.',
+      }
+      : null,
+    isMeaningfulSignal(evidence.event_category)
+      ? {
+          signal: 'event_category',
+          value: category,
+          whyItMatters: persona === 'developer'
+            ? 'Failure category helps choose the technical investigation path.'
+            : 'Failure category helps classify the operational signal without inferring hidden causes.',
         }
       : null,
-  ].filter(Boolean) as RecommendationResult['drivers'];
+    isMeaningfulSignal(evidence.affected_services)
+      ? {
+          signal: 'affected_services',
+          value: affectedServices,
+          whyItMatters: persona === 'developer'
+            ? 'Affected services define the starting point for engineering investigation.'
+            : 'Affected services define ownership and routing scope.',
+        }
+      : null,
+    isMeaningfulSignal(evidence.rca_availability)
+      ? {
+          signal: 'rca_availability',
+          value: rca,
+          whyItMatters: 'RCA is treated as present or missing evidence, not as a confidence score.',
+        }
+      : null,
+  ].filter(Boolean) as RecommendationResult['drivers']);
 
   const dataGaps = [
     !isMeaningfulSignal(evidence.potential_savings) ? 'potential_savings is missing.' : null,
     !isMeaningfulSignal(evidence.affected_users) ? 'affected_users is missing.' : null,
     !isMeaningfulSignal(evidence.root_cause_entity) ? 'root_cause_entity is missing.' : null,
+    !isMeaningfulSignal(evidence.affected_services) ? 'affected_services is missing.' : null,
   ].filter(Boolean) as string[];
 
   if (kind === 'analysis') {
+    const title = personaActionTitle(pattern, kind);
+    const capability = personaCapability(persona, kind, objective);
     return {
-      assessment: `This ${persona} analysis uses ${occurrences} observed occurrence(s), trend ${trend}, RCA availability ${rca}, and ${users} affected user(s). The analysis is limited to supplied pattern evidence and does not infer missing dependencies.`,
+      assessment: persona === 'sre'
+        ? `This SRE analysis uses ${occurrences} observed occurrence(s), trend ${trend}, category ${category}, and RCA availability ${rca}. Focus is reliability engineering: recurrence, automation, prevention, and routing based only on supplied signals.`
+        : `This Developer analysis uses ${occurrences} observed occurrence(s), affected services ${affectedServices}, category ${category}, and RCA availability ${rca}. Focus is the technical investigation starting point and validation path from supplied evidence only.`,
       drivers,
       action: {
         priority: 'SHORT_TERM',
-        title: persona === 'sre' ? 'Review reliability drivers for this recurring risk' : 'Inspect the affected service path for this recurring issue',
+        title,
         strength: drivers.length >= 3 ? 'Evidence-backed' : 'Candidate',
-        reason: `occurrence_count=${occurrences}; trend=${trend}; rca_availability=${rca}`,
-        capability: persona === 'developer' ? 'Application Observability' : 'Davis AI',
+        reason: `occurrence_count=${occurrences}; affected_services=${affectedServices}; rca_availability=${rca}`,
+        capability,
       },
       dataGaps,
     };
   }
 
   if (kind === 'remediation') {
+    const title = personaActionTitle(pattern, kind);
+    const capability = personaCapability(persona, kind, objective);
     return {
-      assessment: `This ${persona} remediation path uses ${occurrences} observed occurrence(s), ${cost} operational cost, and RCA availability ${rca}. Recommended next steps stay proportional to supplied recurrence, cost, and evidence quality signals.`,
+      assessment: persona === 'sre'
+        ? `This SRE remediation path uses ${occurrences} observed occurrence(s), ${cost} operational cost, trend ${trend}, and RCA availability ${rca}. It prioritizes prevention, automation, and ownership/routing only where the supplied signals justify it.`
+        : `This Developer remediation path uses ${occurrences} observed occurrence(s), affected services ${affectedServices}, root cause ${rootCause}, and category ${category}. It avoids code-level assumptions when RCA or service evidence is missing.`,
       drivers,
       action: {
         priority: drivers.length >= 3 ? 'SHORT_TERM' : 'STRATEGIC',
-        title: pattern.recommendedAction,
+        title,
         strength: drivers.length >= 3 ? 'Evidence-backed' : 'Candidate',
-        reason: `operational_cost=${cost}; occurrence_count=${occurrences}; rca_availability=${rca}`,
-        capability: persona === 'developer' ? 'Application Observability' : 'Workflows',
+        reason: `operational_cost=${cost}; occurrence_count=${occurrences}; root_cause_entity=${rootCause}`,
+        capability,
       },
       dataGaps,
     };
   }
 
   if (objective === 'alert_optimization') {
+    const strength = drivers.length >= 3 ? 'Evidence-backed' : 'Candidate';
     return {
-      assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, and trend ${trend}. Because the active objective is alert optimization, action should stay focused on signal quality and routing rather than service remediation.`,
+      assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, trend ${trend}, and recommendation type ${recommendationType}. Because the active objective is alert optimization, action should stay focused on signal quality, routing, and scoped tuning rather than service remediation.`,
       drivers,
       action: {
-        priority: drivers.length >= 3 ? 'SHORT_TERM' : 'STRATEGIC',
+        priority: strength === 'Evidence-backed' ? 'SHORT_TERM' : 'STRATEGIC',
         title: 'Review alert tuning for this recurring signal',
-        strength: drivers.length >= 3 ? 'Evidence-backed' : 'Candidate',
-        reason: `occurrence_count=${occurrences}; trend=${trend}; operational_cost=${cost}`,
-        capability: 'Davis AI',
+        strength,
+        reason: `occurrence_count=${occurrences}; trend=${trend}; recommendation_type=${recommendationType}`,
+        capability: personaCapability(persona, kind, objective),
       },
       dataGaps,
     };
   }
 
+  const strength = drivers.length >= 3 ? 'Evidence-backed' : 'Candidate';
   return {
-    assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, ${savings} potential savings, and ${users} affected user(s). RCA availability is ${rca}, so the recommendation stays tied to the supplied business and recurrence signals.`,
+    assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, ${savings} potential savings, and ${users} affected user(s). The action is business-oriented and avoids low-level remediation unless missing evidence prevents a confident decision.`,
     drivers,
     action: {
-      priority: drivers.length >= 3 ? 'IMMEDIATE' : 'SHORT_TERM',
+      priority: strength === 'Evidence-backed' ? 'IMMEDIATE' : 'SHORT_TERM',
       title: pattern.recommendedAction,
-      strength: drivers.length >= 3 ? 'Evidence-backed' : 'Candidate',
+      strength,
       reason: `operational_cost=${cost}; occurrence_count=${occurrences}; affected_users=${users}`,
-      capability: 'Davis AI',
+      capability: personaCapability(persona, kind, objective),
     },
     dataGaps,
   };
@@ -234,6 +320,17 @@ function PanelSection({ title, children }: { title: string; children: React.Reac
 }
 
 function GeneratedOutput({ state }: { state: RecommendationState }) {
+  if (state.status === 'error') {
+    return (
+      <Container color="critical" variant="default" padding={8}>
+        <Flex flexDirection="column" gap={6}>
+          <Text textStyle="small">{state.errorMessage || 'Assist unavailable. Try again.'}</Text>
+          <Text textStyle="small" style={{ color: MUTED }}>Try again after confirming the selected pattern still has usable evidence.</Text>
+        </Flex>
+      </Container>
+    );
+  }
+
   if (state.status === 'insufficient') {
     return (
       <Container color="critical" variant="default" padding={8}>
@@ -335,10 +432,17 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
   async function generateRecommendation(kind: GenerationKind = 'recommendation') {
     if (!pattern) return;
     const setState = kind === 'analysis' ? setAnalysis : kind === 'remediation' ? setRemediation : setRecommendation;
-    setState({ status: 'loading' });
-    await new Promise(resolve => setTimeout(resolve, 250));
-    const result = buildRecommendation(pattern, kind);
-    setState(result ? { status: 'ready', result } : { status: 'insufficient' });
+    try {
+      setState({ status: 'loading' });
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const result = buildRecommendation(pattern, kind);
+      setState(result ? { status: 'ready', result } : { status: 'insufficient' });
+    } catch (error) {
+      setState({
+        status: 'error',
+        errorMessage: error instanceof Error ? error.message : 'Assist unavailable. Try again.',
+      });
+    }
   }
 
   async function generatePrimaryOutput() {
@@ -347,10 +451,17 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
       await generateRecommendation('recommendation');
       return;
     }
-    setRecommendation({ status: 'loading' });
-    await new Promise(resolve => setTimeout(resolve, 250));
-    const result = buildRecommendation(pattern, 'analysis');
-    setRecommendation(result ? { status: 'ready', result } : { status: 'insufficient' });
+    try {
+      setRecommendation({ status: 'loading' });
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const result = buildRecommendation(pattern, 'analysis');
+      setRecommendation(result ? { status: 'ready', result } : { status: 'insufficient' });
+    } catch (error) {
+      setRecommendation({
+        status: 'error',
+        errorMessage: error instanceof Error ? error.message : 'Assist unavailable. Try again.',
+      });
+    }
   }
 
   return (
@@ -521,40 +632,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
               >
                 {recommendation.status === 'loading' ? 'Generating...' : isExecutive ? 'Generate Recommendation' : 'Generate Analysis'}
               </Button>
-              {recommendation.status === 'insufficient' && (
-                <Container color="critical" variant="default" padding={8}>
-                  <Text textStyle="small">
-                    Insufficient signal data. Add at least three meaningful observed signals before generating a recommendation.
-                  </Text>
-                </Container>
-              )}
-              {recommendation.status === 'ready' && recommendation.result && (
-                <Container color="neutral" variant="default" padding={8}>
-                  <Flex flexDirection="column" gap={8}>
-                    <Text textStyle="small">{recommendation.result.assessment}</Text>
-                    <Flex flexDirection="column" gap={4}>
-                      {recommendation.result.drivers.slice(0, 3).map(driver => (
-                        <Text key={driver.signal} textStyle="small" style={{ color: MUTED }}>
-                          <strong>{driver.signal}</strong>: {driver.value} - {driver.whyItMatters}
-                        </Text>
-                      ))}
-                    </Flex>
-                    <Divider />
-                    <Flex flexDirection="column" gap={4}>
-                      <Text textStyle="small" style={{ fontWeight: 700 }}>{recommendation.result.action.title}</Text>
-                      <Text textStyle="small" style={{ color: MUTED }}>
-                        {recommendation.result.action.priority} · {recommendation.result.action.strength} · {recommendation.result.action.capability}
-                      </Text>
-                      <Text textStyle="small">{recommendation.result.action.reason}</Text>
-                    </Flex>
-                    {recommendation.result.dataGaps.length > 0 && (
-                      <Text textStyle="small" style={{ color: MUTED }}>
-                        Data gaps: {recommendation.result.dataGaps.join(' ')}
-                      </Text>
-                    )}
-                  </Flex>
-                </Container>
-              )}
+              <GeneratedOutput state={recommendation} />
             </Flex>
           </Container>
         </Flex>
