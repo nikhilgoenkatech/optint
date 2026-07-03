@@ -313,8 +313,8 @@ function PatternPopup({ point, onClose }: { point: MapPoint; onClose: () => void
         padding: 12,
         border: `1px solid ${style.border}`,
         borderRadius: 8,
-        background: 'var(--dt-colors-background-container-neutral-default, #ffffff)',
-        boxShadow: `0 0 0 3px ${style.glow}, 0 16px 40px rgba(31, 38, 46, 0.18)`,
+        background: 'var(--dt-colors-background-surface-default, #ffffff)',
+        boxShadow: `0 0 0 3px ${style.glow}, 0 16px 40px rgba(0, 0, 0, 0.32)`,
         zIndex: 5,
       }}
     >

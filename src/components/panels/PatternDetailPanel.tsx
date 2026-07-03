@@ -768,9 +768,14 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
         {/* Recommended Action */}
         <Flex flexDirection="column" gap={8}>
           <SectionLabel>Recommended Action</SectionLabel>
-          <Container color="primary" variant="default" padding={12}>
+          <div style={{
+            padding: 12,
+            borderLeft: `3px solid var(--dt-colors-background-container-primary-accent, #1496ff)`,
+            background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
+            borderRadius: '0 6px 6px 0',
+          }}>
             <Text textStyle="small">{pattern.recommendedAction}</Text>
-          </Container>
+          </div>
         </Flex>
 
         <Divider />
@@ -778,7 +783,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
         {/* Assist */}
         <Flex flexDirection="column" gap={8}>
           <SectionLabel>{isExecutive ? 'Recommendation' : 'Analysis'}</SectionLabel>
-          <Container color="neutral" variant="emphasized" padding={12}>
+          <Container color="neutral" variant="default" padding={12}>
             <Flex flexDirection="column" gap={8}>
               <span style={{ fontSize: 11, color: MUTED }}>
                 Calibrate Assist · {pattern.assistContext.persona} · {formatObjective(pattern.assistContext.objective)}
@@ -809,7 +814,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
             <Divider />
             <Flex flexDirection="column" gap={8}>
               <SectionLabel>Remediation</SectionLabel>
-              <Container color="neutral" variant="emphasized" padding={12}>
+              <Container color="neutral" variant="default" padding={12}>
                 <Flex flexDirection="column" gap={8}>
                   <Text textStyle="small">
                     Generate a practical remediation path using only supplied pattern evidence.
