@@ -389,10 +389,13 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   if (kind === 'analysis') {
     const title = personaActionTitle(pattern, kind);
     const capability = personaCapability(persona, kind, objective);
+    const serviceClause = affectedServices !== 'absent' && affectedServices !== 'Unknown Service'
+      ? `${displaySignalValue('affected_services', affectedServices)} affected service evidence`
+      : 'no confirmed service evidence';
     return {
       assessment: persona === 'sre'
-        ? `This reliability review is based on ${occurrences} occurrence(s), a ${displaySignalValue('trend', trend)} trend, ${displaySignalValue('event_category', category)} signal type, and ${displaySignalValue('rca_availability', rca)} root cause evidence. The next step stays focused on recurrence, automation, prevention, and routing using only the supplied signals.`
-        : `This developer review is based on ${occurrences} occurrence(s), ${displaySignalValue('affected_services', affectedServices)} affected service evidence, ${displaySignalValue('event_category', category)} signal type, and ${displaySignalValue('rca_availability', rca)} root cause evidence. The next step focuses on the investigation starting point and validation path from the supplied evidence.`,
+        ? `This reliability review uses ${occurrences} occurrence(s), a ${displaySignalValue('trend', trend)} trend, ${displaySignalValue('event_category', category)} signal type, and ${displaySignalValue('rca_availability', rca)} root cause evidence. Next steps focus on recurrence drivers, automation, and routing based only on the supplied signals.`
+        : `This developer review uses ${occurrences} occurrence(s), ${serviceClause}, ${displaySignalValue('event_category', category)} signal type, and ${displaySignalValue('rca_availability', rca)} root cause evidence. The investigation path is derived from the supplied evidence only.`,
       drivers,
       action: {
         priority: 'SHORT_TERM',
@@ -408,10 +411,14 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   if (kind === 'remediation') {
     const title = personaActionTitle(pattern, kind);
     const capability = personaCapability(persona, kind, objective);
+    const rcaClause = rootCause !== 'absent' ? `root cause: ${rootCause}` : 'no confirmed root cause';
+    const svcClause = affectedServices !== 'absent' && affectedServices !== 'Unknown Service'
+      ? `${displaySignalValue('affected_services', affectedServices)} service evidence`
+      : 'no confirmed service evidence';
     return {
       assessment: persona === 'sre'
-        ? `This remediation path is based on ${occurrences} occurrence(s), ${displaySignalValue('operational_cost', cost)} operational cost, a ${displaySignalValue('trend', trend)} trend, and ${displaySignalValue('rca_availability', rca)} root cause evidence. It prioritizes prevention, automation, and ownership or routing only where the supplied signals justify it.`
-        : `This remediation path is based on ${occurrences} occurrence(s), ${displaySignalValue('affected_services', affectedServices)} affected service evidence, ${displaySignalValue('root_cause_entity', rootCause)} root cause entity, and ${displaySignalValue('event_category', category)} signal type. It avoids code-level assumptions when root cause or service evidence is missing.`,
+        ? `This remediation path uses ${occurrences} occurrence(s), ${displaySignalValue('operational_cost', cost)} operational cost, a ${displaySignalValue('trend', trend)} trend, and ${displaySignalValue('rca_availability', rca)} root cause evidence. It prioritises prevention and automation only where the signals justify it.`
+        : `This remediation path uses ${occurrences} occurrence(s), ${svcClause}, ${rcaClause}, and ${displaySignalValue('event_category', category)} signal type. Code-level steps are only suggested when root cause evidence is present.`,
       drivers,
       action: {
         priority: drivers.length >= 3 ? 'SHORT_TERM' : 'STRATEGIC',
@@ -734,18 +741,22 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
   const [recommendation, setRecommendation] = useState<RecommendationState>({ status: 'idle' });
   const [analysis, setAnalysis] = useState<RecommendationState>({ status: 'idle' });
   const [remediation, setRemediation] = useState<RecommendationState>({ status: 'idle' });
+  const [alertTuning, setAlertTuning] = useState<RecommendationState>({ status: 'idle' });
   const persona = pattern?.assistContext.persona;
   const isExecutive = persona === 'executive';
   const activeObjective = pattern?.assistContext.objective ?? 'cost_impact';
-  const objectiveActionKind: GenerationKind = activeObjective === 'cost_impact' ? 'remediation' : 'recommendation';
-  const objectiveActionState = objectiveActionKind === 'remediation' ? remediation : recommendation;
-  const objectiveTabTitle = activeObjective === 'cost_impact' ? 'Remediation' : 'Recommendations';
-  const objectiveButtonLabel = activeObjective === 'cost_impact' ? 'Get Remediation Path' : 'Generate Recommendations';
+  // Executive: single action tab driven by objective
+  // SRE/Developer: always show Analysis + a second tab (Remediation for cost_impact, Alert Tuning for alert_optimization)
+  const execActionKind: GenerationKind = activeObjective === 'cost_impact' ? 'remediation' : 'recommendation';
+  const execActionState = execActionKind === 'remediation' ? remediation : recommendation;
+  const execTabTitle = activeObjective === 'cost_impact' ? 'Remediation' : 'Recommendations';
+  const execButtonLabel = activeObjective === 'cost_impact' ? 'Get Remediation Path' : 'Generate Recommendations';
 
   useEffect(() => {
     setRecommendation({ status: 'idle' });
     setAnalysis({ status: 'idle' });
     setRemediation({ status: 'idle' });
+    setAlertTuning({ status: 'idle' });
   }, [pattern?.id, pattern?.assistContext.objective]);
 
   useEffect(() => {
@@ -758,7 +769,9 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
       ? setAnalysis
       : kind === 'remediation'
         ? setRemediation
-        : setRecommendation;
+        : kind === 'alert_tuning'
+          ? setAlertTuning
+          : setRecommendation;
     try {
       setState({ status: 'loading' });
       await new Promise(resolve => setTimeout(resolve, 250));
@@ -929,34 +942,109 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
               </Flex>
             </Tab>
 
-            <Tab title={objectiveTabTitle}>
-        <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
-          <Container color="neutral" variant="default" padding={12}>
-            <Flex flexDirection="column" gap={8}>
-              <span style={{ fontSize: 11, color: MUTED }}>
-                Dynatrace Assist request · {pattern.assistContext.persona} · {formatObjective(pattern.assistContext.objective)}
-              </span>
-              <Text textStyle="small">
-                {activeObjective === 'cost_impact'
-                  ? 'Generate an evidence-gated remediation path from the selected pattern and its observed signals.'
-                  : 'Generate evidence-gated alert optimization recommendations from the selected noisy recurring pattern.'}
-              </Text>
-              <Flex alignItems="center" gap={8}>
-                <Button
-                  variant="accent"
-                  style={{ alignSelf: 'flex-start' }}
-                  onClick={() => generateRecommendation(objectiveActionKind)}
-                  disabled={objectiveActionState.status === 'loading'}
-                >
-                  {objectiveActionState.status === 'loading' ? 'Generating...' : objectiveButtonLabel}
-                </Button>
-              </Flex>
-              <RawPrompt pattern={pattern} kind={objectiveActionKind} />
-              <GeneratedOutput state={objectiveActionState} />
-            </Flex>
-          </Container>
-        </Flex>
-            </Tab>
+            {/* Executive: single objective tab */}
+            {isExecutive && (
+              <Tab title={execTabTitle}>
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
+                  <Container color="neutral" variant="default" padding={12}>
+                    <Flex flexDirection="column" gap={8}>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        Dynatrace Assist · {pattern.assistContext.persona} · {formatObjective(activeObjective)}
+                      </span>
+                      <Text textStyle="small">
+                        {activeObjective === 'cost_impact'
+                          ? 'Generate an evidence-gated remediation path from the selected pattern and its observed signals.'
+                          : 'Generate evidence-gated alert optimization recommendations from the selected noisy recurring pattern.'}
+                      </Text>
+                      <Button variant="accent" style={{ alignSelf: 'flex-start' }}
+                        onClick={() => generateRecommendation(execActionKind)}
+                        disabled={execActionState.status === 'loading'}>
+                        {execActionState.status === 'loading' ? 'Generating...' : execButtonLabel}
+                      </Button>
+                      <RawPrompt pattern={pattern} kind={execActionKind} />
+                      <GeneratedOutput state={execActionState} />
+                    </Flex>
+                  </Container>
+                </Flex>
+              </Tab>
+            )}
+
+            {/* SRE / Developer: Analysis tab (always) */}
+            {!isExecutive && (
+              <Tab title="Analysis">
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
+                  <Container color="neutral" variant="default" padding={12}>
+                    <Flex flexDirection="column" gap={8}>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        Dynatrace Assist · {pattern.assistContext.persona} · {formatObjective(activeObjective)}
+                      </span>
+                      <Text textStyle="small">
+                        {persona === 'sre'
+                          ? 'Assess reliability drivers, automation opportunities, and routing actions from the observed signals.'
+                          : 'Identify the investigation starting point and validation path from the observed signals.'}
+                      </Text>
+                      <Button variant="accent" style={{ alignSelf: 'flex-start' }}
+                        onClick={() => generateRecommendation('analysis')}
+                        disabled={analysis.status === 'loading'}>
+                        {analysis.status === 'loading' ? 'Analysing...' : 'Get Analysis'}
+                      </Button>
+                      <RawPrompt pattern={pattern} kind="analysis" />
+                      <GeneratedOutput state={analysis} />
+                    </Flex>
+                  </Container>
+                </Flex>
+              </Tab>
+            )}
+
+            {/* SRE / Developer on cost_impact: Remediation tab */}
+            {!isExecutive && activeObjective === 'cost_impact' && (
+              <Tab title="Remediation">
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
+                  <Container color="neutral" variant="default" padding={12}>
+                    <Flex flexDirection="column" gap={8}>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        Dynatrace Assist · {pattern.assistContext.persona} · cost impact
+                      </span>
+                      <Text textStyle="small">
+                        Generate an evidence-gated remediation path from the selected pattern and its observed signals.
+                      </Text>
+                      <Button variant="accent" style={{ alignSelf: 'flex-start' }}
+                        onClick={() => generateRecommendation('remediation')}
+                        disabled={remediation.status === 'loading'}>
+                        {remediation.status === 'loading' ? 'Generating...' : 'Get Remediation Path'}
+                      </Button>
+                      <RawPrompt pattern={pattern} kind="remediation" />
+                      <GeneratedOutput state={remediation} />
+                    </Flex>
+                  </Container>
+                </Flex>
+              </Tab>
+            )}
+
+            {/* SRE / Developer on alert_optimization: Alert Tuning tab */}
+            {!isExecutive && activeObjective === 'alert_optimization' && (
+              <Tab title="Alert Tuning">
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
+                  <Container color="neutral" variant="default" padding={12}>
+                    <Flex flexDirection="column" gap={8}>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        Dynatrace Assist · {pattern.assistContext.persona} · alert optimization
+                      </span>
+                      <Text textStyle="small">
+                        Review why this noisy recurring pattern repeats, what tuning could reduce noise, and what risk to check before changing alert windows.
+                      </Text>
+                      <Button variant="accent" style={{ alignSelf: 'flex-start' }}
+                        onClick={() => generateRecommendation('alert_tuning')}
+                        disabled={alertTuning.status === 'loading'}>
+                        {alertTuning.status === 'loading' ? 'Generating...' : 'Suggest Alert Tuning'}
+                      </Button>
+                      <RawPrompt pattern={pattern} kind="alert_tuning" />
+                      <GeneratedOutput state={alertTuning} />
+                    </Flex>
+                  </Container>
+                </Flex>
+              </Tab>
+            )}
 
           </Tabs>
         </div>

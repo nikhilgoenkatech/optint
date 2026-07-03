@@ -24,7 +24,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
   const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
-  const goalLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
+  const objectiveLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
 
   if (loading) {
     return (
@@ -48,8 +48,15 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
         >
           <Flex flexDirection="column" gap={4}>
             <Heading level={2} style={{ margin: 0 }}>Executive Overview</Heading>
-            <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong>
+            <span style={{
+              display: 'inline-block',
+              fontSize: 11, fontWeight: 600,
+              padding: '2px 10px', borderRadius: 999,
+              background: 'var(--dt-colors-background-container-primary-subdued, #eef7ff)',
+              color: 'var(--dt-colors-text-primary-default, #0b65c2)',
+              border: '1px solid var(--dt-colors-border-primary-default, #1496ff)',
+            }}>
+              Objective: {objectiveLabel}
             </span>
           </Flex>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />

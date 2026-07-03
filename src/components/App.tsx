@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppHeader } from '@dynatrace/strato-components/layouts';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
-import { Button } from '@dynatrace/strato-components/buttons';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { TimeframeSelector } from '@dynatrace/strato-components/filters';
 import type { Timeframe } from '@dynatrace/strato-components/core';
@@ -119,29 +118,31 @@ export function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <AppHeader>
-        <AppHeader.NavItems>
-          <CalibrateLogo />
-        </AppHeader.NavItems>
+        <AppHeader.ActionItems>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+          <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+          <AppHeader.ActionButton
+            prefixIcon={<SettingIcon />}
+            onClick={() => setConfigOpen(true)}
+            isSelected={configOpen}
+          >
+            Configure
+          </AppHeader.ActionButton>
+          <div style={{ width: 20 }} />
+        </AppHeader.ActionItems>
       </AppHeader>
 
       <div
         style={{
           display: 'flex',
-          justifyContent: 'flex-end',
           alignItems: 'center',
           gap: 12,
-          padding: '10px 24px',
+          padding: '8px 24px',
           borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
-          background: 'var(--dt-colors-background-container-neutral-default, #fff)',
+          background: 'var(--dt-colors-background-base-default, #f2f2f5)',
         }}
       >
-        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-        <Button onClick={() => setConfigOpen(true)}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <SettingIcon />
-            Configure
-          </span>
-        </Button>
+        <CalibrateLogo />
       </div>
 
       <ConfigDialog
