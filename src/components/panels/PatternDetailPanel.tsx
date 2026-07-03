@@ -326,6 +326,79 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   };
 }
 
+function buildRawPrompt(pattern: PatternDetail, kind: GenerationKind): string {
+  const { evidence, persona, objective } = pattern.assistContext;
+  const lines: string[] = [
+    `# Calibrate Assist — ${kind.charAt(0).toUpperCase() + kind.slice(1)}`,
+    `Pattern: ${pattern.title}`,
+    `Persona: ${persona} | Objective: ${formatObjective(objective)}`,
+    '',
+    '## Observed signals',
+  ];
+  for (const [key, val] of Object.entries(evidence)) {
+    if (isMeaningfulSignal(val)) {
+      lines.push(`- ${signalLabel(key)}: ${displaySignalValue(key, signalText(val))}`);
+    }
+  }
+  lines.push('', '## Recommended action', pattern.recommendedAction);
+  if (kind === 'analysis') {
+    lines.push('', '## Instruction', `Generate a ${persona}-specific analysis. Focus on investigation starting point, recurrence signals, and next observable step. Do not infer root causes not present in the evidence.`);
+  } else if (kind === 'remediation') {
+    lines.push('', '## Instruction', `Generate a practical remediation path for a ${persona} persona. Use only the supplied signals. Avoid code-level assumptions if root cause entity is absent.`);
+  } else {
+    lines.push('', '## Instruction', `Generate an evidence-gated executive recommendation. Prioritise based on cost, recurrence, and blast radius. Highlight data gaps and keep scope conservative.`);
+  }
+  return lines.join('\n');
+}
+
+function RawPrompt({ pattern, kind }: { pattern: PatternDetail; kind: GenerationKind }) {
+  const [open, setOpen] = React.useState(false);
+  const prompt = buildRawPrompt(pattern, kind);
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          fontSize: 11,
+          color: MUTED,
+          textDecoration: 'underline',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        {open ? '▾' : '▸'} View raw prompt
+      </button>
+      {open && (
+        <pre
+          style={{
+            marginTop: 6,
+            padding: 10,
+            background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
+            border: '1px solid var(--dt-colors-border-neutral-subdued, #d5d8df)',
+            borderRadius: 6,
+            fontSize: 10,
+            lineHeight: 1.5,
+            color: MUTED,
+            overflowX: 'auto',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            maxHeight: 200,
+            overflowY: 'auto',
+          }}
+        >
+          {prompt}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function TrendArrow({ trend }: { trend: TrendDirection }) {
   const arrow = trend === 'Increasing' ? '↑' : trend === 'Decreasing' ? '↓' : '→';
   const color = trend === 'Increasing' ? DANGER : trend === 'Decreasing' ? OK : MUTED;
@@ -363,21 +436,22 @@ function SignalCard({ label, value, tone }: { label: string; value: string | num
     <div
       style={{
         border: '1px solid var(--dt-colors-border-neutral-subdued, #d5d8df)',
-        borderLeft: `4px solid ${color}`,
-        borderRadius: 8,
-        padding: '10px 12px',
+        borderLeft: `3px solid ${color}`,
+        borderRadius: 6,
+        padding: '5px 8px',
         background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
       }}
     >
       <div style={{
-        fontWeight: 700,
-        fontSize: 16,
+        fontWeight: 600,
+        fontSize: 12,
         color: 'var(--dt-colors-text-neutral-default, #23282d)',
         overflowWrap: 'anywhere',
+        lineHeight: 1.3,
       }}>
         {String(value)}
       </div>
-      <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.03em', marginTop: 2 }}>{label}</div>
     </div>
   );
 }
@@ -714,14 +788,17 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                   ? 'Generate an evidence-gated recommendation from the selected pattern and its observed signals.'
                   : 'Generate persona-specific analysis from observed recurrence, impact, RCA, and trend signals.'}
               </Text>
-              <Button
-                variant="accent"
-                style={{ alignSelf: 'flex-start' }}
-                onClick={generatePrimaryOutput}
-                disabled={recommendation.status === 'loading'}
-              >
-                {recommendation.status === 'loading' ? 'Generating...' : isExecutive ? 'Generate Recommendation' : 'Generate Analysis'}
-              </Button>
+              <Flex alignItems="center" gap={8}>
+                <Button
+                  variant="accent"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={generatePrimaryOutput}
+                  disabled={recommendation.status === 'loading'}
+                >
+                  {recommendation.status === 'loading' ? 'Generating...' : isExecutive ? 'Generate Recommendation' : 'Generate Analysis'}
+                </Button>
+              </Flex>
+              <RawPrompt pattern={pattern} kind={isExecutive ? 'recommendation' : 'analysis'} />
               <GeneratedOutput state={recommendation} />
             </Flex>
           </Container>
@@ -745,6 +822,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                   >
                     {remediation.status === 'loading' ? 'Generating...' : 'Get Remediation Path'}
                   </Button>
+                  <RawPrompt pattern={pattern} kind="remediation" />
                   <GeneratedOutput state={remediation} />
                 </Flex>
               </Container>

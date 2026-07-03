@@ -4,6 +4,7 @@ import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { TimeframeSelector } from '@dynatrace/strato-components/filters';
 import type { Timeframe } from '@dynatrace/strato-components/core';
+import { useCurrentTheme } from '@dynatrace/strato-components/core';
 import { SettingIcon } from '@dynatrace/strato-icons';
 import { PersonaType, ObjectiveType } from '../types/views';
 import { ExecutiveView } from './views/ExecutiveView';
@@ -32,6 +33,12 @@ function makeFilters(from: string, to: string, label: string): FilterState {
 }
 
 export function App() {
+  const theme = useCurrentTheme();
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-color-scheme', theme);
+  }, [theme]);
+
   const [personaIndex, setPersonaIndex] = useState(0);
   const [objective, setObjective] = useState<ObjectiveType>('cost_impact');
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
@@ -122,7 +129,8 @@ export function App() {
       ) : loadError ? (
         <div style={{ padding: 24 }}>{loadError}</div>
       ) : (
-        <Tabs selectedIndex={personaIndex} onChange={setPersonaIndex}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Tabs selectedIndex={personaIndex} onChange={setPersonaIndex} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <Tab title={PERSONA_LABELS.executive}>
             <ExecutiveView
               objective={objective}
@@ -148,6 +156,7 @@ export function App() {
             />
           </Tab>
         </Tabs>
+        </div>
       )}
     </div>
   );
