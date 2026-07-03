@@ -30,6 +30,7 @@ type RecommendationResult = {
     reason: string;
     capability: string;
   };
+  risks?: string[];
   dataGaps: string[];
 };
 
@@ -39,7 +40,7 @@ type RecommendationState = {
   errorMessage?: string;
 };
 
-type GenerationKind = 'recommendation' | 'analysis' | 'remediation';
+type GenerationKind = 'recommendation' | 'analysis' | 'remediation' | 'alert_tuning';
 
 function isMeaningfulSignal(value: string | number | string[] | null | undefined): boolean {
   if (value === null || value === undefined) return false;
@@ -149,6 +150,7 @@ function personaActionTitle(pattern: PatternDetail, kind: GenerationKind): strin
   const services = evidenceValue(pattern, 'affected_services');
 
   if (objective === 'alert_optimization') {
+    if (kind === 'alert_tuning') return 'Suggest scoped alert tuning for this recurring signal';
     return 'Review alert tuning and routing for this recurring signal';
   }
 
@@ -190,6 +192,10 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   const affectedServices = signalText(evidence.affected_services);
   const rootCause = signalText(evidence.root_cause_entity);
   const recommendationType = signalText(evidence.recommendation_type);
+  const alertEvents = signalText(evidence.alert_event_count);
+  const avgDuration = signalText(evidence.avg_duration);
+  const affectedEntityCount = signalText(evidence.affected_entity_count);
+  const scopeTier = signalText(evidence.scope_tier);
 
   const drivers = meaningfulDrivers([
     isMeaningfulSignal(evidence.operational_cost)
@@ -257,6 +263,65 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
     !isMeaningfulSignal(evidence.root_cause_entity) ? 'Root cause entity is missing.' : null,
     !isMeaningfulSignal(evidence.affected_services) ? 'Affected services are missing.' : null,
   ].filter(Boolean) as string[];
+
+  if (kind === 'alert_tuning') {
+    const strength = drivers.length >= 3 ? 'Evidence-backed' : 'Candidate';
+    const hasUserImpact = Number(users) > 0;
+    const appearsSystemic = Number(occurrences) >= 3 || trend.toLowerCase() === 'increasing';
+    const tuningTitle = recommendationType === 'ADD_TIME_WINDOW'
+      ? 'Review time-window tuning for this recurring signal'
+      : recommendationType === 'RAISE_THRESHOLD'
+        ? 'Review detector sensitivity for this recurring signal'
+        : 'Review alert routing and detector tuning for this recurring signal';
+
+    return {
+      assessment: `This alert tuning review uses ${occurrences} occurrence(s), ${displaySignalValue('alert_event_count', alertEvents)} alert event(s), a ${displaySignalValue('trend', trend)} trend, and ${displaySignalValue('event_category', category)} signal type. The repeated grouping appears ${appearsSystemic ? 'systemic within the selected timeframe' : 'limited in the selected timeframe'} based only on the supplied recurrence signals.`,
+      drivers: meaningfulDrivers([
+        ...drivers,
+        isMeaningfulSignal(evidence.alert_event_count)
+          ? {
+              signal: 'alert_event_count',
+              value: alertEvents,
+              whyItMatters: 'Alert event volume helps separate noisy repetition from isolated problem recurrence.',
+            }
+          : null,
+        isMeaningfulSignal(evidence.avg_duration)
+          ? {
+              signal: 'avg_duration',
+              value: avgDuration,
+              whyItMatters: 'Short-lived signals may justify window or sample tuning, while longer durations require more caution.',
+            }
+          : null,
+        isMeaningfulSignal(evidence.scope_tier)
+          ? {
+              signal: 'scope_tier',
+              value: scopeTier,
+              whyItMatters: 'Scope determines whether tuning should be narrow, routed, or reviewed at detector level.',
+            }
+          : null,
+      ].filter(Boolean) as RecommendationResult['drivers']),
+      action: {
+        priority: strength === 'Evidence-backed' ? 'SHORT_TERM' : 'STRATEGIC',
+        title: tuningTitle,
+        strength,
+        reason: `occurrence_count=${occurrences}; alert_event_count=${alertEvents}; avg_duration=${avgDuration}; affected_users=${users}; recommendation_type=${recommendationType}`,
+        capability: personaCapability(persona, kind, objective),
+      },
+      risks: [
+        hasUserImpact
+          ? `Affected users are ${users}; do not suppress or widen windows until customer-impact risk is reviewed.`
+          : 'Affected users are 0 or absent; verify this before treating the signal as low-impact noise.',
+        `Scope is ${displaySignalValue('scope_tier', scopeTier)} across ${displaySignalValue('affected_entity_count', affectedEntityCount)} affected entity count; avoid broad suppression without scoped evidence.`,
+        'RCA is treated only as Present or Missing; do not use this action to validate RCA correctness.',
+      ],
+      dataGaps: [
+        ...dataGaps,
+        !isMeaningfulSignal(evidence.alert_event_count) ? 'Alert event count is missing.' : null,
+        !isMeaningfulSignal(evidence.avg_duration) ? 'Average duration is missing.' : null,
+        !isMeaningfulSignal(evidence.recommendation_type) ? 'Recommended tuning lever is missing.' : null,
+      ].filter(Boolean) as string[],
+    };
+  }
 
   if (kind === 'analysis') {
     const title = personaActionTitle(pattern, kind);
@@ -532,6 +597,17 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
           </Container>
         </PanelSection>
       )}
+      {state.result.risks && state.result.risks.length > 0 && (
+        <PanelSection title="Tuning Risks">
+          <Container color="neutral" variant="default" padding={8}>
+            <Flex flexDirection="column" gap={4}>
+              {state.result.risks.map(risk => (
+                <Text key={risk} textStyle="small" style={{ color: MUTED }}>{risk}</Text>
+              ))}
+            </Flex>
+          </Container>
+        </PanelSection>
+      )}
     </Flex>
   );
 }
@@ -571,18 +647,27 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
   const [recommendation, setRecommendation] = useState<RecommendationState>({ status: 'idle' });
   const [analysis, setAnalysis] = useState<RecommendationState>({ status: 'idle' });
   const [remediation, setRemediation] = useState<RecommendationState>({ status: 'idle' });
+  const [alertTuning, setAlertTuning] = useState<RecommendationState>({ status: 'idle' });
   const persona = pattern?.assistContext.persona;
   const isExecutive = persona === 'executive';
+  const isAlertOptimization = pattern?.assistContext.objective === 'alert_optimization';
 
   useEffect(() => {
     setRecommendation({ status: 'idle' });
     setAnalysis({ status: 'idle' });
     setRemediation({ status: 'idle' });
+    setAlertTuning({ status: 'idle' });
   }, [pattern?.id, pattern?.assistContext.objective]);
 
   async function generateRecommendation(kind: GenerationKind = 'recommendation') {
     if (!pattern) return;
-    const setState = kind === 'analysis' ? setAnalysis : kind === 'remediation' ? setRemediation : setRecommendation;
+    const setState = kind === 'analysis'
+      ? setAnalysis
+      : kind === 'remediation'
+        ? setRemediation
+        : kind === 'alert_tuning'
+          ? setAlertTuning
+          : setRecommendation;
     try {
       setState({ status: 'loading' });
       await new Promise(resolve => setTimeout(resolve, 250));
@@ -795,6 +880,32 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
             </Flex>
           </Container>
         </Flex>
+
+        {isAlertOptimization && (
+          <>
+            <Divider />
+            <Flex flexDirection="column" gap={8}>
+              <SectionLabel>Alert Tuning</SectionLabel>
+              <Container color="neutral" variant="default" padding={12}>
+                <Flex flexDirection="column" gap={8}>
+                  <Text textStyle="small">
+                    Ask Calibrate Assist to review why this noisy recurring pattern repeats, what tuning could reduce noise, and what risk or missing evidence should be checked before changing alert windows.
+                  </Text>
+                  <Button
+                    variant="accent"
+                    style={{ alignSelf: 'flex-start' }}
+                    onClick={() => generateRecommendation('alert_tuning')}
+                    disabled={alertTuning.status === 'loading'}
+                  >
+                    {alertTuning.status === 'loading' ? 'Generating...' : 'Suggest Alert Tuning'}
+                  </Button>
+                  <RawPrompt pattern={pattern} kind="alert_tuning" />
+                  <GeneratedOutput state={alertTuning} />
+                </Flex>
+              </Container>
+            </Flex>
+          </>
+        )}
 
         {!isExecutive && (
           <>

@@ -23,7 +23,7 @@ export interface SignalPromptRequest {
   evidence: Record<string, string | number | string[] | null>;
   patternTitle?: string;
   recommendedAction?: string;
-  kind?: 'recommendation' | 'analysis' | 'remediation';
+  kind?: 'recommendation' | 'analysis' | 'remediation' | 'alert_tuning';
 }
 
 // ------------------------------------
@@ -194,6 +194,8 @@ export function buildSignalPrompt(req: SignalPromptRequest): string {
   const kind = req.kind ?? (req.persona === 'executive' ? 'recommendation' : 'analysis');
   const task = kind === 'remediation'
     ? 'Generate a practical remediation path using only the supplied signals.'
+    : kind === 'alert_tuning'
+      ? 'Suggest alert tuning for the selected noisy recurring pattern. Explain why alerts were grouped or repeated, whether recurrence appears systemic, what configuration tuning could reduce noise, what risk exists before suppressing or widening windows, and what evidence is missing. Do not auto-apply settings. Do not suppress high-impact alerts unless supplied evidence supports it. Do not infer RCA correctness.'
     : kind === 'analysis'
       ? 'Generate persona-specific analysis using only the supplied signals.'
       : 'Generate an evidence-gated recommendation using only the supplied signals.';
