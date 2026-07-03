@@ -96,15 +96,22 @@ function toEpochMs(value: unknown): number | undefined {
   return undefined;
 }
 
+function durationNumberToMinutes(value: number): number | undefined {
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  if (value > 10_000_000_000) return Math.max(1, Math.round(value / 60_000_000_000)); // nanoseconds
+  if (value > 10_000) return Math.max(1, Math.round(value / 60_000)); // milliseconds
+  return value; // already minutes
+}
+
 function toMinutes(value: unknown): number | undefined {
   if (!value) return undefined;
   if (typeof value === 'number') {
-    return value > 10000 ? Math.round(value / 60000) : value;
+    return durationNumberToMinutes(value);
   }
   if (typeof value === 'string') {
     const trimmed = value.trim();
     const numeric = Number(trimmed);
-    if (Number.isFinite(numeric) && numeric > 0) return numeric > 10000 ? Math.round(numeric / 60000) : numeric;
+    if (Number.isFinite(numeric) && numeric > 0) return durationNumberToMinutes(numeric);
 
     const iso = trimmed.match(/^P(?:T)?(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
     if (iso) {
