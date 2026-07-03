@@ -117,32 +117,43 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <AppHeader>
-        <AppHeader.ActionItems>
-          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-          <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-          <AppHeader.ActionButton
-            prefixIcon={<SettingIcon />}
-            onClick={() => setConfigOpen(true)}
-            isSelected={configOpen}
-          >
-            Configure
-          </AppHeader.ActionButton>
-          <div style={{ width: 20 }} />
-        </AppHeader.ActionItems>
-      </AppHeader>
+      <AppHeader />
 
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: 12,
-          padding: '8px 24px',
+          padding: '10px 24px',
           borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
           background: 'var(--dt-colors-background-base-default, #f2f2f5)',
         }}
       >
         <CalibrateLogo />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+          <div style={{ width: 1, height: 20, background: 'var(--dt-colors-border-neutral-subdued, #ccc)', margin: '0 4px' }} />
+          <button
+            onClick={() => setConfigOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 4,
+              border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+              background: configOpen ? 'var(--dt-colors-background-container-neutral-accent, #e8f0fe)' : 'var(--dt-colors-background-container-neutral-default, #fff)',
+              color: 'var(--dt-colors-text-neutral-default, #23282d)',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            <SettingIcon />
+            Configure
+          </button>
+        </div>
       </div>
 
       <ConfigDialog

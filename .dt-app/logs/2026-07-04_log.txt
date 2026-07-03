@@ -1,0 +1,66 @@
+2026-07-04T00:04:02.974Z DEBUG [PLUGIN] Searching for configuration file
+2026-07-04T00:04:02.975Z DEBUG [PLUGIN] Found /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/app.config.json
+2026-07-04T00:04:03.043Z DEBUG [TELEMETRY] Initializing telemetry
+2026-07-04T00:04:03.043Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-07-04T00:04:05.079Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-07-04T00:04:05.080Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-07-04T00:04:05.080Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "378342697790091900"
+2026-07-04T00:04:05.083Z DEBUG [TELEMETRY] Identification successful
+2026-07-04T00:04:24.195Z DEBUG [BUILD_TIME] Built UI in 4072.022499999999ms.
+2026-07-04T00:04:24.200Z INFO > /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/src/components/App.tsx:153:26 - Error: TS2322 Type '{ width: number; height: number; }' is not assignable to type 'IntrinsicAttributes & SvgIconProps & RefAttributes<SVGSVGElement>'.
+  Property 'width' does not exist on type 'IntrinsicAttributes & SvgIconProps & RefAttributes<SVGSVGElement>'.
+  151 |             }}
+  152 |           >
+> 153 |             <SettingIcon width={14} height={14} />
+      |                          ^
+  154 |             Configure
+  155 |           </button>
+  156 |         </div>
+2026-07-04T00:04:24.200Z ERROR Error: Build failed!
+2026-07-04T00:04:24.201Z DEBUG [TELEMETRY] Not reporting this specific error
+2026-07-04T00:04:24.201Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-07-04T00:04:24.599Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-07-04T00:04:33.804Z DEBUG [PLUGIN] Searching for configuration file
+2026-07-04T00:04:33.805Z DEBUG [PLUGIN] Found /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/app.config.json
+2026-07-04T00:04:33.868Z DEBUG [TELEMETRY] Initializing telemetry
+2026-07-04T00:04:33.868Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-07-04T00:04:35.892Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-07-04T00:04:35.892Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-07-04T00:04:35.892Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "378342697790091900"
+2026-07-04T00:04:35.893Z DEBUG [TELEMETRY] Identification successful
+2026-07-04T00:04:44.550Z DEBUG [BUILD_TIME] Built UI in 1283.2686670000003ms.
+2026-07-04T00:04:44.553Z DEBUG [BUILD_TIME] Built in 8355.809207999999ms.
+2026-07-04T00:04:44.553Z DEBUG [FILES] CREATED: /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/dist/ui/main.js (2261.91 KB)
+2026-07-04T00:04:44.553Z DEBUG [FILES] CREATED: /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/dist/ui/main.css (633.42 KB)
+2026-07-04T00:04:44.553Z DEBUG [FILES] CREATED: /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/dist/ui/index.html (0.40 KB)
+2026-07-04T00:04:44.564Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-07-04T00:04:44.962Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
+2026-07-04T00:04:52.817Z DEBUG [PLUGIN] Searching for configuration file
+2026-07-04T00:04:52.817Z DEBUG [PLUGIN] Found /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/app.config.json
+2026-07-04T00:04:52.872Z DEBUG [TELEMETRY] Initializing telemetry
+2026-07-04T00:04:52.872Z DEBUG [TELEMETRY] Using telemetry endpoint https://bf96767wvv.bf.dynatrace.com/mbeacon
+2026-07-04T00:04:54.606Z DEBUG [TELEMETRY] Creating a new HTTP and HTTPS interceptor for tracing
+2026-07-04T00:04:54.607Z DEBUG [TELEMETRY] Successfully initialized OpenKit
+2026-07-04T00:04:54.607Z DEBUG [TELEMETRY] Telemetry enabled: Session ID "378342697790091900"
+2026-07-04T00:04:54.608Z DEBUG [TELEMETRY] Identification successful
+2026-07-04T00:05:03.020Z DEBUG [BUILD_TIME] Built UI in 1311.3498749999999ms.
+2026-07-04T00:05:03.022Z DEBUG [BUILD_TIME] Built in 7940.7564170000005ms.
+2026-07-04T00:05:03.023Z DEBUG [FILES] CREATED: /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/dist/ui/main.js (2261.91 KB)
+2026-07-04T00:05:03.023Z DEBUG [FILES] CREATED: /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/dist/ui/main.css (633.42 KB)
+2026-07-04T00:05:03.023Z DEBUG [FILES] CREATED: /Users/nikhil.goenka/Library/CloudStorage/OneDrive-Dynatrace/Desktop/latest-optint/strato-optint/optint/dist/ui/index.html (0.40 KB)
+2026-07-04T00:05:03.042Z DEBUG [PLATFORM_DEPENDENCIES] 
+Dynatrace Platform Dependencies
+@dynatrace-sdk/client-query/ /platform/storage/query/v1
+
+2026-07-04T00:05:03.043Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-07-04T00:05:03.043Z DEBUG [HTTP(S)] Execute GET request without allowing redirection to 'https://ykd61701.sprint.apps.dynatracelabs.com/platform/oauth2/authorization/dynatrace-sso'
+2026-07-04T00:05:08.736Z DEBUG [HTTP(S)] Resolved URL is https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D044af71c-32ce-473e-a6de-5e8cbf4f42cd&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-07-04T00:05:08.736Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-07-04T00:05:08.737Z DEBUG [AUTH] OAuth2 token expired with a value of: -89.737 seconds
+2026-07-04T00:05:10.979Z DEBUG [AUTH] Retrieving SSO-URL for environment 'https://ykd61701.sprint.apps.dynatracelabs.com'
+2026-07-04T00:05:10.979Z DEBUG [HTTP(S)] Found resolved URL in cache: https://sso-sprint.dynatracelabs.com/action/signin?goto=https%3A%2F%2Fsso-sprint.dynatracelabs.com%3A443%2Foauth2%2Fauthorize%2Fredirect%3FoAuth2CtxUuid%3D044af71c-32ce-473e-a6de-5e8cbf4f42cd&oAuth2RedirectUri=https%3A%2F%2Fykd61701.sprint.apps.dynatracelabs.com%2Fplatform%2Flogin%2Foauth2%2Fcode%2Fdynatrace-sso
+2026-07-04T00:05:10.979Z DEBUG [AUTH] Using SSO-URL 'https://sso-sprint.dynatracelabs.com'
+2026-07-04T00:05:10.980Z DEBUG [DEPLOY] Installing the app
+2026-07-04T00:05:13.860Z DEBUG [DEPLOY] App installed
+2026-07-04T00:05:15.598Z DEBUG [TELEMETRY] Closing OpenKit connection
+2026-07-04T00:05:15.997Z DEBUG [TELEMETRY] Successfully closed OpenKit connection
