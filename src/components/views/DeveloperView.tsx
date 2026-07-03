@@ -58,7 +58,7 @@ export function DeveloperView({
           <Flex flexDirection="column" gap={2}>
             <Heading level={2} style={{ margin: 0 }}>Developer View</Heading>
             <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Code quality and fixability signals
+              Objective: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization'}</strong>
             </span>
           </Flex>
           <Flex alignItems="center" gap={12}>

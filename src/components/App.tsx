@@ -118,20 +118,21 @@ export function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <AppHeader>
-        <AppHeader.Logo>
+        <AppHeader.NavItems>
           <CalibrateLogo />
-        </AppHeader.Logo>
+        </AppHeader.NavItems>
         <AppHeader.ActionItems>
-          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-          <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)', margin: '0 8px' }} />
-          <AppHeader.ActionButton
-            prefixIcon={<SettingIcon />}
-            onClick={() => setConfigOpen(true)}
-            isSelected={configOpen}
-          >
-            Configure
-          </AppHeader.ActionButton>
-          <div style={{ width: 12 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 24 }}>
+            <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+            <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)' }} />
+            <AppHeader.ActionButton
+              prefixIcon={<SettingIcon />}
+              onClick={() => setConfigOpen(true)}
+              isSelected={configOpen}
+            >
+              Configure
+            </AppHeader.ActionButton>
+          </div>
         </AppHeader.ActionItems>
       </AppHeader>
 
