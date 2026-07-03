@@ -4,47 +4,33 @@ export function CalibrateLogo() {
   return (
     <div
       role="img"
-      aria-label="Calibrate Operational Intelligence"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        minWidth: 210,
-        color: 'var(--dt-colors-text-neutral-default, #24233b)',
-      }}
+      aria-label="Calibrate"
+      style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 34,
-          height: 34,
-          borderRadius: 8,
-          flexShrink: 0,
-          color: '#ffffff',
-          fontSize: 12,
-          fontWeight: 800,
-          background: 'linear-gradient(135deg, #1496ff 0%, #00c2a8 100%)',
-          boxShadow: '0 0 0 1px rgba(20,150,255,0.28)',
-        }}
-      >
-        Ca
-      </span>
-      <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.05, minWidth: 0 }}>
-        <span style={{ fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>Calibrate</span>
-        <span
-          style={{
-            fontSize: 8,
-            letterSpacing: 1.2,
-            color: 'var(--dt-colors-text-neutral-subdued, #5f6380)',
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Operational Intelligence
-        </span>
+      <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="14" stroke="rgba(20,150,255,0.2)" strokeWidth="1.5"/>
+        <path d="M 20 6 A 14 14 0 0 1 34 20" stroke="#1496ff" strokeWidth="1.5" fill="none"/>
+        <path d="M 34 20 A 14 14 0 0 1 20 34" stroke="#73be28" strokeWidth="1.5" fill="none"/>
+        <path d="M 20 34 A 14 14 0 0 1 6 20" stroke="rgba(20,150,255,0.35)" strokeWidth="1.5" fill="none"/>
+        <path d="M 6 20 A 14 14 0 0 1 20 6" stroke="rgba(115,190,40,0.3)" strokeWidth="1.5" fill="none"/>
+        <circle cx="20" cy="20" r="6" stroke="#1496ff" strokeWidth="1.5" strokeDasharray="2.5 2"/>
+        <line x1="20" y1="3.5" x2="20" y2="11.5" stroke="#1496ff" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="20" y1="28.5" x2="20" y2="36.5" stroke="#1496ff" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="3.5" y1="20" x2="11.5" y2="20" stroke="#1496ff" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="28.5" y1="20" x2="36.5" y2="20" stroke="#1496ff" strokeWidth="1.5" strokeLinecap="round"/>
+        <circle cx="20" cy="20" r="2.5" fill="#73be28"/>
+        <circle cx="20" cy="20" r="1" fill="#0d1117"/>
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+        <span style={{
+          fontSize: 15, fontWeight: 700, letterSpacing: '-0.3px',
+          color: 'var(--dt-colors-text-neutral-default, #1a1a2e)',
+        }}>Calibrate</span>
+        <span style={{
+          fontSize: 9, fontWeight: 600, letterSpacing: '1.5px',
+          textTransform: 'uppercase',
+          color: '#1496ff',
+        }}>Signal · Intelligence · Action</span>
       </div>
     </div>
   );
