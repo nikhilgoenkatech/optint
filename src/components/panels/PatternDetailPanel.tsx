@@ -53,6 +53,75 @@ function signalText(value: string | number | string[] | null | undefined): strin
   return String(value);
 }
 
+function signalLabel(signal: string): string {
+  const labels: Record<string, string> = {
+    affected_entity_count: 'Affected entities',
+    affected_services: 'Affected services',
+    affected_users: 'Affected users',
+    avg_duration: 'Average duration',
+    event_category: 'Failure type',
+    occurrence_count: 'Occurrences',
+    operational_cost: 'Operational cost',
+    potential_savings: 'Recoverable value',
+    rca_availability: 'Root cause evidence',
+    recommendation_type: 'Recommended lever',
+    root_cause_entity: 'Root cause entity',
+    scope_tier: 'Scope',
+    trend: 'Trend',
+  };
+  return labels[signal] || signal.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatCostValue(value: string | number): string {
+  const raw = String(value).replace(/[$,]/g, '').trim();
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return String(value);
+  return `$${numeric.toLocaleString()}`;
+}
+
+function displaySignalValue(signal: string, value: string | number): string {
+  const raw = String(value).trim();
+  if (!raw || raw.toLowerCase() === 'absent') return 'Not available';
+  if (signal === 'operational_cost' || signal === 'potential_savings') return formatCostValue(raw);
+  if (signal === 'trend' || signal === 'recommendation_type' || signal === 'event_category' || signal === 'scope_tier') {
+    return raw
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, char => char.toUpperCase());
+  }
+  return raw;
+}
+
+function displayPriority(value: RecommendationResult['action']['priority']): string {
+  const labels: Record<RecommendationResult['action']['priority'], string> = {
+    IMMEDIATE: 'Immediate',
+    SHORT_TERM: 'Short term',
+    STRATEGIC: 'Strategic',
+  };
+  return labels[value];
+}
+
+function displayStrength(value: RecommendationResult['action']['strength']): string {
+  return value === 'Evidence-backed' ? 'Evidence backed' : value;
+}
+
+function evidenceItems(reason: string): Array<{ signal: string; label: string; value: string }> {
+  return reason
+    .split(';')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const [signal, ...valueParts] = part.split('=');
+      const normalizedSignal = signal.trim();
+      const value = valueParts.join('=').trim();
+      return {
+        signal: normalizedSignal,
+        label: signalLabel(normalizedSignal),
+        value: displaySignalValue(normalizedSignal, value || 'absent'),
+      };
+    });
+}
+
 function formatObjective(objective: PatternDetail['assistContext']['objective']): string {
   return objective.replace('_', ' ');
 }
@@ -182,10 +251,10 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   ].filter(Boolean) as RecommendationResult['drivers']);
 
   const dataGaps = [
-    !isMeaningfulSignal(evidence.potential_savings) ? 'potential_savings is missing.' : null,
-    !isMeaningfulSignal(evidence.affected_users) ? 'affected_users is missing.' : null,
-    !isMeaningfulSignal(evidence.root_cause_entity) ? 'root_cause_entity is missing.' : null,
-    !isMeaningfulSignal(evidence.affected_services) ? 'affected_services is missing.' : null,
+    !isMeaningfulSignal(evidence.potential_savings) ? 'Recoverable value is missing.' : null,
+    !isMeaningfulSignal(evidence.affected_users) ? 'Affected users are missing.' : null,
+    !isMeaningfulSignal(evidence.root_cause_entity) ? 'Root cause entity is missing.' : null,
+    !isMeaningfulSignal(evidence.affected_services) ? 'Affected services are missing.' : null,
   ].filter(Boolean) as string[];
 
   if (kind === 'analysis') {
@@ -193,8 +262,8 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
     const capability = personaCapability(persona, kind, objective);
     return {
       assessment: persona === 'sre'
-        ? `This SRE analysis uses ${occurrences} observed occurrence(s), trend ${trend}, category ${category}, and RCA availability ${rca}. Focus is reliability engineering: recurrence, automation, prevention, and routing based only on supplied signals.`
-        : `This Developer analysis uses ${occurrences} observed occurrence(s), affected services ${affectedServices}, category ${category}, and RCA availability ${rca}. Focus is the technical investigation starting point and validation path from supplied evidence only.`,
+        ? `This reliability review is based on ${occurrences} occurrence(s), a ${displaySignalValue('trend', trend)} trend, ${displaySignalValue('event_category', category)} signal type, and ${displaySignalValue('rca_availability', rca)} root cause evidence. The next step stays focused on recurrence, automation, prevention, and routing using only the supplied signals.`
+        : `This developer review is based on ${occurrences} occurrence(s), ${displaySignalValue('affected_services', affectedServices)} affected service evidence, ${displaySignalValue('event_category', category)} signal type, and ${displaySignalValue('rca_availability', rca)} root cause evidence. The next step focuses on the investigation starting point and validation path from the supplied evidence.`,
       drivers,
       action: {
         priority: 'SHORT_TERM',
@@ -212,8 +281,8 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
     const capability = personaCapability(persona, kind, objective);
     return {
       assessment: persona === 'sre'
-        ? `This SRE remediation path uses ${occurrences} observed occurrence(s), ${cost} operational cost, trend ${trend}, and RCA availability ${rca}. It prioritizes prevention, automation, and ownership/routing only where the supplied signals justify it.`
-        : `This Developer remediation path uses ${occurrences} observed occurrence(s), affected services ${affectedServices}, root cause ${rootCause}, and category ${category}. It avoids code-level assumptions when RCA or service evidence is missing.`,
+        ? `This remediation path is based on ${occurrences} occurrence(s), ${displaySignalValue('operational_cost', cost)} operational cost, a ${displaySignalValue('trend', trend)} trend, and ${displaySignalValue('rca_availability', rca)} root cause evidence. It prioritizes prevention, automation, and ownership or routing only where the supplied signals justify it.`
+        : `This remediation path is based on ${occurrences} occurrence(s), ${displaySignalValue('affected_services', affectedServices)} affected service evidence, ${displaySignalValue('root_cause_entity', rootCause)} root cause entity, and ${displaySignalValue('event_category', category)} signal type. It avoids code-level assumptions when root cause or service evidence is missing.`,
       drivers,
       action: {
         priority: drivers.length >= 3 ? 'SHORT_TERM' : 'STRATEGIC',
@@ -229,7 +298,7 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   if (objective === 'alert_optimization') {
     const strength = drivers.length >= 3 ? 'Evidence-backed' : 'Candidate';
     return {
-      assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, trend ${trend}, and recommendation type ${recommendationType}. Because the active objective is alert optimization, action should stay focused on signal quality, routing, and scoped tuning rather than service remediation.`,
+      assessment: `This recurring signal appeared ${occurrences} time(s) with ${displaySignalValue('operational_cost', cost)} in modeled operational cost and a ${displaySignalValue('trend', trend)} trend. Because the objective is alert optimization, the recommendation focuses on signal quality, routing, and scoped tuning rather than service remediation.`,
       drivers,
       action: {
         priority: strength === 'Evidence-backed' ? 'SHORT_TERM' : 'STRATEGIC',
@@ -244,7 +313,7 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
 
   const strength = drivers.length >= 3 ? 'Evidence-backed' : 'Candidate';
   return {
-    assessment: `This Executive recommendation uses ${occurrences} observed occurrence(s), ${cost} operational cost, ${savings} potential savings, and ${users} affected user(s). The action is business-oriented and avoids low-level remediation unless missing evidence prevents a confident decision.`,
+    assessment: `This recurring pattern appeared ${occurrences} time(s) and represents ${displaySignalValue('operational_cost', cost)} in modeled operational cost. ${users !== 'absent' ? `${displaySignalValue('affected_users', users)} affected user(s) are recorded in the supplied evidence.` : 'Affected-user evidence is not available.'} ${savings !== 'absent' ? `${displaySignalValue('potential_savings', savings)} is modeled as recoverable value.` : 'Recoverable value is not available, so the recommendation stays conservative.'}`,
     drivers,
     action: {
       priority: strength === 'Evidence-backed' ? 'IMMEDIATE' : 'SHORT_TERM',
@@ -300,7 +369,14 @@ function SignalCard({ label, value, tone }: { label: string; value: string | num
         background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
       }}
     >
-      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{String(value)}</div>
+      <div style={{
+        fontWeight: 700,
+        fontSize: 16,
+        color: 'var(--dt-colors-text-neutral-default, #23282d)',
+        overflowWrap: 'anywhere',
+      }}>
+        {String(value)}
+      </div>
       <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>{label}</div>
     </div>
   );
@@ -342,6 +418,7 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
   }
 
   if (state.status !== 'ready' || !state.result) return null;
+  const parsedEvidence = evidenceItems(state.result.action.reason);
 
   return (
     <Flex flexDirection="column" gap={8}>
@@ -353,7 +430,11 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
       <PanelSection title="Observed Signals">
         <SignalGrid>
           {state.result.drivers.slice(0, 4).map(driver => (
-            <SignalCard key={driver.signal} label={driver.signal.replace(/_/g, ' ')} value={driver.value} />
+            <SignalCard
+              key={driver.signal}
+              label={signalLabel(driver.signal)}
+              value={displaySignalValue(driver.signal, driver.value)}
+            />
           ))}
         </SignalGrid>
       </PanelSection>
@@ -362,11 +443,20 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
           <Flex flexDirection="column" gap={6}>
             <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
             <SignalGrid>
-              <SignalCard label="Priority" value={state.result.action.priority.replace('_', ' ')} tone={state.result.action.priority} />
-              <SignalCard label="Strength" value={state.result.action.strength} />
-              <SignalCard label="Capability" value={state.result.action.capability} />
-              <SignalCard label="Evidence" value={state.result.action.reason} />
+              <SignalCard label="Priority" value={displayPriority(state.result.action.priority)} tone={state.result.action.priority} />
+              <SignalCard label="Strength" value={displayStrength(state.result.action.strength)} />
+              <SignalCard label="Dynatrace capability" value={state.result.action.capability} />
             </SignalGrid>
+            {parsedEvidence.length > 0 && (
+              <Flex flexDirection="column" gap={6}>
+                <Text textStyle="small" style={{ color: MUTED, fontWeight: 600 }}>Evidence used</Text>
+                <SignalGrid>
+                  {parsedEvidence.map(item => (
+                    <SignalCard key={`${item.signal}-${item.value}`} label={item.label} value={item.value} />
+                  ))}
+                </SignalGrid>
+              </Flex>
+            )}
           </Flex>
         </Container>
       </PanelSection>
