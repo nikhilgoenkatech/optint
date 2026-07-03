@@ -36,6 +36,10 @@ export function DeveloperView({
   const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
+  const goalLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
+  const goalHint = objective === 'cost_impact'
+    ? 'Optimising triage by recurring cost, affected services, and recoverable work.'
+    : 'Optimising triage by noisy recurrence and alert-quality signals before code-level work.';
 
   if (loading) {
     return (
@@ -52,13 +56,13 @@ export function DeveloperView({
         <Flex
           justifyContent="space-between"
           alignItems="center"
-          padding={16}
+          padding={20}
           style={{ borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
         >
-          <Flex flexDirection="column" gap={2}>
+          <Flex flexDirection="column" gap={4}>
             <Heading level={2} style={{ margin: 0 }}>Developer View</Heading>
             <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Objective: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization'}</strong>
+              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong> · {goalHint}
             </span>
           </Flex>
           <Flex alignItems="center" gap={12}>
@@ -88,11 +92,11 @@ export function DeveloperView({
           </Flex>
         </Flex>
 
-        <div style={{ padding: '16px 16px 0' }}>
+        <div style={{ padding: '20px 20px 0' }}>
           <DeveloperKpiRow kpis={kpis} />
         </div>
 
-        <div style={{ padding: '0 16px 16px', flex: 1 }}>
+        <div style={{ padding: '0 20px 20px', flex: 1 }}>
           <Tabs selectedIndex={viewTab} onChange={setViewTab}>
             <Tab title="Developer Heat Map">
               <DeveloperHeatMap

@@ -21,7 +21,7 @@ export function ObjectiveToggle({ value, onChange }: ObjectiveToggleProps) {
         letterSpacing: '0.02em',
       }}>
         <TargetFilledIcon />
-        Objective
+        Goal
       </span>
       <ToggleButtonGroup
         value={value}

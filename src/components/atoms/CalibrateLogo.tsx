@@ -2,7 +2,7 @@ import React from 'react';
 
 export function CalibrateLogo() {
   return (
-    <svg width="200" height="36" viewBox="0 0 200 36" role="img" aria-label="Calibrate" xmlns="http://www.w3.org/2000/svg">
+    <svg width="200" height="36" viewBox="0 0 200 36" role="img" aria-label="Calibrate" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', maxWidth: '100%', height: 'auto' }}>
       {/* Gauge arc outer */}
       <path d="M 4 28 A 18 18 0 0 1 40 28" fill="none" stroke="#1496ff" strokeWidth="3.5" strokeLinecap="round"/>
       {/* Gauge arc inner */}
@@ -19,8 +19,8 @@ export function CalibrateLogo() {
       {/* Signal dot */}
       <circle cx="34" cy="17" r="2.5" fill="#1496ff"/>
       {/* Wordmark — white so it shows on dark AppHeader */}
-      <text x="50" y="22" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fontWeight="700" fontSize="18" fill="#ffffff">Calibrate</text>
-      <text x="51" y="32" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fontWeight="400" fontSize="7.5" fill="rgba(255,255,255,0.55)" letterSpacing="1.5">OPERATIONAL INTELLIGENCE</text>
+      <text x="50" y="22" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fontWeight="700" fontSize="18" fill="var(--dt-colors-text-neutral-default, #24233b)">Calibrate</text>
+      <text x="51" y="32" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fontWeight="400" fontSize="7.5" fill="var(--dt-colors-text-neutral-subdued, #5f6380)" letterSpacing="1.5">OPERATIONAL INTELLIGENCE</text>
     </svg>
   );
 }

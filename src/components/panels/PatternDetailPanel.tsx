@@ -4,6 +4,7 @@ import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { Button } from '@dynatrace/strato-components/buttons';
 import { Container } from '@dynatrace/strato-components/layouts';
 import { EmptyState } from '@dynatrace/strato-components/content';
+import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { PatternDetail, TrendDirection } from '../../types/views';
 import { buildSignalPrompt } from '../../persona/PersonaPromptBuilder';
 
@@ -644,20 +645,22 @@ function LegacyGeneratedOutput({ state }: { state: RecommendationState }) {
 }
 
 export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps) {
+  const [panelTab, setPanelTab] = useState(0);
   const [recommendation, setRecommendation] = useState<RecommendationState>({ status: 'idle' });
   const [analysis, setAnalysis] = useState<RecommendationState>({ status: 'idle' });
   const [remediation, setRemediation] = useState<RecommendationState>({ status: 'idle' });
-  const [alertTuning, setAlertTuning] = useState<RecommendationState>({ status: 'idle' });
   const persona = pattern?.assistContext.persona;
   const isExecutive = persona === 'executive';
-  const isAlertOptimization = pattern?.assistContext.objective === 'alert_optimization';
 
   useEffect(() => {
     setRecommendation({ status: 'idle' });
     setAnalysis({ status: 'idle' });
     setRemediation({ status: 'idle' });
-    setAlertTuning({ status: 'idle' });
   }, [pattern?.id, pattern?.assistContext.objective]);
+
+  useEffect(() => {
+    setPanelTab(0);
+  }, [pattern?.id]);
 
   async function generateRecommendation(kind: GenerationKind = 'recommendation') {
     if (!pattern) return;
@@ -665,9 +668,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
       ? setAnalysis
       : kind === 'remediation'
         ? setRemediation
-        : kind === 'alert_tuning'
-          ? setAlertTuning
-          : setRecommendation;
+        : setRecommendation;
     try {
       setState({ status: 'loading' });
       await new Promise(resolve => setTimeout(resolve, 250));
@@ -675,25 +676,6 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
       setState(result ? { status: 'ready', result } : { status: 'insufficient' });
     } catch (error) {
       setState({
-        status: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Assist unavailable. Try again.',
-      });
-    }
-  }
-
-  async function generatePrimaryOutput() {
-    if (!pattern) return;
-    if (isExecutive) {
-      await generateRecommendation('recommendation');
-      return;
-    }
-    try {
-      setRecommendation({ status: 'loading' });
-      await new Promise(resolve => setTimeout(resolve, 250));
-      const result = buildRecommendation(pattern, 'analysis');
-      setRecommendation(result ? { status: 'ready', result } : { status: 'insufficient' });
-    } catch (error) {
-      setRecommendation({
         status: 'error',
         errorMessage: error instanceof Error ? error.message : 'Assist unavailable. Try again.',
       });
@@ -757,7 +739,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
             <Container key={section.title} color="neutral" variant="default" padding={12}
               style={{ opacity: 0.6 }}>
               <Flex alignItems="flex-start" gap={8}>
-                <span style={{ fontSize: 14, flexShrink: 0 }}>{section.icon}</span>
+                <span style={{ fontSize: 14, flexShrink: 0, color: ACCENT }}>•</span>
                 <Flex flexDirection="column" gap={2}>
                   <Text textStyle="small" style={{ fontWeight: 600 }}>{section.title}</Text>
                   <Text textStyle="small" style={{ color: MUTED }}>{section.desc}</Text>
@@ -768,7 +750,11 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
         </Flex>
       )}
 
-      {pattern && <Flex flexDirection="column" gap={16} padding={16}>
+      {pattern && (
+        <div style={{ padding: 16 }}>
+          <Tabs selectedIndex={panelTab} onChange={setPanelTab}>
+            <Tab title="Details">
+              <Flex flexDirection="column" gap={16} style={{ paddingTop: 12 }}>
 
         {/* Business Impact */}
         <PanelSection title={isExecutive ? 'Business Impact' : persona === 'sre' ? 'Reliability Context' : 'Developer Context'}>
@@ -850,11 +836,11 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
           </div>
         </Flex>
 
-        <Divider />
+              </Flex>
+            </Tab>
 
-        {/* Assist */}
-        <Flex flexDirection="column" gap={8}>
-          <SectionLabel>{isExecutive ? 'Recommendation' : 'Analysis'}</SectionLabel>
+            <Tab title={isExecutive ? 'Recommendation' : 'Analysis'}>
+        <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
           <Container color="neutral" variant="default" padding={12}>
             <Flex flexDirection="column" gap={8}>
               <span style={{ fontSize: 11, color: MUTED }}>
@@ -869,49 +855,24 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                 <Button
                   variant="accent"
                   style={{ alignSelf: 'flex-start' }}
-                  onClick={generatePrimaryOutput}
-                  disabled={recommendation.status === 'loading'}
+                  onClick={() => generateRecommendation(isExecutive ? 'recommendation' : 'analysis')}
+                  disabled={isExecutive ? recommendation.status === 'loading' : analysis.status === 'loading'}
                 >
-                  {recommendation.status === 'loading' ? 'Generating...' : isExecutive ? 'Generate Recommendation' : 'Generate Analysis'}
+                  {(isExecutive ? recommendation.status : analysis.status) === 'loading'
+                    ? 'Generating...'
+                    : isExecutive ? 'Generate Recommendation' : 'Generate Analysis'}
                 </Button>
               </Flex>
               <RawPrompt pattern={pattern} kind={isExecutive ? 'recommendation' : 'analysis'} />
-              <GeneratedOutput state={recommendation} />
+              <GeneratedOutput state={isExecutive ? recommendation : analysis} />
             </Flex>
           </Container>
         </Flex>
-
-        {isAlertOptimization && (
-          <>
-            <Divider />
-            <Flex flexDirection="column" gap={8}>
-              <SectionLabel>Alert Tuning</SectionLabel>
-              <Container color="neutral" variant="default" padding={12}>
-                <Flex flexDirection="column" gap={8}>
-                  <Text textStyle="small">
-                    Ask Calibrate Assist to review why this noisy recurring pattern repeats, what tuning could reduce noise, and what risk or missing evidence should be checked before changing alert windows.
-                  </Text>
-                  <Button
-                    variant="accent"
-                    style={{ alignSelf: 'flex-start' }}
-                    onClick={() => generateRecommendation('alert_tuning')}
-                    disabled={alertTuning.status === 'loading'}
-                  >
-                    {alertTuning.status === 'loading' ? 'Generating...' : 'Suggest Alert Tuning'}
-                  </Button>
-                  <RawPrompt pattern={pattern} kind="alert_tuning" />
-                  <GeneratedOutput state={alertTuning} />
-                </Flex>
-              </Container>
-            </Flex>
-          </>
-        )}
+            </Tab>
 
         {!isExecutive && (
-          <>
-            <Divider />
-            <Flex flexDirection="column" gap={8}>
-              <SectionLabel>Remediation</SectionLabel>
+          <Tab title="Remediation">
+            <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
               <Container color="neutral" variant="default" padding={12}>
                 <Flex flexDirection="column" gap={8}>
                   <Text textStyle="small">
@@ -930,10 +891,12 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                 </Flex>
               </Container>
             </Flex>
-          </>
+          </Tab>
         )}
 
-      </Flex>}
+          </Tabs>
+        </div>
+      )}
     </Surface>
   );
 }
