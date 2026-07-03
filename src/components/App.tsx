@@ -123,7 +123,7 @@ export function App() {
         </AppHeader.Logo>
         <AppHeader.ActionItems>
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-          <div style={{ width: 1, height: 20, background: 'var(--dt-colors-border-neutral-default, #cfd3d8)', margin: '0 4px' }} />
+          <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)', margin: '0 8px' }} />
           <AppHeader.ActionButton
             prefixIcon={<SettingIcon />}
             onClick={() => setConfigOpen(true)}
@@ -131,6 +131,7 @@ export function App() {
           >
             Configure
           </AppHeader.ActionButton>
+          <div style={{ width: 12 }} />
         </AppHeader.ActionItems>
       </AppHeader>
 
