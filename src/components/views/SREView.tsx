@@ -26,9 +26,6 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
   const goalLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
-  const goalHint = objective === 'cost_impact'
-    ? 'Optimising reliability work by recurring operational cost and recoverable effort.'
-    : 'Optimising reliability work by noisy recurrence, alert quality, and routing opportunities.';
 
   if (loading) {
     return (
@@ -51,7 +48,7 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
           <Flex flexDirection="column" gap={4}>
             <Heading level={2} style={{ margin: 0 }}>SRE View</Heading>
             <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong> · {goalHint}
+              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong>
             </span>
           </Flex>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />

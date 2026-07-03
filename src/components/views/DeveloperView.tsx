@@ -37,9 +37,6 @@ export function DeveloperView({
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
   const goalLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
-  const goalHint = objective === 'cost_impact'
-    ? 'Optimising triage by recurring cost, affected services, and recoverable work.'
-    : 'Optimising triage by noisy recurrence and alert-quality signals before code-level work.';
   const scopeGroups: Array<{ type: DeveloperScopeOption['type']; label: string }> = [
     { type: 'service', label: 'Services' },
     { type: 'team', label: 'Teams' },
@@ -70,7 +67,7 @@ export function DeveloperView({
           <Flex flexDirection="column" gap={4}>
             <Heading level={2} style={{ margin: 0 }}>Developer View</Heading>
             <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong> · {goalHint}
+              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong>
             </span>
           </Flex>
           <Flex alignItems="center" gap={12}>

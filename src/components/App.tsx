@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppHeader } from '@dynatrace/strato-components/layouts';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
+import { Button } from '@dynatrace/strato-components/buttons';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { TimeframeSelector } from '@dynatrace/strato-components/filters';
 import type { Timeframe } from '@dynatrace/strato-components/core';
@@ -121,20 +122,27 @@ export function App() {
         <AppHeader.NavItems>
           <CalibrateLogo />
         </AppHeader.NavItems>
-        <AppHeader.ActionItems>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 24 }}>
-            <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-            <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.2)' }} />
-            <AppHeader.ActionButton
-              prefixIcon={<SettingIcon />}
-              onClick={() => setConfigOpen(true)}
-              isSelected={configOpen}
-            >
-              Configure
-            </AppHeader.ActionButton>
-          </div>
-        </AppHeader.ActionItems>
       </AppHeader>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 12,
+          padding: '10px 24px',
+          borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
+          background: 'var(--dt-colors-background-container-neutral-default, #fff)',
+        }}
+      >
+        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        <Button onClick={() => setConfigOpen(true)}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <SettingIcon />
+            Configure
+          </span>
+        </Button>
+      </div>
 
       <ConfigDialog
         open={configOpen}

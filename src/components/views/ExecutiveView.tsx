@@ -25,9 +25,6 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
   const goalLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
-  const goalHint = objective === 'cost_impact'
-    ? 'Optimising pattern priority for recurring cost, recoverable value, and business risk.'
-    : 'Optimising pattern priority for noisy recurrence and alert-quality improvement opportunities.';
 
   if (loading) {
     return (
@@ -39,7 +36,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
 
   return (
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
-      {/* Primary decision workspace — 72% */}
+      {/* Primary decision workspace - 72% */}
       <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
 
         {/* Decision control strip */}
@@ -52,7 +49,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
           <Flex flexDirection="column" gap={4}>
             <Heading level={2} style={{ margin: 0 }}>Executive Overview</Heading>
             <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong> · {goalHint}
+              Goal: <strong style={{ color: 'var(--dt-colors-text-neutral-default, #23282d)' }}>{goalLabel}</strong>
             </span>
           </Flex>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
@@ -84,7 +81,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
         </div>
       </Flex>
 
-      {/* Investigation panel — 28% */}
+      {/* Investigation panel - 28% */}
       <div style={{ flex: '0 0 28%', minWidth: 280, height: '100%', overflow: 'hidden' }}>
         <PatternDetailPanel
           pattern={selectedPattern}

@@ -108,6 +108,68 @@ function displayStrength(value: RecommendationResult['action']['strength']): str
   return value === 'Evidence-backed' ? 'Evidence backed' : value;
 }
 
+function InlineMetaChip({
+  children,
+  tone = 'neutral',
+}: {
+  children: React.ReactNode;
+  tone?: 'neutral' | 'critical' | 'warning' | 'success' | 'accent';
+}) {
+  const styles: Record<typeof tone, { border: string; background: string; color: string }> = {
+    neutral: {
+      border: 'var(--dt-colors-border-neutral-default, #d8d9df)',
+      background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
+      color: 'var(--dt-colors-text-neutral-default, #23282d)',
+    },
+    critical: {
+      border: 'var(--dt-colors-border-critical-default, #c41425)',
+      background: 'var(--dt-colors-background-container-critical-subdued, #fff0f0)',
+      color: 'var(--dt-colors-text-critical-default, #c41425)',
+    },
+    warning: {
+      border: 'var(--dt-colors-border-warning-default, #d18700)',
+      background: 'var(--dt-colors-background-container-warning-subdued, #fff7e6)',
+      color: 'var(--dt-colors-text-warning-default, #8a5a00)',
+    },
+    success: {
+      border: 'var(--dt-colors-border-success-default, #2f7d32)',
+      background: 'var(--dt-colors-background-container-success-subdued, #edf8ee)',
+      color: 'var(--dt-colors-text-success-default, #2f7d32)',
+    },
+    accent: {
+      border: 'var(--dt-colors-border-primary-default, #1496ff)',
+      background: 'var(--dt-colors-background-container-primary-subdued, #eef7ff)',
+      color: 'var(--dt-colors-text-primary-default, #0b65c2)',
+    },
+  };
+  const style = styles[tone];
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        width: 'fit-content',
+        border: `1px solid ${style.border}`,
+        background: style.background,
+        color: style.color,
+        borderRadius: 999,
+        padding: '2px 8px',
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1.4,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function priorityTone(value: RecommendationResult['action']['priority']): 'critical' | 'warning' | 'success' {
+  if (value === 'IMMEDIATE') return 'critical';
+  if (value === 'SHORT_TERM') return 'warning';
+  return 'success';
+}
+
 function evidenceItems(reason: string): Array<{ signal: string; label: string; value: string }> {
   return reason
     .split(';')
@@ -430,7 +492,7 @@ function RawPrompt({ pattern, kind }: { pattern: PatternDetail; kind: Generation
           gap: 4,
         }}
       >
-        {open ? '▾' : '▸'} View raw prompt
+        {open ? 'v' : '>'} View raw prompt
       </button>
       {open && (
         <pre
@@ -458,7 +520,7 @@ function RawPrompt({ pattern, kind }: { pattern: PatternDetail; kind: Generation
 }
 
 function TrendArrow({ trend }: { trend: TrendDirection }) {
-  const arrow = trend === 'Increasing' ? '↑' : trend === 'Decreasing' ? '↓' : '→';
+  const arrow = trend === 'Increasing' ? 'Up' : trend === 'Decreasing' ? 'Down' : 'Stable';
   const color = trend === 'Increasing' ? DANGER : trend === 'Decreasing' ? OK : MUTED;
   return <span style={{ color, fontWeight: 600 }}>{arrow} {trend}</span>;
 }
@@ -576,7 +638,17 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
           <Flex flexDirection="column" gap={6}>
             <Flex justifyContent="space-between" alignItems="flex-start" gap={8}>
               <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
-              <SignalCard label="Priority" value={displayPriority(state.result.action.priority)} tone={state.result.action.priority} />
+              <InlineMetaChip tone={priorityTone(state.result.action.priority)}>
+                {displayPriority(state.result.action.priority)}
+              </InlineMetaChip>
+            </Flex>
+            <Flex alignItems="center" gap={6} style={{ flexWrap: 'wrap' }}>
+              <InlineMetaChip tone="accent">{state.result.action.capability}</InlineMetaChip>
+              {state.result.action.strength !== 'Evidence-backed' && (
+                <InlineMetaChip tone={state.result.action.strength === 'Candidate' ? 'warning' : 'neutral'}>
+                  {displayStrength(state.result.action.strength)}
+                </InlineMetaChip>
+              )}
             </Flex>
             {primaryDriver && (
               <Container color="neutral" variant="emphasized" padding={8}>
@@ -590,18 +662,11 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
               <Text textStyle="small" style={{ fontWeight: 600 }}>Recommended action</Text>
               <Text textStyle="small">{state.result.action.title}</Text>
             </Flex>
-            <SignalGrid>
-              <SignalCard label="Recommendation strength" value={displayStrength(state.result.action.strength)} />
-              <SignalCard label="Dynatrace capability" value={state.result.action.capability} />
-            </SignalGrid>
             {parsedEvidence.length > 0 && (
               <Flex flexDirection="column" gap={6}>
-                <Text textStyle="small" style={{ color: MUTED, fontWeight: 600 }}>Evidence used</Text>
-                <SignalGrid>
-                  {parsedEvidence.map(item => (
-                    <SignalCard key={`${item.signal}-${item.value}`} label={item.label} value={item.value} />
-                  ))}
-                </SignalGrid>
+                <Text textStyle="small" style={{ color: MUTED, fontWeight: 600 }}>
+                  Evidence used: {parsedEvidence.map(item => `${item.label} ${item.value}`).join(' | ')}
+                </Text>
               </Flex>
             )}
           </Flex>
@@ -650,7 +715,7 @@ function LegacyGeneratedOutput({ state }: { state: RecommendationState }) {
         <Flex flexDirection="column" gap={4}>
           <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
           <Text textStyle="small" style={{ color: MUTED }}>
-            {state.result.action.priority} · {state.result.action.strength} · {state.result.action.capability}
+            {state.result.action.priority} | {state.result.action.strength} | {state.result.action.capability}
           </Text>
           <Text textStyle="small">{state.result.action.reason}</Text>
         </Flex>
@@ -671,6 +736,11 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
   const [remediation, setRemediation] = useState<RecommendationState>({ status: 'idle' });
   const persona = pattern?.assistContext.persona;
   const isExecutive = persona === 'executive';
+  const activeObjective = pattern?.assistContext.objective ?? 'cost_impact';
+  const objectiveActionKind: GenerationKind = activeObjective === 'cost_impact' ? 'remediation' : 'recommendation';
+  const objectiveActionState = objectiveActionKind === 'remediation' ? remediation : recommendation;
+  const objectiveTabTitle = activeObjective === 'cost_impact' ? 'Remediation' : 'Recommendations';
+  const objectiveButtonLabel = activeObjective === 'cost_impact' ? 'Get Remediation Path' : 'Generate Recommendations';
 
   useEffect(() => {
     setRecommendation({ status: 'idle' });
@@ -729,11 +799,11 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
           }
         </Flex>
         {pattern && (
-          <Button variant="default" onClick={onClose} style={{ marginLeft: 8, flexShrink: 0 }}>✕</Button>
+          <Button variant="default" onClick={onClose} style={{ marginLeft: 8, flexShrink: 0 }}>x</Button>
         )}
       </Flex>
 
-      {/* Empty state — rich preview sections */}
+      {/* Empty state - rich preview sections */}
       {!pattern && (
         <Flex flexDirection="column" gap={12} padding={16} style={{ flex: 1 }}>
           <EmptyState size="small">
@@ -751,15 +821,15 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
           </Text>
 
           {[
-            { icon: '💰', title: 'Business Impact', desc: 'Risk exposure, recoverable value, affected users' },
-            { icon: '🔄', title: 'Recurrence Timeline', desc: 'Occurrence history and trend direction' },
-            { icon: '🔍', title: 'Investigation Friction', desc: 'Evidence quality, readiness, remediation effort' },
-            { icon: '⚡', title: 'Recommended Remediation', desc: 'Davis-backed action with confidence score' },
+            { icon: '$', title: 'Business Impact', desc: 'Risk exposure, recoverable value, affected users' },
+            { icon: 'T', title: 'Recurrence Timeline', desc: 'Occurrence history and trend direction' },
+            { icon: 'E', title: 'Investigation Friction', desc: 'Evidence quality, readiness, remediation effort' },
+            { icon: 'A', title: 'Recommended Remediation', desc: 'Davis-backed action with evidence status' },
           ].map(section => (
             <Container key={section.title} color="neutral" variant="default" padding={12}
               style={{ opacity: 0.6 }}>
               <Flex alignItems="flex-start" gap={8}>
-                <span style={{ fontSize: 14, flexShrink: 0, color: ACCENT }}>•</span>
+                <span style={{ fontSize: 14, flexShrink: 0, color: ACCENT }}>-</span>
                 <Flex flexDirection="column" gap={2}>
                   <Text textStyle="small" style={{ fontWeight: 600 }}>{section.title}</Text>
                   <Text textStyle="small" style={{ color: MUTED }}>{section.desc}</Text>
@@ -834,7 +904,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
               <StatRow label="RCA" value={
                 pattern.assistContext.evidence.rca_availability === 'Present'
                   ? `Present${pattern.assistContext.evidence.root_cause_entity
-                      ? ` · ${pattern.assistContext.evidence.root_cause_entity}` : ''}`
+                      ? ` | ${pattern.assistContext.evidence.root_cause_entity}` : ''}`
                   : 'Missing'
               } />
             </Flex>
@@ -859,60 +929,34 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
               </Flex>
             </Tab>
 
-            <Tab title={isExecutive ? 'Recommendation' : 'Analysis'}>
+            <Tab title={objectiveTabTitle}>
         <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
           <Container color="neutral" variant="default" padding={12}>
             <Flex flexDirection="column" gap={8}>
               <span style={{ fontSize: 11, color: MUTED }}>
-                Calibrate Assist · {pattern.assistContext.persona} · {formatObjective(pattern.assistContext.objective)}
+                Dynatrace Assist request · {pattern.assistContext.persona} · {formatObjective(pattern.assistContext.objective)}
               </span>
               <Text textStyle="small">
-                {isExecutive
-                  ? 'Generate an evidence-gated recommendation from the selected pattern and its observed signals.'
-                  : 'Generate persona-specific analysis from observed recurrence, impact, RCA, and trend signals.'}
+                {activeObjective === 'cost_impact'
+                  ? 'Generate an evidence-gated remediation path from the selected pattern and its observed signals.'
+                  : 'Generate evidence-gated alert optimization recommendations from the selected noisy recurring pattern.'}
               </Text>
               <Flex alignItems="center" gap={8}>
                 <Button
                   variant="accent"
                   style={{ alignSelf: 'flex-start' }}
-                  onClick={() => generateRecommendation(isExecutive ? 'recommendation' : 'analysis')}
-                  disabled={isExecutive ? recommendation.status === 'loading' : analysis.status === 'loading'}
+                  onClick={() => generateRecommendation(objectiveActionKind)}
+                  disabled={objectiveActionState.status === 'loading'}
                 >
-                  {(isExecutive ? recommendation.status : analysis.status) === 'loading'
-                    ? 'Generating...'
-                    : isExecutive ? 'Generate Recommendation' : 'Generate Analysis'}
+                  {objectiveActionState.status === 'loading' ? 'Generating...' : objectiveButtonLabel}
                 </Button>
               </Flex>
-              <RawPrompt pattern={pattern} kind={isExecutive ? 'recommendation' : 'analysis'} />
-              <GeneratedOutput state={isExecutive ? recommendation : analysis} />
+              <RawPrompt pattern={pattern} kind={objectiveActionKind} />
+              <GeneratedOutput state={objectiveActionState} />
             </Flex>
           </Container>
         </Flex>
             </Tab>
-
-        {!isExecutive && (
-          <Tab title="Remediation">
-            <Flex flexDirection="column" gap={8} style={{ paddingTop: 12 }}>
-              <Container color="neutral" variant="default" padding={12}>
-                <Flex flexDirection="column" gap={8}>
-                  <Text textStyle="small">
-                    Generate a practical remediation path using only supplied pattern evidence.
-                  </Text>
-                  <Button
-                    variant="accent"
-                    style={{ alignSelf: 'flex-start' }}
-                    onClick={() => generateRecommendation('remediation')}
-                    disabled={remediation.status === 'loading'}
-                  >
-                    {remediation.status === 'loading' ? 'Generating...' : 'Get Remediation Path'}
-                  </Button>
-                  <RawPrompt pattern={pattern} kind="remediation" />
-                  <GeneratedOutput state={remediation} />
-                </Flex>
-              </Container>
-            </Flex>
-          </Tab>
-        )}
 
           </Tabs>
         </div>
