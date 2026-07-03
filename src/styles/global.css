@@ -15,25 +15,3 @@ html, body, #root {
   color: var(--dt-colors-text-neutral-default, #23282d);
 }
 
-/* Dark mode fallback for local dev — on the platform the runtime injects these */
-@media (prefers-color-scheme: dark) {
-  html:not([data-color-scheme="light"]) {
-    --dt-colors-background-base-default: #19192c;
-    --dt-colors-background-surface-default: #232338;
-    --dt-colors-background-container-neutral-default: #2d2d47;
-    --dt-colors-background-container-neutral-subdued: #232338;
-    --dt-colors-text-neutral-default: #f0f0f5;
-    --dt-colors-text-neutral-subdued: #9898b3;
-    --dt-colors-border-neutral-default: #3d3d5c;
-    --dt-colors-border-neutral-subdued: #2d2d47;
-    --dt-colors-background-container-primary-accent: #1496ff;
-    --dt-colors-text-critical-default: #ff6b6b;
-    --dt-colors-text-success-default: #4caf88;
-    --dt-colors-text-warning-default: #ffb84d;
-    --dt-colors-border-critical-default: #ff6b6b;
-    --dt-colors-border-success-default: #4caf88;
-    --dt-colors-border-warning-default: #ffb84d;
-    background-color: #19192c;
-    color: #f0f0f5;
-  }
-}
