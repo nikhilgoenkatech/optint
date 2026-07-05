@@ -21,19 +21,89 @@ interface PatternDetailPanelProps {
 
 type RecommendationStatus = 'idle' | 'loading' | 'ready' | 'insufficient' | 'error';
 
-type RecommendationResult = {
+type RecommendationStrength = 'Evidence-backed' | 'Candidate' | 'Data-gap';
+type RecommendationPriority = 'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+type RecommendationEffort = 'Low' | 'Medium' | 'High' | 'Unknown';
+
+type LegacyRecommendationResult = {
   assessment: string;
   drivers: Array<{ signal: string; value: string; whyItMatters: string }>;
   action: {
-    priority: 'IMMEDIATE' | 'SHORT_TERM' | 'STRATEGIC';
+    priority: RecommendationPriority;
     title: string;
-    strength: 'Evidence-backed' | 'Candidate' | 'Data-gap';
+    strength: RecommendationStrength;
     reason: string;
     capability: string;
   };
   risks?: string[];
   dataGaps: string[];
 };
+
+type ExecutiveAssistResult = {
+  executiveSummary: string;
+  businessSignals: Array<{ signal: string; value: string; whyItMatters: string }>;
+  decisionOptions: Array<{
+    title: string;
+    recommendationStrength: RecommendationStrength;
+    priority: RecommendationPriority;
+    businessRationale: string;
+    evidenceUsed: string[];
+    dynatraceCapability: string;
+    effort: RecommendationEffort;
+  }>;
+  risks: string[];
+  dataGaps: string[];
+};
+
+type SreAssistResult = {
+  reliabilitySignals: Array<{
+    signal: string;
+    recommendationStrength: RecommendationStrength;
+    evidence: string[];
+  }>;
+  recurrenceDrivers: string[];
+  operationalWeaknesses: string[];
+  automationOpportunities: string[];
+  preventionRecommendations: Array<{
+    title: string;
+    priority: RecommendationPriority;
+    recommendationStrength: RecommendationStrength;
+    evidenceUsed: string[];
+    dynatraceCapability: string;
+    effort: RecommendationEffort;
+  }>;
+  risks: string[];
+  dataGaps: string[];
+};
+
+type DeveloperAssistResult = {
+  investigationSummary: string;
+  affectedComponents: Array<{ component: string; evidence: string[] }>;
+  debuggingPath: Array<{
+    step: string;
+    recommendationStrength: RecommendationStrength;
+    evidenceUsed: string[];
+    dynatraceCapability: string;
+    effort: RecommendationEffort;
+  }>;
+  validationSteps: string[];
+  remediationCandidates: Array<{
+    title: string;
+    priority: RecommendationPriority;
+    recommendationStrength: RecommendationStrength;
+    evidenceUsed: string[];
+    dynatraceCapability: string;
+    effort: RecommendationEffort;
+  }>;
+  risks: string[];
+  dataGaps: string[];
+};
+
+type RecommendationResult =
+  | LegacyRecommendationResult
+  | ExecutiveAssistResult
+  | SreAssistResult
+  | DeveloperAssistResult;
 
 type RecommendationState = {
   status: RecommendationStatus;
@@ -95,8 +165,8 @@ function displaySignalValue(signal: string, value: string | number): string {
   return raw;
 }
 
-function displayPriority(value: RecommendationResult['action']['priority']): string {
-  const labels: Record<RecommendationResult['action']['priority'], string> = {
+function displayPriority(value: RecommendationPriority): string {
+  const labels: Record<RecommendationPriority, string> = {
     IMMEDIATE: 'Immediate',
     SHORT_TERM: 'Short term',
     STRATEGIC: 'Strategic',
@@ -104,7 +174,7 @@ function displayPriority(value: RecommendationResult['action']['priority']): str
   return labels[value];
 }
 
-function displayStrength(value: RecommendationResult['action']['strength']): string {
+function displayStrength(value: RecommendationStrength): string {
   return value === 'Evidence-backed' ? 'Evidence backed' : value;
 }
 
@@ -164,7 +234,7 @@ function InlineMetaChip({
   );
 }
 
-function priorityTone(value: RecommendationResult['action']['priority']): 'critical' | 'warning' | 'success' {
+function priorityTone(value: RecommendationPriority): 'critical' | 'warning' | 'success' {
   if (value === 'IMMEDIATE') return 'critical';
   if (value === 'SHORT_TERM') return 'warning';
   return 'success';
@@ -195,7 +265,7 @@ function evidenceValue(pattern: PatternDetail, key: string): string {
   return signalText(pattern.assistContext.evidence[key]);
 }
 
-function meaningfulDrivers(drivers: RecommendationResult['drivers']): RecommendationResult['drivers'] {
+function meaningfulDrivers(drivers: LegacyRecommendationResult['drivers']): LegacyRecommendationResult['drivers'] {
   return drivers.filter(driver => driver.value !== 'absent' && driver.value !== '');
 }
 
@@ -237,7 +307,7 @@ function personaActionTitle(pattern: PatternDetail, kind: GenerationKind): strin
   return pattern.recommendedAction;
 }
 
-function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'recommendation'): RecommendationResult | null {
+function buildGenericRecommendation(pattern: PatternDetail, kind: GenerationKind = 'recommendation'): LegacyRecommendationResult | null {
   const evidence = pattern.assistContext.evidence;
   const objective = pattern.assistContext.objective;
   const persona = pattern.assistContext.persona;
@@ -318,7 +388,7 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
           whyItMatters: 'RCA is treated as present or missing evidence, not as a confidence score.',
         }
       : null,
-  ].filter(Boolean) as RecommendationResult['drivers']);
+  ].filter(Boolean) as LegacyRecommendationResult['drivers']);
 
   const dataGaps = [
     !isMeaningfulSignal(evidence.potential_savings) ? 'Recoverable value is missing.' : null,
@@ -362,7 +432,7 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
               whyItMatters: 'Scope determines whether tuning should be narrow, routed, or reviewed at detector level.',
             }
           : null,
-      ].filter(Boolean) as RecommendationResult['drivers']),
+      ].filter(Boolean) as LegacyRecommendationResult['drivers']),
       action: {
         priority: strength === 'Evidence-backed' ? 'SHORT_TERM' : 'STRATEGIC',
         title: tuningTitle,
@@ -465,6 +535,118 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
     },
     dataGaps,
   };
+}
+
+function driverEvidence(drivers: LegacyRecommendationResult['drivers']): string[] {
+  return drivers.slice(0, 4).map(driver => `${signalLabel(driver.signal)}: ${displaySignalValue(driver.signal, driver.value)}`);
+}
+
+function buildExecutiveResult(pattern: PatternDetail, base: LegacyRecommendationResult): ExecutiveAssistResult {
+  return {
+    executiveSummary: base.assessment,
+    businessSignals: base.drivers.slice(0, 5).map(driver => ({
+      signal: signalLabel(driver.signal),
+      value: displaySignalValue(driver.signal, driver.value),
+      whyItMatters: driver.whyItMatters,
+    })),
+    decisionOptions: [
+      {
+        title: base.action.title,
+        recommendationStrength: base.action.strength,
+        priority: base.action.priority,
+        businessRationale: base.action.reason,
+        evidenceUsed: driverEvidence(base.drivers),
+        dynatraceCapability: base.action.capability,
+        effort: base.action.priority === 'IMMEDIATE' ? 'Medium' : 'Unknown',
+      },
+    ],
+    risks: base.risks ?? [],
+    dataGaps: base.dataGaps,
+  };
+}
+
+function buildSreResult(base: LegacyRecommendationResult): SreAssistResult {
+  const evidence = driverEvidence(base.drivers);
+  return {
+    reliabilitySignals: base.drivers.slice(0, 5).map(driver => ({
+      signal: signalLabel(driver.signal),
+      recommendationStrength: base.action.strength,
+      evidence: [`${displaySignalValue(driver.signal, driver.value)} - ${driver.whyItMatters}`],
+    })),
+    recurrenceDrivers: base.drivers
+      .filter(driver => driver.signal === 'occurrence_count' || driver.signal === 'trend' || driver.signal === 'event_category')
+      .map(driver => `${signalLabel(driver.signal)}: ${displaySignalValue(driver.signal, driver.value)}`),
+    operationalWeaknesses: base.dataGaps.length
+      ? base.dataGaps
+      : ['No unresolved operational evidence gaps were detected in the supplied signals.'],
+    automationOpportunities: [
+      `${base.action.capability}: ${base.action.title}`,
+    ],
+    preventionRecommendations: [
+      {
+        title: base.action.title,
+        priority: base.action.priority,
+        recommendationStrength: base.action.strength,
+        evidenceUsed: evidence,
+        dynatraceCapability: base.action.capability,
+        effort: 'Unknown',
+      },
+    ],
+    risks: base.risks ?? [],
+    dataGaps: base.dataGaps,
+  };
+}
+
+function buildDeveloperResult(pattern: PatternDetail, base: LegacyRecommendationResult): DeveloperAssistResult {
+  const service = evidenceValue(pattern, 'affected_services');
+  const rootCause = evidenceValue(pattern, 'root_cause_entity');
+  const evidence = driverEvidence(base.drivers);
+  return {
+    investigationSummary: base.assessment,
+    affectedComponents: [
+      {
+        component: service !== 'absent' ? service : 'Affected service not supplied',
+        evidence: evidence.filter(item => item.includes('Affected services') || item.includes('Failure type')),
+      },
+      ...(rootCause !== 'absent'
+        ? [{ component: rootCause, evidence: [`Root cause entity: ${rootCause}`] }]
+        : []),
+    ],
+    debuggingPath: [
+      {
+        step: base.action.title,
+        recommendationStrength: base.action.strength,
+        evidenceUsed: evidence,
+        dynatraceCapability: base.action.capability,
+        effort: 'Unknown',
+      },
+    ],
+    validationSteps: [
+      'Validate the affected service and failure type against the selected pattern evidence.',
+      'Confirm whether RCA is Present or Missing before applying remediation.',
+    ],
+    remediationCandidates: [
+      {
+        title: base.action.title,
+        priority: base.action.priority,
+        recommendationStrength: base.action.strength,
+        evidenceUsed: evidence,
+        dynatraceCapability: base.action.capability,
+        effort: 'Unknown',
+      },
+    ],
+    risks: base.risks ?? [],
+    dataGaps: base.dataGaps,
+  };
+}
+
+function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'recommendation'): RecommendationResult | null {
+  const base = buildGenericRecommendation(pattern, kind);
+  if (!base) return null;
+
+  if (pattern.assistContext.persona === 'executive') return buildExecutiveResult(pattern, base);
+  if (pattern.assistContext.persona === 'sre') return buildSreResult(base);
+  return buildDeveloperResult(pattern, base);
 }
 
 function buildRawPrompt(pattern: PatternDetail, kind: GenerationKind): string {
@@ -596,6 +778,56 @@ function PanelSection({ title, children }: { title: string; children: React.Reac
   );
 }
 
+function TextList({ items }: { items: string[] }) {
+  if (!items.length) return <Text textStyle="small" style={{ color: MUTED }}>No items returned.</Text>;
+  return (
+    <Flex flexDirection="column" gap={4}>
+      {items.map((item, index) => (
+        <Text key={`${item}-${index}`} textStyle="small" style={{ color: MUTED }}>{item}</Text>
+      ))}
+    </Flex>
+  );
+}
+
+function RecommendationMeta({
+  priority,
+  strength,
+  capability,
+  effort,
+}: {
+  priority?: RecommendationPriority;
+  strength?: RecommendationStrength;
+  capability?: string;
+  effort?: RecommendationEffort;
+}) {
+  return (
+    <Flex alignItems="center" gap={6} style={{ flexWrap: 'wrap' }}>
+      {priority && <InlineMetaChip tone={priorityTone(priority)}>{displayPriority(priority)}</InlineMetaChip>}
+      {strength && strength !== 'Evidence-backed' && (
+        <InlineMetaChip tone={strength === 'Candidate' ? 'warning' : 'neutral'}>{displayStrength(strength)}</InlineMetaChip>
+      )}
+      {capability && <InlineMetaChip tone="accent">{capability}</InlineMetaChip>}
+      {effort && <InlineMetaChip>{effort} effort</InlineMetaChip>}
+    </Flex>
+  );
+}
+
+function isExecutiveResult(result: RecommendationResult): result is ExecutiveAssistResult {
+  return 'executiveSummary' in result;
+}
+
+function isSreResult(result: RecommendationResult): result is SreAssistResult {
+  return 'reliabilitySignals' in result;
+}
+
+function isDeveloperResult(result: RecommendationResult): result is DeveloperAssistResult {
+  return 'investigationSummary' in result;
+}
+
+function isLegacyResult(result: RecommendationResult): result is LegacyRecommendationResult {
+  return 'assessment' in result;
+}
+
 function GeneratedOutput({ state }: { state: RecommendationState }) {
   if (state.status === 'error') {
     return (
@@ -619,6 +851,145 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
   }
 
   if (state.status !== 'ready' || !state.result) return null;
+
+  if (isExecutiveResult(state.result)) {
+    return (
+      <Flex flexDirection="column" gap={8}>
+        <PanelSection title="Executive Summary">
+          <Container color="neutral" variant="default" padding={8}>
+            <Text textStyle="small">{state.result.executiveSummary}</Text>
+          </Container>
+        </PanelSection>
+        <PanelSection title="Business Signals">
+          <SignalGrid>
+            {state.result.businessSignals.slice(0, 4).map(signal => (
+              <SignalCard key={`${signal.signal}-${signal.value}`} label={signal.signal} value={signal.value} />
+            ))}
+          </SignalGrid>
+        </PanelSection>
+        <PanelSection title="Decision Options">
+          <Flex flexDirection="column" gap={8}>
+            {state.result.decisionOptions.slice(0, 3).map((option, index) => (
+              <Container key={`${option.title}-${index}`} color="neutral" variant="default" padding={8}>
+                <Flex flexDirection="column" gap={6}>
+                  <Text textStyle="small" style={{ fontWeight: 700 }}>{option.title}</Text>
+                  <RecommendationMeta
+                    priority={option.priority}
+                    strength={option.recommendationStrength}
+                    capability={option.dynatraceCapability}
+                    effort={option.effort}
+                  />
+                  <Text textStyle="small" style={{ color: MUTED }}>{option.businessRationale}</Text>
+                  <TextList items={option.evidenceUsed} />
+                </Flex>
+              </Container>
+            ))}
+          </Flex>
+        </PanelSection>
+        {state.result.risks.length > 0 && <PanelSection title="Risks"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.risks} /></Container></PanelSection>}
+        {state.result.dataGaps.length > 0 && <PanelSection title="Data Gaps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.dataGaps} /></Container></PanelSection>}
+      </Flex>
+    );
+  }
+
+  if (isSreResult(state.result)) {
+    return (
+      <Flex flexDirection="column" gap={8}>
+        <PanelSection title="Reliability Signals">
+          <Flex flexDirection="column" gap={8}>
+            {state.result.reliabilitySignals.map((signal, index) => (
+              <Container key={`${signal.signal}-${index}`} color="neutral" variant="default" padding={8}>
+                <Flex flexDirection="column" gap={6}>
+                  <Flex justifyContent="space-between" alignItems="center" gap={8}>
+                    <Text textStyle="small" style={{ fontWeight: 700 }}>{signal.signal}</Text>
+                    {signal.recommendationStrength !== 'Evidence-backed' && (
+                      <InlineMetaChip tone={signal.recommendationStrength === 'Candidate' ? 'warning' : 'neutral'}>
+                        {displayStrength(signal.recommendationStrength)}
+                      </InlineMetaChip>
+                    )}
+                  </Flex>
+                  <TextList items={signal.evidence} />
+                </Flex>
+              </Container>
+            ))}
+          </Flex>
+        </PanelSection>
+        <PanelSection title="Recurrence Drivers"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.recurrenceDrivers} /></Container></PanelSection>
+        <PanelSection title="Operational Weaknesses"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.operationalWeaknesses} /></Container></PanelSection>
+        <PanelSection title="Automation Opportunities"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.automationOpportunities} /></Container></PanelSection>
+        <PanelSection title="Prevention Recommendations">
+          <Flex flexDirection="column" gap={8}>
+            {state.result.preventionRecommendations.map((rec, index) => (
+              <Container key={`${rec.title}-${index}`} color="neutral" variant="default" padding={8}>
+                <Flex flexDirection="column" gap={6}>
+                  <Text textStyle="small" style={{ fontWeight: 700 }}>{rec.title}</Text>
+                  <RecommendationMeta priority={rec.priority} strength={rec.recommendationStrength} capability={rec.dynatraceCapability} effort={rec.effort} />
+                  <TextList items={rec.evidenceUsed} />
+                </Flex>
+              </Container>
+            ))}
+          </Flex>
+        </PanelSection>
+        {state.result.risks.length > 0 && <PanelSection title="Risks"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.risks} /></Container></PanelSection>}
+        {state.result.dataGaps.length > 0 && <PanelSection title="Data Gaps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.dataGaps} /></Container></PanelSection>}
+      </Flex>
+    );
+  }
+
+  if (isDeveloperResult(state.result)) {
+    return (
+      <Flex flexDirection="column" gap={8}>
+        <PanelSection title="Investigation Summary">
+          <Container color="neutral" variant="default" padding={8}>
+            <Text textStyle="small">{state.result.investigationSummary}</Text>
+          </Container>
+        </PanelSection>
+        <PanelSection title="Affected Components">
+          <Flex flexDirection="column" gap={8}>
+            {state.result.affectedComponents.map((component, index) => (
+              <Container key={`${component.component}-${index}`} color="neutral" variant="default" padding={8}>
+                <Flex flexDirection="column" gap={4}>
+                  <Text textStyle="small" style={{ fontWeight: 700 }}>{component.component}</Text>
+                  <TextList items={component.evidence} />
+                </Flex>
+              </Container>
+            ))}
+          </Flex>
+        </PanelSection>
+        <PanelSection title="Debugging Path">
+          <Flex flexDirection="column" gap={8}>
+            {state.result.debuggingPath.map((step, index) => (
+              <Container key={`${step.step}-${index}`} color="neutral" variant="default" padding={8}>
+                <Flex flexDirection="column" gap={6}>
+                  <Text textStyle="small" style={{ fontWeight: 700 }}>{step.step}</Text>
+                  <RecommendationMeta strength={step.recommendationStrength} capability={step.dynatraceCapability} effort={step.effort} />
+                  <TextList items={step.evidenceUsed} />
+                </Flex>
+              </Container>
+            ))}
+          </Flex>
+        </PanelSection>
+        <PanelSection title="Validation Steps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.validationSteps} /></Container></PanelSection>
+        <PanelSection title="Remediation Candidates">
+          <Flex flexDirection="column" gap={8}>
+            {state.result.remediationCandidates.map((candidate, index) => (
+              <Container key={`${candidate.title}-${index}`} color="neutral" variant="default" padding={8}>
+                <Flex flexDirection="column" gap={6}>
+                  <Text textStyle="small" style={{ fontWeight: 700 }}>{candidate.title}</Text>
+                  <RecommendationMeta priority={candidate.priority} strength={candidate.recommendationStrength} capability={candidate.dynatraceCapability} effort={candidate.effort} />
+                  <TextList items={candidate.evidenceUsed} />
+                </Flex>
+              </Container>
+            ))}
+          </Flex>
+        </PanelSection>
+        {state.result.risks.length > 0 && <PanelSection title="Risks"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.risks} /></Container></PanelSection>}
+        {state.result.dataGaps.length > 0 && <PanelSection title="Data Gaps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.dataGaps} /></Container></PanelSection>}
+      </Flex>
+    );
+  }
+
+  if (!isLegacyResult(state.result)) return null;
   const parsedEvidence = evidenceItems(state.result.action.reason);
   const primaryDriver = state.result.drivers[0];
 
@@ -707,6 +1078,7 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
 
 function LegacyGeneratedOutput({ state }: { state: RecommendationState }) {
   if (state.status !== 'ready' || !state.result) return null;
+  if (!isLegacyResult(state.result)) return null;
   return (
     <Container color="neutral" variant="default" padding={8}>
       <Flex flexDirection="column" gap={8}>
