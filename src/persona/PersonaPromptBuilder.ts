@@ -1,6 +1,8 @@
 // ============================================================
 // PERSONA PROMPT BUILDER
-// Builds objective-aware, signal-based prompts for Dynatrace Assist
+// Builds baked-in, persona+objective-specific prompts for Dynatrace Assist.
+// No runtime persona or objective switching — each combination has its own
+// system role and task, so the model receives a single clear instruction.
 // ============================================================
 
 import { CostEstimate, DynatraceProblem, ProblemPattern } from '../models';
@@ -26,75 +28,87 @@ export interface SignalPromptRequest {
   kind?: 'recommendation' | 'analysis' | 'remediation' | 'alert_tuning';
 }
 
-const SYSTEM_PROMPT = `You are OpInt Assist. A recurring pattern has been identified by OpInt.
-Recommend practical next actions for the active persona and objective using only the supplied signals.
-Everything must trace to supplied evidence.
+// ------------------------------------
+// Shared rules (signal contract)
+// ------------------------------------
 
-SHARED RULES
-- Use only supplied signal values.
-- Missing signal = data gap.
-- RCA is observed as Present/Missing only.
-- Do not validate RCA correctness.
-- Do not infer hidden dependencies or ownership gaps.
-- Do not invent savings, MTTR reduction, future incidents, or guaranteed outcomes.
+const SIGNAL_RULES = `SIGNAL CONTRACT
+- Use only the supplied signal values. Do not infer, estimate, or invent values.
+- Missing signal = data gap. Record it in dataGaps.
+- rca_availability is observed as Present or Missing only. Do not validate its correctness.
+- Do not invent savings, MTTR reductions, future incident counts, or guaranteed outcomes.
 - Only recommend a Dynatrace capability when a specific supplied signal justifies it.
-- dynatraceCapability must be a capability name only, with no description or narrative in that field.
+- dynatraceCapability: capability name only — no description or narrative in that field.
 - Only Evidence-backed actions may be IMMEDIATE.
-- Fewer than 3 meaningful signals returns: {"error":"Insufficient signal data."}
-- Return valid JSON only.
-- No markdown.
-- No commentary outside JSON.
+- Fewer than 3 meaningful signals: return {"error":"Insufficient signal data."}
+- Return valid JSON only. No markdown. No commentary outside JSON.
 
 RECOMMENDATION STRENGTH
 Evidence-backed: directly supported by supplied signals
 Candidate: plausible but depends on missing evidence
 Data-gap: clarify missing evidence before acting`;
 
-const PERSONA_GUIDANCE = `PERSONA INTENT
-Executive: business decision support. Focus on business risk, customer impact, recoverable value, alert governance, and leadership-sponsored action. Avoid implementation detail.
-SRE: reliability engineering, prevention, automation, alert quality, ownership/routing, SLOs, and investigation friction. Do not summarize individual incidents. Do not use code-level remediation unless explicitly supported.
-Developer: engineering investigation and technical next actions. Focus on affected service, failure mode, debugging path, release validation, code ownership, validation steps, and remediation candidates.`;
+// ------------------------------------
+// Per-persona system roles
+// ------------------------------------
 
-const OBJECTIVE_GUIDANCE = `OBJECTIVE BEHAVIOR
-cost_impact:
-- Reduce recurring operational cost, customer impact, and engineering effort.
-- Focus on recurrence and prevention.
-- Do not recommend alert tuning.
+const EXECUTIVE_ROLE = `You are a business decision support assistant for a Dynatrace-monitored platform.
+A recurring operational pattern has been identified. Your task is to help a senior executive decide what to prioritise.
+Focus on business risk, customer impact, recoverable value, alert governance, and leadership-sponsored action.
+Do not include implementation detail, code-level remediation, or engineering jargon.`;
 
-alert_optimization:
-- Alert tuning only.
-- Focus on detector config changes, routing, suppression windows, alert profiles, event filters, management-zone scoping, and alert quality.
-- Do not recommend RCA investigation or code changes.
-- Use "short-lived" not "auto-resolved".
-- Do not suppress high-impact alerts without evidence.
+const SRE_ROLE = `You are a site reliability engineering assistant for a Dynatrace-monitored platform.
+A recurring operational pattern has been identified. Your task is to help an SRE prevent recurrence, reduce noise, and improve reliability.
+Focus on recurrence prevention, automation opportunities, SLO coverage, alert quality, and ownership routing.
+Do not summarise individual incidents. Do not recommend code-level remediation unless a specific signal explicitly supports it.`;
 
-Alert tuning action guidance:
-- ADD_TIME_WINDOW -> dealertingSamples, seasonal baseline when day clustering is present, or suppression windows for time-bound patterns.
-- RAISE_THRESHOLD -> static threshold value, adaptive signal fluctuation count, or seasonal tolerance depending on detector model.
-- DISABLE_ALERT -> first set event.type = CUSTOM_INFO; only fully disable if still noisy.
-- TUNE_FREQUENCY -> violatingSamples, slidingWindow, dealertingSamples, or metric-key violation/dealerting windows.
-- avg_duration < 5m -> dealertingSamples, not threshold.
-- hasDayCluster = true -> SeasonalBaselineAnomalyDetectionAnalyzer.
-- trend = STABLE -> StaticThresholdAnomalyDetectionAnalyzer.
-- trend = INCREASING or DECREASING -> AutoAdaptiveAnomalyDetectionAnalyzer.
-- Use dt.alert_group and event.severity >= 3 for low-urgency routing when noiseLikelihood is High and impactTier is Low.
-- Prefer matchesPhrase(smartscape.affected_entity.ids, "<entity-id>").
-- Do not filter on root_cause_entity_id in Workflows.
-- sharedBlastRadiusPatternCount >= 2 means multiple patterns share the same root cause entity.
-- Recommend consolidating into a single detector with by:{dimension} grouping instead of separate detectors firing independently.`;
+const DEVELOPER_ROLE = `You are a developer-focused investigation assistant for a Dynatrace-monitored platform.
+A recurring operational pattern has been identified. Your task is to help a developer investigate and remediate the root cause.
+Focus on the affected service, failure mode, debugging path, release validation, code ownership, and remediation candidates.
+Do not speculate beyond the supplied signals. Do not recommend infrastructure or alert-tuning changes.`;
+
+// ------------------------------------
+// Per-objective task overrides
+// ------------------------------------
+
+const COST_IMPACT_TASK = `TASK: Reduce recurring operational cost, customer impact, and engineering effort.
+Focus on recurrence and prevention. Do not recommend alert tuning.
+Generate at least 3 recommendations spanning IMMEDIATE, SHORT_TERM, and STRATEGIC priorities where signal evidence supports it.`;
+
+const ALERT_OPTIMIZATION_TASK = `TASK: Alert tuning only.
+Focus on detector config changes, routing, suppression windows, alert profiles, event filters, and alert quality.
+Do not recommend RCA investigation or code changes. Use "short-lived" not "auto-resolved".
+Do not suppress high-impact alerts without evidence.
+
+Alert tuning guidance:
+- ADD_TIME_WINDOW → dealertingSamples, seasonal baseline when day clustering is present, or suppression windows for time-bound patterns.
+- RAISE_THRESHOLD → static threshold value, adaptive signal fluctuation count, or seasonal tolerance depending on detector model.
+- DISABLE_ALERT → first set event.type = CUSTOM_INFO; only fully disable if still noisy.
+- TUNE_FREQUENCY → violatingSamples, slidingWindow, dealertingSamples, or metric-key violation/dealerting windows.
+- avg_duration < 5m → dealertingSamples, not threshold.
+- trend = STABLE → StaticThresholdAnomalyDetectionAnalyzer.
+- trend = INCREASING or DECREASING → AutoAdaptiveAnomalyDetectionAnalyzer.
+- sharedBlastRadiusPatternCount >= 2 → consolidate into a single detector with by:{dimension} grouping.`;
+
+const ANALYSIS_TASK_SRE = `TASK: Assess reliability drivers and automation opportunities from the observed signals.
+Identify recurrence patterns, operational weaknesses, and automation candidates.
+Return structured automation opportunities with IMMEDIATE, SHORT_TERM, and STRATEGIC priority levels.`;
+
+const ANALYSIS_TASK_DEVELOPER = `TASK: Identify the investigation starting point and debugging path from the observed signals.
+Map the failure to affected components and provide ordered debugging steps with IMMEDIATE, SHORT_TERM, and STRATEGIC priorities.`;
+
+// ------------------------------------
+// Schemas
+// ------------------------------------
 
 const COMMON_CAPABILITIES = 'Davis AI | Workflows | AutomationEngine | Site Reliability Guardian | SLO | Ownership and Routing | Application Observability | Infrastructure and Cloud Observability | Release Management';
 const DEVELOPER_CAPABILITIES = 'Davis AI | Live Debugger | Application Observability | Release Management | Workflows | Site Reliability Guardian';
 
-const EXECUTIVE_SCHEMA = `Return ONLY valid JSON matching this Executive schema:
+const EXECUTIVE_SCHEMA = `RESPONSE FORMAT — return ONLY valid JSON:
 {
   "executiveSummary": "2-3 sentences using supplied signal values only",
   "businessSignals": [
-    {
-      "signal": "string",
-      "value": "string",
-      "whyItMatters": "string"
-    }
+    { "signal": "string", "value": "string", "whyItMatters": "string" }
   ],
   "decisionOptions": [
     {
@@ -110,16 +124,12 @@ const EXECUTIVE_SCHEMA = `Return ONLY valid JSON matching this Executive schema:
   "risks": ["missing or unresolved evidence only"],
   "dataGaps": ["string"]
 }
-Maximum 3 decisionOptions.`;
+Return 3 decisionOptions covering IMMEDIATE, SHORT_TERM, and STRATEGIC where signal evidence allows.`;
 
-const SRE_SCHEMA = `Return ONLY valid JSON matching this SRE schema:
+const SRE_SCHEMA = `RESPONSE FORMAT — return ONLY valid JSON:
 {
   "reliabilitySignals": [
-    {
-      "signal": "string",
-      "recommendationStrength": "Evidence-backed | Candidate | Data-gap",
-      "evidence": ["string"]
-    }
+    { "signal": "string", "recommendationStrength": "Evidence-backed | Candidate | Data-gap", "evidence": ["string"] }
   ],
   "recurrenceDrivers": ["string"],
   "operationalWeaknesses": ["string"],
@@ -143,16 +153,14 @@ const SRE_SCHEMA = `Return ONLY valid JSON matching this SRE schema:
   ],
   "risks": ["missing or unresolved evidence only"],
   "dataGaps": ["string"]
-}`;
+}
+Return at least one item per priority tier (IMMEDIATE, SHORT_TERM, STRATEGIC) in both automationOpportunities and preventionRecommendations where signal evidence allows.`;
 
-const DEVELOPER_SCHEMA = `Return ONLY valid JSON matching this Developer schema:
+const DEVELOPER_SCHEMA = `RESPONSE FORMAT — return ONLY valid JSON:
 {
   "investigationSummary": "2-3 sentences using supplied signals only",
   "affectedComponents": [
-    {
-      "component": "string",
-      "evidence": ["string"]
-    }
+    { "component": "string", "evidence": ["string"] }
   ],
   "debuggingPath": [
     {
@@ -177,32 +185,29 @@ const DEVELOPER_SCHEMA = `Return ONLY valid JSON matching this Developer schema:
   ],
   "risks": ["missing or unresolved evidence only"],
   "dataGaps": ["string"]
-}`;
+}
+Return at least one item per priority tier (IMMEDIATE, SHORT_TERM, STRATEGIC) in both debuggingPath and remediationCandidates where signal evidence allows.`;
 
-function responseSchemaFor(persona: PersonaType): string {
+// ------------------------------------
+// Role + task selector
+// ------------------------------------
+
+function roleFor(persona: PersonaType): string {
+  if (persona === 'executive') return EXECUTIVE_ROLE;
+  if (persona === 'sre') return SRE_ROLE;
+  return DEVELOPER_ROLE;
+}
+
+function taskFor(req: SignalPromptRequest): string {
+  if (req.objective === 'alert_optimization') return ALERT_OPTIMIZATION_TASK;
+  if (req.kind === 'analysis') return req.persona === 'sre' ? ANALYSIS_TASK_SRE : ANALYSIS_TASK_DEVELOPER;
+  return COST_IMPACT_TASK;
+}
+
+function schemaFor(persona: PersonaType): string {
   if (persona === 'executive') return EXECUTIVE_SCHEMA;
   if (persona === 'sre') return SRE_SCHEMA;
   return DEVELOPER_SCHEMA;
-}
-
-function objectiveTask(req: SignalPromptRequest): string {
-  if (req.objective === 'alert_optimization') {
-    return `Suggest Alert Tuning using supplied signals only.
-Explain why the pattern appears noisy, what detector configuration could reduce noise, what routing or suppression option is plausible, what risk exists before disabling, and what evidence is missing.
-Do not auto-apply settings.
-Do not suppress high-impact alerts unless supplied evidence supports it.
-Do not infer RCA correctness.`;
-  }
-
-  if (req.kind === 'remediation') {
-    return 'Generate a practical remediation path using only the supplied signals. Focus on recurrence, prevention, and proportionate effort.';
-  }
-
-  if (req.kind === 'analysis') {
-    return 'Generate persona-specific analysis using only the supplied signals.';
-  }
-
-  return 'Generate an evidence-gated recommendation using only the supplied signals.';
 }
 
 // ------------------------------------
@@ -221,11 +226,6 @@ function buildEvidenceJson(req: AISummaryRequest): object {
       affected_entity_count: pattern.affectedServices.length,
       affected_services:     pattern.affectedServices.join(', ') || 'absent',
       event_category:        pattern.severity,
-      scope_tier:            pattern.dimensions.managementZones.length > 2
-                               ? 'broad'
-                               : pattern.dimensions.managementZones.length > 0
-                               ? 'scoped'
-                               : 'unknown',
       trend:                 pattern.trend,
       recommendation_type:   pattern.recommendation.type,
       rca_availability:      pattern.hasRCA ? 'Present' : 'Missing',
@@ -234,14 +234,12 @@ function buildEvidenceJson(req: AISummaryRequest): object {
   }
 
   const totalUsers  = problems.reduce((a, p) => a + (p.affectedUsers ?? 0), 0);
-  const avgDuration = problems.reduce((a, p) => a + (p.duration ?? 0), 0) / Math.max(problems.length, 1);
   const hasRCA      = problems.some(p => p.hasRootCause);
   const services    = [...new Set(problems.flatMap(p =>
     p.impactedEntities.filter(e => e.type === 'SERVICE').map(e => e.name)
   ))];
   const entities    = new Set(problems.flatMap(p => p.impactedEntities.map(e => e.entityId)));
   const rootCause   = problems.find(p => p.rootCauseEntity)?.rootCauseEntity?.name ?? 'absent';
-  const cost        = costEstimates.reduce((a, c) => a + c.total, 0) || totalCost;
 
   return {
     occurrence_count:      problems.length,
@@ -250,7 +248,6 @@ function buildEvidenceJson(req: AISummaryRequest): object {
     affected_entity_count: entities.size,
     affected_services:     services.join(', ') || 'absent',
     event_category:        problems[0]?.severity ?? 'absent',
-    scope_tier:            'unknown',
     trend:                 'absent',
     recommendation_type:   'absent',
     rca_availability:      hasRCA ? 'Present' : 'Missing',
@@ -261,35 +258,26 @@ function buildEvidenceJson(req: AISummaryRequest): object {
 export function buildPrompt(req: AISummaryRequest): string {
   const { persona, objective = 'cost_impact' } = req;
   const evidence = buildEvidenceJson(req);
+  const taskReq: SignalPromptRequest = { persona, objective, evidence: evidence as Record<string, string | number | string[] | null> };
 
-  return `${SYSTEM_PROMPT}
+  return `${roleFor(persona)}
 
-PERSONA: ${persona}
-OBJECTIVE: ${objective}
+${SIGNAL_RULES}
 
-${PERSONA_GUIDANCE}
-
-${OBJECTIVE_GUIDANCE}
-
-Apply persona and objective simultaneously.
+${taskFor(taskReq)}
 
 SIGNALS
 ${JSON.stringify(evidence, null, 2)}
 
-${responseSchemaFor(persona)}`;
+${schemaFor(persona)}`;
 }
 
 export function buildSignalPrompt(req: SignalPromptRequest): string {
-  return `${SYSTEM_PROMPT}
+  return `${roleFor(req.persona)}
 
-PERSONA: ${req.persona}
-OBJECTIVE: ${req.objective}
+${SIGNAL_RULES}
 
-${PERSONA_GUIDANCE}
-
-${OBJECTIVE_GUIDANCE}
-
-Apply persona and objective simultaneously.
+${taskFor(req)}
 
 PATTERN
 ${req.patternTitle || 'Selected recurring pattern'}
@@ -297,13 +285,10 @@ ${req.patternTitle || 'Selected recurring pattern'}
 RECOMMENDED ACTION
 ${req.recommendedAction || 'Not supplied'}
 
-TASK
-${objectiveTask(req)}
-
 SIGNALS
 ${JSON.stringify(req.evidence, null, 2)}
 
-${responseSchemaFor(req.persona)}`;
+${schemaFor(req.persona)}`;
 }
 
 // ------------------------------------

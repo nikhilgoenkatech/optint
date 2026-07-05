@@ -622,8 +622,71 @@ function buildExecutiveResult(pattern: PatternDetail, base: LegacyRecommendation
   };
 }
 
-function buildSreResult(base: LegacyRecommendationResult): SreAssistResult {
+function buildSreResult(pattern: PatternDetail, base: LegacyRecommendationResult): SreAssistResult {
+  const ev = pattern.assistContext.evidence;
   const evidence = driverEvidence(base.drivers);
+  const hasRCA = ev.rca_availability === 'Present';
+  const rootCause = signalText(ev.root_cause_entity);
+  const occurrences = signalText(ev.occurrence_count);
+  const trend = signalText(ev.trend);
+  const entities = signalText(ev.affected_entity_count);
+  const category = signalText(ev.event_category);
+
+  const automationOpportunities: SreAssistResult['automationOpportunities'] = [
+    ...(hasRCA ? [{
+      title: `Immediately investigate root cause entity "${rootCause}" using Davis AI to confirm whether it is the active failure origin`,
+      priority: 'IMMEDIATE' as RecommendationPriority,
+      capability: 'Davis AI',
+      effort: 'Low' as RecommendationEffort,
+    }] : [{
+      title: `Trigger structured incident investigation to establish root cause evidence — ${occurrences} recurrences with no RCA record`,
+      priority: 'IMMEDIATE' as RecommendationPriority,
+      capability: 'Davis AI',
+      effort: 'Low' as RecommendationEffort,
+    }]),
+    {
+      title: `Set up a Site Reliability Guardian SLO covering the ${entities} affected entities to track ${category} failure rate`,
+      priority: 'SHORT_TERM' as RecommendationPriority,
+      capability: 'Site Reliability Guardian',
+      effort: 'Medium' as RecommendationEffort,
+    },
+    {
+      title: `Build an AutomationEngine Workflow to auto-remediate on next recurrence and reduce manual engineering intervention`,
+      priority: 'STRATEGIC' as RecommendationPriority,
+      capability: 'AutomationEngine',
+      effort: 'High' as RecommendationEffort,
+    },
+  ];
+
+  const preventionRecommendations: SreAssistResult['preventionRecommendations'] = [
+    {
+      title: hasRCA
+        ? `Confirm and document the root cause at "${rootCause}" — ${occurrences} occurrences require structured prevention`
+        : `Mandate root cause documentation on the next occurrence to break the ${occurrences}-recurrence cycle`,
+      priority: 'IMMEDIATE',
+      recommendationStrength: 'Evidence-backed',
+      evidenceUsed: [`rca_availability: ${hasRCA ? 'Present' : 'Missing'}`, `occurrence_count: ${occurrences}`],
+      dynatraceCapability: 'Davis AI',
+      effort: 'Low',
+    },
+    {
+      title: `Establish SLO-based reliability targets for the ${entities} affected entities with a ${trend} recurrence trend`,
+      priority: 'SHORT_TERM',
+      recommendationStrength: 'Evidence-backed',
+      evidenceUsed: [`affected_entity_count: ${entities}`, `trend: ${trend}`, `occurrence_count: ${occurrences}`],
+      dynatraceCapability: 'SLO',
+      effort: 'Medium',
+    },
+    {
+      title: 'Assign service ownership to create accountability and enable automated routing for future incidents',
+      priority: 'STRATEGIC',
+      recommendationStrength: base.action.strength,
+      evidenceUsed: evidence,
+      dynatraceCapability: 'Ownership and Routing',
+      effort: 'Low',
+    },
+  ];
+
   return {
     reliabilitySignals: base.drivers.slice(0, 5).map(driver => ({
       signal: signalLabel(driver.signal),
@@ -631,33 +694,86 @@ function buildSreResult(base: LegacyRecommendationResult): SreAssistResult {
       evidence: [`${displaySignalValue(driver.signal, driver.value)} - ${driver.whyItMatters}`],
     })),
     recurrenceDrivers: base.drivers
-      .filter(driver => driver.signal === 'occurrence_count' || driver.signal === 'trend' || driver.signal === 'event_category')
+      .filter(driver => ['occurrence_count', 'trend', 'event_category'].includes(driver.signal))
       .map(driver => `${signalLabel(driver.signal)}: ${displaySignalValue(driver.signal, driver.value)}`),
     operationalWeaknesses: base.dataGaps.length
       ? base.dataGaps
-      : ['No unresolved operational evidence gaps were detected in the supplied signals.'],
-    automationOpportunities: [
-      { title: base.action.title, priority: base.action.priority, capability: base.action.capability, effort: 'Unknown' as RecommendationEffort },
-    ],
-    preventionRecommendations: [
-      {
-        title: base.action.title,
-        priority: base.action.priority,
-        recommendationStrength: base.action.strength,
-        evidenceUsed: evidence,
-        dynatraceCapability: base.action.capability,
-        effort: 'Unknown',
-      },
-    ],
+      : ['No unresolved operational evidence gaps detected in the supplied signals.'],
+    automationOpportunities,
+    preventionRecommendations,
     risks: base.risks ?? [],
     dataGaps: base.dataGaps,
   };
 }
 
 function buildDeveloperResult(pattern: PatternDetail, base: LegacyRecommendationResult): DeveloperAssistResult {
+  const ev = pattern.assistContext.evidence;
   const service = evidenceValue(pattern, 'affected_services');
   const rootCause = evidenceValue(pattern, 'root_cause_entity');
+  const hasRCA = ev.rca_availability === 'Present';
+  const occurrences = signalText(ev.occurrence_count);
+  const category = signalText(ev.event_category);
+  const entities = signalText(ev.affected_entity_count);
   const evidence = driverEvidence(base.drivers);
+
+  const debuggingPath: DeveloperAssistResult['debuggingPath'] = [
+    {
+      step: hasRCA
+        ? `Use Live Debugger to inspect "${rootCause}" — root cause entity is confirmed present in the supplied evidence`
+        : `Reproduce the ${category} failure in the affected service and collect trace data to establish root cause`,
+      priority: 'IMMEDIATE',
+      recommendationStrength: hasRCA ? 'Evidence-backed' : 'Candidate',
+      evidenceUsed: [`rca_availability: ${hasRCA ? 'Present' : 'Missing'}`, `event_category: ${category}`, ...(hasRCA ? [`root_cause_entity: ${rootCause}`] : [])],
+      dynatraceCapability: 'Live Debugger',
+      effort: 'Low',
+    },
+    {
+      step: `Validate that the fix does not regress across the ${entities} affected entities using Application Observability traces`,
+      priority: 'SHORT_TERM',
+      recommendationStrength: 'Evidence-backed',
+      evidenceUsed: [`affected_entity_count: ${entities}`, `occurrence_count: ${occurrences}`],
+      dynatraceCapability: 'Application Observability',
+      effort: 'Medium',
+    },
+    {
+      step: `Add a deployment quality gate in Release Management to prevent the ${category} pattern from recurring across ${entities} entities`,
+      priority: 'STRATEGIC',
+      recommendationStrength: base.action.strength,
+      evidenceUsed: evidence,
+      dynatraceCapability: 'Release Management',
+      effort: 'High',
+    },
+  ];
+
+  const remediationCandidates: DeveloperAssistResult['remediationCandidates'] = [
+    {
+      title: hasRCA
+        ? `Fix the defect at "${rootCause}" — root cause entity is confirmed by Davis AI`
+        : `Identify and fix the root cause of the ${category} failure in ${service !== 'absent' ? service : 'the affected service'}`,
+      priority: 'IMMEDIATE',
+      recommendationStrength: hasRCA ? 'Evidence-backed' : 'Candidate',
+      evidenceUsed: [`rca_availability: ${hasRCA ? 'Present' : 'Missing'}`, `event_category: ${category}`],
+      dynatraceCapability: 'Application Observability',
+      effort: 'Medium',
+    },
+    {
+      title: `Add canary deployment gate for ${service !== 'absent' ? service : 'the affected service'} to catch regressions before they reach production`,
+      priority: 'SHORT_TERM',
+      recommendationStrength: 'Candidate',
+      evidenceUsed: [`occurrence_count: ${occurrences}`, `affected_entity_count: ${entities}`],
+      dynatraceCapability: 'Release Management',
+      effort: 'Medium',
+    },
+    {
+      title: `Refactor service boundary to isolate the ${category} failure domain and prevent blast radius expansion beyond ${entities} entities`,
+      priority: 'STRATEGIC',
+      recommendationStrength: base.action.strength,
+      evidenceUsed: evidence,
+      dynatraceCapability: 'Site Reliability Guardian',
+      effort: 'High',
+    },
+  ];
+
   return {
     investigationSummary: base.assessment,
     affectedComponents: [
@@ -669,30 +785,13 @@ function buildDeveloperResult(pattern: PatternDetail, base: LegacyRecommendation
         ? [{ component: rootCause, evidence: [`Root cause entity: ${rootCause}`] }]
         : []),
     ],
-    debuggingPath: [
-      {
-        step: base.action.title,
-        priority: base.action.priority,
-        recommendationStrength: base.action.strength,
-        evidenceUsed: evidence,
-        dynatraceCapability: base.action.capability,
-        effort: 'Unknown',
-      },
-    ],
+    debuggingPath,
     validationSteps: [
       'Validate the affected service and failure type against the selected pattern evidence.',
       'Confirm whether RCA is Present or Missing before applying remediation.',
+      `Verify fix does not regress across all ${entities} affected entities.`,
     ],
-    remediationCandidates: [
-      {
-        title: base.action.title,
-        priority: base.action.priority,
-        recommendationStrength: base.action.strength,
-        evidenceUsed: evidence,
-        dynatraceCapability: base.action.capability,
-        effort: 'Unknown',
-      },
-    ],
+    remediationCandidates,
     risks: base.risks ?? [],
     dataGaps: base.dataGaps,
   };
@@ -703,7 +802,7 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   if (!base) return null;
 
   if (pattern.assistContext.persona === 'executive') return buildExecutiveResult(pattern, base);
-  if (pattern.assistContext.persona === 'sre') return buildSreResult(base);
+  if (pattern.assistContext.persona === 'sre') return buildSreResult(pattern, base);
   return buildDeveloperResult(pattern, base);
 }
 
