@@ -967,24 +967,6 @@ function ActionCard({ item }: { item: ActionCardItem }) {
         {item.capability && <InlineMetaChip tone="accent">{item.capability}</InlineMetaChip>}
         {item.effort && item.effort !== 'Unknown' && <InlineMetaChip>{item.effort} effort</InlineMetaChip>}
       </Flex>
-      {item.evidenceUsed && item.evidenceUsed.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
-          {item.evidenceUsed.slice(0, 4).map((ev, i) => {
-            const colonIdx = ev.indexOf(':');
-            const displayed = colonIdx > -1
-              ? `${signalLabel(ev.slice(0, colonIdx).trim())}: ${ev.slice(colonIdx + 1).trim()}`
-              : ev;
-            return (
-              <span key={i} style={{
-                fontSize: 10, color: MUTED,
-                background: 'var(--dt-colors-background-base-default,#f2f2f5)',
-                border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
-                borderRadius: 4, padding: '1px 6px',
-              }}>{displayed}</span>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -1040,14 +1022,57 @@ function DisclosureRow({ label, items }: { label: string; items: string[] }) {
   );
 }
 
-function buildSignalSnapshot(evidence: PatternDetail['assistContext']['evidence'], keys: string[]): KpiSignal[] {
-  return keys
-    .filter(k => isMeaningfulSignal(evidence[k]))
-    .map(k => {
+function buildSignalSnapshot(
+  evidence: PatternDetail['assistContext']['evidence'],
+  keys: string[],
+  labelOverrides: Record<string, string> = {}
+): KpiSignal[] {
+  return (keys.map(k => {
+    // RCA: show actual entity name when present, else "Missing"
+    if (k === 'rca_availability') {
+      const entity = evidence.root_cause_entity;
+      const hasEntity = entity && String(entity) !== 'absent' && entity !== null;
+      return {
+        label: labelOverrides[k] ?? 'Root cause',
+        value: hasEntity ? String(entity) : 'Missing',
+        tone: (hasEntity ? 'success' : 'critical') as KpiSignal['tone'],
+      };
+    }
+    // Blast radius: show absolute entity count
+    if (k === 'affected_entity_count') {
       const raw = signalText(evidence[k]);
-      const display = displaySignalValue(k, raw);
-      return { label: signalLabel(k), value: display, tone: kpiTone(k, raw) };
-    });
+      const n = Number(raw);
+      return {
+        label: labelOverrides[k] ?? 'Blast radius',
+        value: Number.isFinite(n) && n > 0 ? `${n} ${n === 1 ? 'entity' : 'entities'}` : 'Unknown',
+        tone: (n > 5 ? 'warning' : 'neutral') as KpiSignal['tone'],
+      };
+    }
+    // MTTR: show "Not resolved" when zero or absent
+    if (k === 'avg_duration') {
+      const raw = signalText(evidence[k]);
+      const isZero = raw === 'absent' || raw === '0m' || raw === '0h 0m' || raw === '0';
+      return {
+        label: labelOverrides[k] ?? 'Avg MTTR',
+        value: isZero ? 'Not resolved' : raw,
+        tone: 'neutral' as KpiSignal['tone'],
+      };
+    }
+    // Operational cost: always show
+    if (k === 'operational_cost') {
+      const raw = signalText(evidence[k]);
+      return {
+        label: labelOverrides[k] ?? 'Operational cost',
+        value: formatCostValue(raw),
+        tone: 'neutral' as KpiSignal['tone'],
+      };
+    }
+    // Default
+    if (!isMeaningfulSignal(evidence[k])) return null;
+    const raw = signalText(evidence[k]);
+    const display = displaySignalValue(k, raw);
+    return { label: labelOverrides[k] ?? signalLabel(k), value: display, tone: kpiTone(k, raw) };
+  }) as (KpiSignal | null)[]).filter((s): s is KpiSignal => s !== null);
 }
 
 function isExecutiveResult(result: RecommendationResult): result is ExecutiveAssistResult {
@@ -1091,7 +1116,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
 
   // ── Executive ─────────────────────────────────────────────────────────────
   if (isExecutiveResult(state.result)) {
-    const signals = buildSignalSnapshot(ev, ['affected_users', 'occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'scope_tier']);
+    const signals = buildSignalSnapshot(ev, ['operational_cost', 'avg_duration', 'occurrence_count', 'trend', 'rca_availability', 'affected_entity_count']);
     const actions: ActionCardItem[] = state.result.decisionOptions.map(o => ({
       title: o.title,
       priority: o.priority,
@@ -1114,7 +1139,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
   if (isSreResult(state.result)) {
     if (kind === 'analysis') {
       // Analysis: focus on recurrence + reliability drivers, no tier cards
-      const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'event_category', 'scope_tier', 'affected_entity_count']);
+      const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'event_category', 'affected_users', 'affected_entity_count']);
       return (
         <Flex flexDirection="column" gap={8}>
           {signals.length > 0 && <SignalSnapshot signals={signals} />}
@@ -1148,7 +1173,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
       );
     }
     // Remediation / Alert Tuning: full tiered cards
-    const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'affected_users', 'event_category']);
+    const signals = buildSignalSnapshot(ev, ['operational_cost', 'avg_duration', 'occurrence_count', 'trend', 'rca_availability', 'affected_entity_count']);
     const actions: ActionCardItem[] = state.result.preventionRecommendations.map(r => ({
       title: r.title,
       priority: r.priority,
@@ -1171,7 +1196,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
   if (isDeveloperResult(state.result)) {
     if (kind === 'analysis') {
       // Analysis: debugging path + affected components
-      const signals = buildSignalSnapshot(ev, ['occurrence_count', 'affected_services', 'rca_availability', 'event_category', 'affected_entity_count', 'trend']);
+      const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'event_category', 'affected_entity_count', 'avg_duration']);
       const steps: ActionCardItem[] = state.result.debuggingPath.map(s => ({
         title: s.step,
         strength: s.recommendationStrength,
@@ -1214,7 +1239,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
       );
     }
     // Remediation: tiered remediation candidates
-    const signals = buildSignalSnapshot(ev, ['occurrence_count', 'affected_services', 'rca_availability', 'root_cause_entity', 'avg_duration', 'event_category']);
+    const signals = buildSignalSnapshot(ev, ['operational_cost', 'avg_duration', 'occurrence_count', 'rca_availability', 'affected_entity_count', 'event_category']);
     const actions: ActionCardItem[] = state.result.remediationCandidates.map(r => ({
       title: r.title,
       priority: r.priority,
@@ -1239,9 +1264,9 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
   // ── Legacy fallback ────────────────────────────────────────────────────────
   if (!isLegacyResult(state.result)) return null;
   const legacySignalKeys = kind === 'alert_tuning'
-    ? ['occurrence_count', 'alert_event_count', 'avg_duration', 'trend', 'scope_tier', 'recommendation_type']
+    ? ['occurrence_count', 'alert_event_count', 'avg_duration', 'trend', 'affected_entity_count', 'recommendation_type']
     : persona === 'executive'
-      ? ['operational_cost', 'potential_savings', 'affected_users', 'occurrence_count', 'trend', 'rca_availability']
+      ? ['operational_cost', 'avg_duration', 'affected_users', 'occurrence_count', 'trend', 'rca_availability']
       : ['occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'avg_duration', 'affected_users'];
   const signals = buildSignalSnapshot(ev, legacySignalKeys);
   const action: ActionCardItem = {
