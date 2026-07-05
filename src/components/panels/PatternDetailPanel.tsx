@@ -131,7 +131,7 @@ function signalLabel(signal: string): string {
     affected_entity_count: 'Affected entities',
     affected_services: 'Affected services',
     affected_users: 'Affected users',
-    avg_duration: 'Average duration',
+    avg_duration: 'Avg MTTR',
     event_category: 'Failure type',
     occurrence_count: 'Occurrences',
     operational_cost: 'Operational cost',
@@ -139,7 +139,7 @@ function signalLabel(signal: string): string {
     rca_availability: 'Root cause evidence',
     recommendation_type: 'Recommended lever',
     root_cause_entity: 'Root cause entity',
-    scope_tier: 'Scope',
+    scope_tier: 'Blast radius',
     trend: 'Trend',
   };
   return labels[signal] || signal.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
@@ -1413,10 +1413,14 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
         {/* Business Impact */}
         <PanelSection title={isExecutive ? 'Business Impact' : persona === 'sre' ? 'Reliability Context' : 'Developer Context'}>
           <SignalGrid>
-            <SignalCard label="Exposure" value={pattern.businessImpact.exposure} />
+            <SignalCard label="Operational cost" value={pattern.businessImpact.exposure} />
             <SignalCard label="Recoverable" value={pattern.businessImpact.recoverableValue} />
             <SignalCard label="Open incidents" value={pattern.businessImpact.openIncidents} tone={pattern.businessImpact.openIncidents > 0 ? 'High' : 'Low'} />
             <SignalCard label={isExecutive ? 'Affected users' : persona === 'developer' ? 'Affected services' : 'Blast radius'} value={pattern.businessImpact.affectedUsers || signalText(pattern.assistContext.evidence.affected_entity_count) || 0} />
+            {isMeaningfulSignal(pattern.assistContext.evidence.avg_duration) && (
+              <SignalCard label="Avg MTTR" value={signalText(pattern.assistContext.evidence.avg_duration)} />
+            )}
+            <SignalCard label="Blast radius" value={displaySignalValue('scope_tier', signalText(pattern.assistContext.evidence.scope_tier))} />
           </SignalGrid>
         </PanelSection>
 
