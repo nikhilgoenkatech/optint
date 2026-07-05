@@ -63,7 +63,7 @@ type SreAssistResult = {
   }>;
   recurrenceDrivers: string[];
   operationalWeaknesses: string[];
-  automationOpportunities: string[];
+  automationOpportunities: Array<{ title: string; priority: RecommendationPriority; capability?: string; effort?: RecommendationEffort }>;
   preventionRecommendations: Array<{
     title: string;
     priority: RecommendationPriority;
@@ -81,6 +81,7 @@ type DeveloperAssistResult = {
   affectedComponents: Array<{ component: string; evidence: string[] }>;
   debuggingPath: Array<{
     step: string;
+    priority?: RecommendationPriority;
     recommendationStrength: RecommendationStrength;
     evidenceUsed: string[];
     dynatraceCapability: string;
@@ -636,7 +637,7 @@ function buildSreResult(base: LegacyRecommendationResult): SreAssistResult {
       ? base.dataGaps
       : ['No unresolved operational evidence gaps were detected in the supplied signals.'],
     automationOpportunities: [
-      `${base.action.capability}: ${base.action.title}`,
+      { title: base.action.title, priority: base.action.priority, capability: base.action.capability, effort: 'Unknown' as RecommendationEffort },
     ],
     preventionRecommendations: [
       {
@@ -671,6 +672,7 @@ function buildDeveloperResult(pattern: PatternDetail, base: LegacyRecommendation
     debuggingPath: [
       {
         step: base.action.title,
+        priority: base.action.priority,
         recommendationStrength: base.action.strength,
         evidenceUsed: evidence,
         dynatraceCapability: base.action.capability,
@@ -705,11 +707,16 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   return buildDeveloperResult(pattern, base);
 }
 
+const PROMPT_EXCLUDED_SIGNALS = ['operational_cost', 'potential_savings', 'avg_duration'];
+
 function buildRawPrompt(pattern: PatternDetail, kind: GenerationKind): string {
+  const evidence = Object.fromEntries(
+    Object.entries(pattern.assistContext.evidence).filter(([k]) => !PROMPT_EXCLUDED_SIGNALS.includes(k))
+  );
   return buildSignalPrompt({
     persona: pattern.assistContext.persona,
     objective: pattern.assistContext.objective,
-    evidence: pattern.assistContext.evidence,
+    evidence,
     patternTitle: pattern.title,
     recommendedAction: pattern.recommendedAction,
     kind,
@@ -758,6 +765,27 @@ function RawPrompt({ pattern, kind }: { pattern: PatternDetail; kind: Generation
           }}
         >
           {prompt}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function RawResponse({ state }: { state: RecommendationState }) {
+  const [open, setOpen] = React.useState(false);
+  if (state.status !== 'ready' || !state.result) return null;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: MUTED, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: 4 }}
+      >
+        {open ? 'v' : '>'} View raw response
+      </button>
+      {open && (
+        <pre style={{ marginTop: 6, padding: 10, background: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)', border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)', borderRadius: 6, fontSize: 10, lineHeight: 1.5, color: MUTED, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflowY: 'auto' }}>
+          {JSON.stringify(state.result, null, 2)}
         </pre>
       )}
     </div>
@@ -1163,9 +1191,12 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
           )}
           {state.result.automationOpportunities.length > 0 && (
             <PanelSection title="Automation opportunities">
-              {state.result.automationOpportunities.map((a, i) => (
-                <ActionCard key={i} item={{ title: a }} />
-              ))}
+              <TieredActions items={state.result.automationOpportunities.map(a => ({
+                title: a.title,
+                priority: a.priority,
+                capability: a.capability,
+                effort: a.effort,
+              }))} />
             </PanelSection>
           )}
           <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
@@ -1199,6 +1230,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
       const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'event_category', 'affected_entity_count', 'avg_duration']);
       const steps: ActionCardItem[] = state.result.debuggingPath.map(s => ({
         title: s.step,
+        priority: s.priority,
         strength: s.recommendationStrength,
         capability: s.dynatraceCapability,
         effort: s.effort,
@@ -1226,9 +1258,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
           )}
           {steps.length > 0 && (
             <PanelSection title="Debugging path">
-              <Flex flexDirection="column" gap={6}>
-                {steps.map((step, i) => <ActionCard key={i} item={step} />)}
-              </Flex>
+              <TieredActions items={steps} />
             </PanelSection>
           )}
           {state.result.validationSteps.length > 0 && (
@@ -1565,6 +1595,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {execActionState.status === 'loading' ? 'Generating...' : execButtonLabel}
                       </Button>
                       <RawPrompt pattern={pattern} kind={execActionKind} />
+                      <RawResponse state={execActionState} />
                       <GeneratedOutput state={execActionState} pattern={pattern} kind={execActionKind} />
                     </Flex>
                   </Container>
@@ -1592,6 +1623,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {analysis.status === 'loading' ? 'Analysing...' : 'Get Analysis'}
                       </Button>
                       <RawPrompt pattern={pattern} kind="analysis" />
+                      <RawResponse state={analysis} />
                       <GeneratedOutput state={analysis} pattern={pattern} kind="analysis" />
                     </Flex>
                   </Container>
@@ -1617,6 +1649,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {remediation.status === 'loading' ? 'Generating...' : 'Get Remediation Path'}
                       </Button>
                       <RawPrompt pattern={pattern} kind="remediation" />
+                      <RawResponse state={remediation} />
                       <GeneratedOutput state={remediation} pattern={pattern} kind="remediation" />
                     </Flex>
                   </Container>
@@ -1642,6 +1675,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {alertTuning.status === 'loading' ? 'Generating...' : 'Suggest Alert Tuning'}
                       </Button>
                       <RawPrompt pattern={pattern} kind="alert_tuning" />
+                      <RawResponse state={alertTuning} />
                       <GeneratedOutput state={alertTuning} pattern={pattern} kind="alert_tuning" />
                     </Flex>
                   </Container>

@@ -123,7 +123,14 @@ const SRE_SCHEMA = `Return ONLY valid JSON matching this SRE schema:
   ],
   "recurrenceDrivers": ["string"],
   "operationalWeaknesses": ["string"],
-  "automationOpportunities": ["string"],
+  "automationOpportunities": [
+    {
+      "title": "string",
+      "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
+      "capability": "${COMMON_CAPABILITIES}",
+      "effort": "Low | Medium | High | Unknown"
+    }
+  ],
   "preventionRecommendations": [
     {
       "title": "string",
@@ -150,6 +157,7 @@ const DEVELOPER_SCHEMA = `Return ONLY valid JSON matching this Developer schema:
   "debuggingPath": [
     {
       "step": "string",
+      "priority": "IMMEDIATE | SHORT_TERM | STRATEGIC",
       "recommendationStrength": "Evidence-backed | Candidate | Data-gap",
       "evidenceUsed": ["string"],
       "dynatraceCapability": "${DEVELOPER_CAPABILITIES}",
