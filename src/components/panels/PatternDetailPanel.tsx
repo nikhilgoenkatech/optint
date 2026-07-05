@@ -969,14 +969,20 @@ function ActionCard({ item }: { item: ActionCardItem }) {
       </Flex>
       {item.evidenceUsed && item.evidenceUsed.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
-          {item.evidenceUsed.slice(0, 4).map((ev, i) => (
-            <span key={i} style={{
-              fontSize: 10, color: MUTED,
-              background: 'var(--dt-colors-background-base-default,#f2f2f5)',
-              border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
-              borderRadius: 4, padding: '1px 6px',
-            }}>{ev}</span>
-          ))}
+          {item.evidenceUsed.slice(0, 4).map((ev, i) => {
+            const colonIdx = ev.indexOf(':');
+            const displayed = colonIdx > -1
+              ? `${signalLabel(ev.slice(0, colonIdx).trim())}: ${ev.slice(colonIdx + 1).trim()}`
+              : ev;
+            return (
+              <span key={i} style={{
+                fontSize: 10, color: MUTED,
+                background: 'var(--dt-colors-background-base-default,#f2f2f5)',
+                border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
+                borderRadius: 4, padding: '1px 6px',
+              }}>{displayed}</span>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1412,16 +1418,33 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
 
         {/* Business Impact */}
         <PanelSection title={isExecutive ? 'Business Impact' : persona === 'sre' ? 'Reliability Context' : 'Developer Context'}>
-          <SignalGrid>
-            <SignalCard label="Operational cost" value={pattern.businessImpact.exposure} />
-            <SignalCard label="Recoverable" value={pattern.businessImpact.recoverableValue} />
-            <SignalCard label="Open incidents" value={pattern.businessImpact.openIncidents} tone={pattern.businessImpact.openIncidents > 0 ? 'High' : 'Low'} />
-            <SignalCard label={isExecutive ? 'Affected users' : persona === 'developer' ? 'Affected services' : 'Blast radius'} value={pattern.businessImpact.affectedUsers || signalText(pattern.assistContext.evidence.affected_entity_count) || 0} />
-            {isMeaningfulSignal(pattern.assistContext.evidence.avg_duration) && (
-              <SignalCard label="Avg MTTR" value={signalText(pattern.assistContext.evidence.avg_duration)} />
-            )}
-            <SignalCard label="Blast radius" value={displaySignalValue('scope_tier', signalText(pattern.assistContext.evidence.scope_tier))} />
-          </SignalGrid>
+          {(() => {
+            const rawServices = pattern.assistContext.evidence.affected_services;
+            const serviceList: string[] = Array.isArray(rawServices)
+              ? rawServices.filter(s => s !== 'Unknown Service')
+              : typeof rawServices === 'string' && rawServices !== 'absent' && rawServices !== 'Unknown Service'
+                ? [rawServices]
+                : [];
+            const blastRadiusValue = serviceList.length > 0
+              ? serviceList.length <= 2
+                ? serviceList.join(', ')
+                : `${serviceList.slice(0, 2).join(', ')} +${serviceList.length - 2} more`
+              : `${signalText(pattern.assistContext.evidence.affected_entity_count)} entities`;
+
+            const rawMttr = signalText(pattern.assistContext.evidence.avg_duration);
+            const mttrValue = rawMttr === 'absent' || rawMttr === '0m' || rawMttr === '0h 0m' ? 'Not resolved' : rawMttr;
+
+            return (
+              <SignalGrid>
+                <SignalCard label="Operational cost" value={pattern.businessImpact.exposure} />
+                <SignalCard label="Recoverable" value={pattern.businessImpact.recoverableValue} />
+                <SignalCard label="Avg MTTR" value={mttrValue} tone={mttrValue === 'Not resolved' ? undefined : 'High'} />
+                <SignalCard label="Open incidents" value={pattern.businessImpact.openIncidents} tone={pattern.businessImpact.openIncidents > 0 ? 'High' : 'Low'} />
+                <SignalCard label="Affected users" value={pattern.businessImpact.affectedUsers} />
+                <SignalCard label="Blast radius" value={blastRadiusValue} />
+              </SignalGrid>
+            );
+          })()}
         </PanelSection>
 
         <Divider />
