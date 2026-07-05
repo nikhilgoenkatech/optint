@@ -542,6 +542,72 @@ function driverEvidence(drivers: LegacyRecommendationResult['drivers']): string[
 }
 
 function buildExecutiveResult(pattern: PatternDetail, base: LegacyRecommendationResult): ExecutiveAssistResult {
+  const ev = pattern.assistContext.evidence;
+  const objective = pattern.assistContext.objective;
+  const hasRCA = ev.rca_availability === 'Present';
+  const occurrences = signalText(ev.occurrence_count);
+  const trend = signalText(ev.trend);
+  const entities = signalText(ev.affected_entity_count);
+  const evidence = driverEvidence(base.drivers);
+
+  const decisionOptions: ExecutiveAssistResult['decisionOptions'] = [
+    {
+      title: base.action.title,
+      recommendationStrength: base.action.strength,
+      priority: base.action.priority,
+      businessRationale: base.action.reason,
+      evidenceUsed: evidence,
+      dynatraceCapability: base.action.capability,
+      effort: 'Medium',
+    },
+  ];
+
+  if (objective === 'cost_impact') {
+    if (!hasRCA) {
+      decisionOptions.push({
+        title: `Mandate root cause documentation on the next occurrence to break the ${occurrences}-recurrence cycle`,
+        recommendationStrength: 'Evidence-backed',
+        priority: 'IMMEDIATE',
+        businessRationale: `With ${occurrences} occurrences and no RCA record, the organisation has no basis for prevention. Mandating structured investigation output on the next occurrence is the minimum action required.`,
+        evidenceUsed: ['rca_availability: Missing', `occurrence_count: ${occurrences}`, `trend: ${trend}`],
+        dynatraceCapability: 'Davis AI',
+        effort: 'Low',
+      });
+    }
+    decisionOptions.push({
+      title: `Establish an availability SLO covering the ${entities} affected entities to formalise reliability targets`,
+      recommendationStrength: 'Evidence-backed',
+      priority: 'SHORT_TERM',
+      businessRationale: `No formal availability target exists across ${entities} entities with a ${trend} trend. Formalising an SLO creates a governance structure needed to prioritise remediation investment.`,
+      evidenceUsed: [`affected_entity_count: ${entities}`, `trend: ${trend}`, `occurrence_count: ${occurrences}`, 'event_category: AVAILABILITY'],
+      dynatraceCapability: 'SLO',
+      effort: 'Medium',
+    });
+    decisionOptions.push({
+      title: 'Assign service ownership to enable routing and accountability for recurrence prevention',
+      recommendationStrength: hasRCA ? 'Evidence-backed' : 'Candidate',
+      priority: 'STRATEGIC',
+      businessRationale: 'Without ownership assignment, there is no accountable party to act on cost recovery findings or sponsor remediation investment.',
+      evidenceUsed: ['affected_services: Unknown Service', 'root_cause_entity: null'],
+      dynatraceCapability: 'Ownership and Routing',
+      effort: 'Low',
+    });
+  } else {
+    decisionOptions.push({
+      title: 'Sponsor a structured alert quality review to reduce noise from this recurring signal',
+      recommendationStrength: 'Evidence-backed',
+      priority: 'SHORT_TERM',
+      businessRationale: `${occurrences} occurrences with a ${trend} trend qualifies this signal for executive-sponsored tuning prioritisation.`,
+      evidenceUsed: [`occurrence_count: ${occurrences}`, `trend: ${trend}`],
+      dynatraceCapability: 'Davis AI',
+      effort: 'Low',
+    });
+  }
+
+  const uniqueOptions = decisionOptions.filter((opt, idx, arr) =>
+    arr.findIndex(o => o.title === opt.title) === idx
+  );
+
   return {
     executiveSummary: base.assessment,
     businessSignals: base.drivers.slice(0, 5).map(driver => ({
@@ -549,17 +615,7 @@ function buildExecutiveResult(pattern: PatternDetail, base: LegacyRecommendation
       value: displaySignalValue(driver.signal, driver.value),
       whyItMatters: driver.whyItMatters,
     })),
-    decisionOptions: [
-      {
-        title: base.action.title,
-        recommendationStrength: base.action.strength,
-        priority: base.action.priority,
-        businessRationale: base.action.reason,
-        evidenceUsed: driverEvidence(base.drivers),
-        dynatraceCapability: base.action.capability,
-        effort: base.action.priority === 'IMMEDIATE' ? 'Medium' : 'Unknown',
-      },
-    ],
+    decisionOptions: uniqueOptions,
     risks: base.risks ?? [],
     dataGaps: base.dataGaps,
   };
@@ -837,19 +893,24 @@ function kpiTone(signal: string, value: string): 'neutral' | 'critical' | 'warni
 
 function SignalSnapshot({ signals }: { signals: KpiSignal[] }) {
   if (!signals.length) return null;
-  const toneColors: Record<string, { bg: string; color: string }> = {
-    neutral: { bg: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)', color: 'var(--dt-colors-text-neutral-default,#23282d)' },
-    critical: { bg: 'var(--dt-colors-background-container-critical-subdued,#fff0f0)', color: 'var(--dt-colors-text-critical-default,#c41425)' },
-    warning: { bg: 'var(--dt-colors-background-container-warning-subdued,#fff7e6)', color: 'var(--dt-colors-text-warning-default,#8a5a00)' },
-    success: { bg: 'var(--dt-colors-background-container-success-subdued,#edf8ee)', color: 'var(--dt-colors-text-success-default,#2f7d32)' },
+  const textColor: Record<string, string> = {
+    neutral: 'var(--dt-colors-text-neutral-default,#23282d)',
+    critical: 'var(--dt-colors-text-critical-default,#c41425)',
+    warning: 'var(--dt-colors-text-warning-default,#8a5a00)',
+    success: 'var(--dt-colors-text-success-default,#1a7a4a)',
   };
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 6 }}>
       {signals.map(sig => {
         const tone = sig.tone ?? 'neutral';
-        const { bg, color } = toneColors[tone];
+        const color = textColor[tone];
         return (
-          <div key={sig.label} style={{ background: bg, border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)', borderRadius: 6, padding: '6px 8px' }}>
+          <div key={sig.label} style={{
+            background: 'var(--dt-colors-background-container-neutral-default,#fff)',
+            border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
+            borderRadius: 6,
+            padding: '6px 8px',
+          }}>
             <div style={{ fontSize: 13, fontWeight: 600, color, lineHeight: 1.3, overflowWrap: 'anywhere' }}>{sig.value}</div>
             <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>{sig.label}</div>
           </div>
@@ -859,10 +920,13 @@ function SignalSnapshot({ signals }: { signals: KpiSignal[] }) {
   );
 }
 
-function TierDivider({ label, icon }: { label: string; icon: string }) {
+function TierDivider({ label, icon, tone }: { label: string; icon: string; tone: 'critical' | 'warning' | 'success' }) {
+  const color = tone === 'critical' ? 'var(--dt-colors-text-critical-default,#c41425)'
+    : tone === 'warning' ? 'var(--dt-colors-text-warning-default,#8a5a00)'
+    : 'var(--dt-colors-text-success-default,#1a7a4a)';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 2px' }}>
-      <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED }}>{icon} {label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 2px' }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color, whiteSpace: 'nowrap' }}>{icon} {label}</span>
       <div style={{ flex: 1, height: 1, background: 'var(--dt-colors-border-neutral-subdued,#eee)' }} />
     </div>
   );
@@ -927,15 +991,15 @@ function TieredActions({ items }: { items: ActionCardItem[] }) {
   return (
     <Flex flexDirection="column" gap={6}>
       {immediate.length > 0 && <>
-        <TierDivider label="Immediate" icon="⚡" />
+        <TierDivider label="Immediate" icon="⚡" tone="critical" />
         {immediate.map((item, i) => <ActionCard key={i} item={item} />)}
       </>}
       {shortTerm.length > 0 && <>
-        <TierDivider label="Short term" icon="⏱" />
+        <TierDivider label="Short term" icon="⏱" tone="warning" />
         {shortTerm.map((item, i) => <ActionCard key={i} item={item} />)}
       </>}
       {strategic.length > 0 && <>
-        <TierDivider label="Strategic" icon="📍" />
+        <TierDivider label="Strategic" icon="◎" tone="success" />
         {strategic.map((item, i) => <ActionCard key={i} item={item} />)}
       </>}
       {untiered.map((item, i) => <ActionCard key={i} item={item} />)}
@@ -1021,7 +1085,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
 
   // ── Executive ─────────────────────────────────────────────────────────────
   if (isExecutiveResult(state.result)) {
-    const signals = buildSignalSnapshot(ev, ['operational_cost', 'potential_savings', 'affected_users', 'occurrence_count', 'trend', 'rca_availability']);
+    const signals = buildSignalSnapshot(ev, ['affected_users', 'occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'scope_tier']);
     const actions: ActionCardItem[] = state.result.decisionOptions.map(o => ({
       title: o.title,
       priority: o.priority,
@@ -1033,12 +1097,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
     return (
       <Flex flexDirection="column" gap={8}>
         {signals.length > 0 && <SignalSnapshot signals={signals} />}
-        <Container color="neutral" variant="default" padding={8}>
-          <Text textStyle="small">{state.result.executiveSummary}</Text>
-        </Container>
-        <PanelSection title="Decision options">
-          <TieredActions items={actions} />
-        </PanelSection>
+        <TieredActions items={actions} />
         <DisclosureRow label="Risks" items={state.result.risks} />
         <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
       </Flex>
@@ -1083,7 +1142,7 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
       );
     }
     // Remediation / Alert Tuning: full tiered cards
-    const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'avg_duration', 'affected_users']);
+    const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'affected_users', 'event_category']);
     const actions: ActionCardItem[] = state.result.preventionRecommendations.map(r => ({
       title: r.title,
       priority: r.priority,

@@ -209,10 +209,6 @@ function buildEvidenceJson(req: AISummaryRequest): object {
     return {
       occurrence_count:      pattern.occurrences,
       alert_event_count:     pattern.problems.length,
-      operational_cost:      Math.round(pattern.totalCost),
-      potential_savings:     pattern.recommendation.type !== 'INVESTIGATE_FIRST'
-                               ? Math.round(pattern.totalCost * pattern.autoResolveRate)
-                               : 'absent',
       affected_users:        pattern.totalUsers,
       affected_entity_count: pattern.affectedServices.length,
       affected_services:     pattern.affectedServices.join(', ') || 'absent',
@@ -223,7 +219,6 @@ function buildEvidenceJson(req: AISummaryRequest): object {
                                ? 'scoped'
                                : 'unknown',
       trend:                 pattern.trend,
-      avg_duration:          `${Math.round(pattern.avgMTTR)}m`,
       recommendation_type:   pattern.recommendation.type,
       rca_availability:      pattern.hasRCA ? 'Present' : 'Missing',
       root_cause_entity:     pattern.dimensions.primaryRootCause ?? 'absent',
@@ -243,15 +238,12 @@ function buildEvidenceJson(req: AISummaryRequest): object {
   return {
     occurrence_count:      problems.length,
     alert_event_count:     problems.length,
-    operational_cost:      Math.round(cost),
-    potential_savings:     'absent',
     affected_users:        totalUsers,
     affected_entity_count: entities.size,
     affected_services:     services.join(', ') || 'absent',
     event_category:        problems[0]?.severity ?? 'absent',
     scope_tier:            'unknown',
     trend:                 'absent',
-    avg_duration:          `${Math.round(avgDuration)}m`,
     recommendation_type:   'absent',
     rca_availability:      hasRCA ? 'Present' : 'Missing',
     root_cause_entity:     rootCause,
