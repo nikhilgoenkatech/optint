@@ -812,6 +812,174 @@ function RecommendationMeta({
   );
 }
 
+// ── New card-based layout components ────────────────────────────────────────
+
+type KpiSignal = { label: string; value: string; tone?: 'neutral' | 'critical' | 'warning' | 'success' };
+
+function trendTone(trend: string): 'warning' | 'success' | 'neutral' {
+  const t = trend.toLowerCase();
+  if (t === 'increasing') return 'warning';
+  if (t === 'decreasing') return 'success';
+  return 'neutral';
+}
+
+function kpiTone(signal: string, value: string): 'neutral' | 'critical' | 'warning' | 'success' {
+  if (signal === 'rca_availability') return value === 'Present' ? 'success' : 'critical';
+  if (signal === 'trend') return trendTone(value);
+  if (signal === 'occurrence_count') {
+    const n = Number(value);
+    if (n > 20) return 'critical';
+    if (n > 8) return 'warning';
+    return 'neutral';
+  }
+  return 'neutral';
+}
+
+function SignalSnapshot({ signals }: { signals: KpiSignal[] }) {
+  if (!signals.length) return null;
+  const toneColors: Record<string, { bg: string; color: string }> = {
+    neutral: { bg: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)', color: 'var(--dt-colors-text-neutral-default,#23282d)' },
+    critical: { bg: 'var(--dt-colors-background-container-critical-subdued,#fff0f0)', color: 'var(--dt-colors-text-critical-default,#c41425)' },
+    warning: { bg: 'var(--dt-colors-background-container-warning-subdued,#fff7e6)', color: 'var(--dt-colors-text-warning-default,#8a5a00)' },
+    success: { bg: 'var(--dt-colors-background-container-success-subdued,#edf8ee)', color: 'var(--dt-colors-text-success-default,#2f7d32)' },
+  };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 6 }}>
+      {signals.map(sig => {
+        const tone = sig.tone ?? 'neutral';
+        const { bg, color } = toneColors[tone];
+        return (
+          <div key={sig.label} style={{ background: bg, border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)', borderRadius: 6, padding: '6px 8px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color, lineHeight: 1.3, overflowWrap: 'anywhere' }}>{sig.value}</div>
+            <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>{sig.label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TierDivider({ label, icon }: { label: string; icon: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 2px' }}>
+      <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED }}>{icon} {label}</span>
+      <div style={{ flex: 1, height: 1, background: 'var(--dt-colors-border-neutral-subdued,#eee)' }} />
+    </div>
+  );
+}
+
+type ActionCardItem = {
+  title: string;
+  priority?: RecommendationPriority;
+  strength?: RecommendationStrength;
+  capability?: string;
+  effort?: RecommendationEffort;
+  evidenceUsed?: string[];
+};
+
+function ActionCard({ item }: { item: ActionCardItem }) {
+  const borderColor =
+    item.priority === 'IMMEDIATE' ? 'var(--dt-colors-text-critical-default,#c41425)'
+    : item.priority === 'SHORT_TERM' ? 'var(--dt-colors-text-warning-default,#b45309)'
+    : item.priority === 'STRATEGIC' ? 'var(--dt-colors-text-success-default,#1a7a4a)'
+    : 'var(--dt-colors-border-neutral-subdued,#d5d8df)';
+  return (
+    <div style={{
+      background: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)',
+      border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
+      borderLeft: `3px solid ${borderColor}`,
+      borderRadius: 6,
+      padding: '9px 10px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 5,
+    }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--dt-colors-text-neutral-default,#23282d)', lineHeight: 1.4 }}>{item.title}</span>
+      <Flex alignItems="center" gap={4} style={{ flexWrap: 'wrap' }}>
+        {item.priority && <InlineMetaChip tone={priorityTone(item.priority)}>{displayPriority(item.priority)}</InlineMetaChip>}
+        {item.strength && item.strength !== 'Evidence-backed' && (
+          <InlineMetaChip tone={item.strength === 'Candidate' ? 'warning' : 'neutral'}>{displayStrength(item.strength)}</InlineMetaChip>
+        )}
+        {item.capability && <InlineMetaChip tone="accent">{item.capability}</InlineMetaChip>}
+        {item.effort && item.effort !== 'Unknown' && <InlineMetaChip>{item.effort} effort</InlineMetaChip>}
+      </Flex>
+      {item.evidenceUsed && item.evidenceUsed.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+          {item.evidenceUsed.slice(0, 4).map((ev, i) => (
+            <span key={i} style={{
+              fontSize: 10, color: MUTED,
+              background: 'var(--dt-colors-background-base-default,#f2f2f5)',
+              border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
+              borderRadius: 4, padding: '1px 6px',
+            }}>{ev}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TieredActions({ items }: { items: ActionCardItem[] }) {
+  const immediate = items.filter(i => i.priority === 'IMMEDIATE');
+  const shortTerm = items.filter(i => i.priority === 'SHORT_TERM');
+  const strategic = items.filter(i => i.priority === 'STRATEGIC');
+  const untiered = items.filter(i => !i.priority);
+  return (
+    <Flex flexDirection="column" gap={6}>
+      {immediate.length > 0 && <>
+        <TierDivider label="Immediate" icon="⚡" />
+        {immediate.map((item, i) => <ActionCard key={i} item={item} />)}
+      </>}
+      {shortTerm.length > 0 && <>
+        <TierDivider label="Short term" icon="⏱" />
+        {shortTerm.map((item, i) => <ActionCard key={i} item={item} />)}
+      </>}
+      {strategic.length > 0 && <>
+        <TierDivider label="Strategic" icon="📍" />
+        {strategic.map((item, i) => <ActionCard key={i} item={item} />)}
+      </>}
+      {untiered.map((item, i) => <ActionCard key={i} item={item} />)}
+    </Flex>
+  );
+}
+
+function DisclosureRow({ label, items }: { label: string; items: string[] }) {
+  const [open, setOpen] = React.useState(false);
+  if (!items.length) return null;
+  return (
+    <div style={{ border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)', borderRadius: 6, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '7px 10px', background: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)',
+          border: 'none', cursor: 'pointer', fontSize: 11, color: MUTED,
+        }}
+      >
+        <span>{label} <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>{items.length}</span></span>
+        <span>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '8px 10px', borderTop: '1px solid var(--dt-colors-border-neutral-subdued,#eee)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {items.map((item, i) => (
+            <span key={i} style={{ fontSize: 11, color: MUTED }}>{item}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function buildSignalSnapshot(evidence: PatternDetail['assistContext']['evidence'], keys: string[]): KpiSignal[] {
+  return keys
+    .filter(k => isMeaningfulSignal(evidence[k]))
+    .map(k => {
+      const raw = signalText(evidence[k]);
+      const display = displaySignalValue(k, raw);
+      return { label: signalLabel(k), value: display, tone: kpiTone(k, raw) };
+    });
+}
+
 function isExecutiveResult(result: RecommendationResult): result is ExecutiveAssistResult {
   return 'executiveSummary' in result;
 }
@@ -828,7 +996,7 @@ function isLegacyResult(result: RecommendationResult): result is LegacyRecommend
   return 'assessment' in result;
 }
 
-function GeneratedOutput({ state }: { state: RecommendationState }) {
+function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState; pattern: PatternDetail; kind: GenerationKind }) {
   if (state.status === 'error') {
     return (
       <Container color="critical" variant="default" padding={8}>
@@ -839,239 +1007,191 @@ function GeneratedOutput({ state }: { state: RecommendationState }) {
       </Container>
     );
   }
-
   if (state.status === 'insufficient') {
     return (
       <Container color="critical" variant="default" padding={8}>
-        <Text textStyle="small">
-          Insufficient signal data. Add at least three meaningful observed signals before generating output.
-        </Text>
+        <Text textStyle="small">Insufficient signal data. Add at least three meaningful observed signals before generating output.</Text>
       </Container>
     );
   }
-
   if (state.status !== 'ready' || !state.result) return null;
 
+  const ev = pattern.assistContext.evidence;
+  const persona = pattern.assistContext.persona;
+
+  // ── Executive ─────────────────────────────────────────────────────────────
   if (isExecutiveResult(state.result)) {
+    const signals = buildSignalSnapshot(ev, ['operational_cost', 'potential_savings', 'affected_users', 'occurrence_count', 'trend', 'rca_availability']);
+    const actions: ActionCardItem[] = state.result.decisionOptions.map(o => ({
+      title: o.title,
+      priority: o.priority,
+      strength: o.recommendationStrength,
+      capability: o.dynatraceCapability,
+      effort: o.effort,
+      evidenceUsed: o.evidenceUsed,
+    }));
     return (
       <Flex flexDirection="column" gap={8}>
-        <PanelSection title="Executive Summary">
-          <Container color="neutral" variant="default" padding={8}>
-            <Text textStyle="small">{state.result.executiveSummary}</Text>
-          </Container>
+        {signals.length > 0 && <SignalSnapshot signals={signals} />}
+        <Container color="neutral" variant="default" padding={8}>
+          <Text textStyle="small">{state.result.executiveSummary}</Text>
+        </Container>
+        <PanelSection title="Decision options">
+          <TieredActions items={actions} />
         </PanelSection>
-        <PanelSection title="Business Signals">
-          <SignalGrid>
-            {state.result.businessSignals.slice(0, 4).map(signal => (
-              <SignalCard key={`${signal.signal}-${signal.value}`} label={signal.signal} value={signal.value} />
-            ))}
-          </SignalGrid>
-        </PanelSection>
-        <PanelSection title="Decision Options">
-          <Flex flexDirection="column" gap={8}>
-            {state.result.decisionOptions.slice(0, 3).map((option, index) => (
-              <Container key={`${option.title}-${index}`} color="neutral" variant="default" padding={8}>
-                <Flex flexDirection="column" gap={6}>
-                  <Text textStyle="small" style={{ fontWeight: 700 }}>{option.title}</Text>
-                  <RecommendationMeta
-                    priority={option.priority}
-                    strength={option.recommendationStrength}
-                    capability={option.dynatraceCapability}
-                    effort={option.effort}
-                  />
-                  <Text textStyle="small" style={{ color: MUTED }}>{option.businessRationale}</Text>
-                  <TextList items={option.evidenceUsed} />
-                </Flex>
-              </Container>
-            ))}
-          </Flex>
-        </PanelSection>
-        {state.result.risks.length > 0 && <PanelSection title="Risks"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.risks} /></Container></PanelSection>}
-        {state.result.dataGaps.length > 0 && <PanelSection title="Data Gaps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.dataGaps} /></Container></PanelSection>}
+        <DisclosureRow label="Risks" items={state.result.risks} />
+        <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
       </Flex>
     );
   }
 
+  // ── SRE ───────────────────────────────────────────────────────────────────
   if (isSreResult(state.result)) {
+    if (kind === 'analysis') {
+      // Analysis: focus on recurrence + reliability drivers, no tier cards
+      const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'event_category', 'scope_tier', 'affected_entity_count']);
+      return (
+        <Flex flexDirection="column" gap={8}>
+          {signals.length > 0 && <SignalSnapshot signals={signals} />}
+          {state.result.recurrenceDrivers.length > 0 && (
+            <PanelSection title="Recurrence drivers">
+              <Flex flexDirection="column" gap={4}>
+                {state.result.recurrenceDrivers.map((d, i) => (
+                  <Text key={i} textStyle="small" style={{ color: MUTED }}>{d}</Text>
+                ))}
+              </Flex>
+            </PanelSection>
+          )}
+          {state.result.operationalWeaknesses.length > 0 && (
+            <PanelSection title="Operational weaknesses">
+              <Flex flexDirection="column" gap={4}>
+                {state.result.operationalWeaknesses.map((w, i) => (
+                  <Text key={i} textStyle="small" style={{ color: MUTED }}>{w}</Text>
+                ))}
+              </Flex>
+            </PanelSection>
+          )}
+          {state.result.automationOpportunities.length > 0 && (
+            <PanelSection title="Automation opportunities">
+              {state.result.automationOpportunities.map((a, i) => (
+                <ActionCard key={i} item={{ title: a }} />
+              ))}
+            </PanelSection>
+          )}
+          <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
+        </Flex>
+      );
+    }
+    // Remediation / Alert Tuning: full tiered cards
+    const signals = buildSignalSnapshot(ev, ['occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'avg_duration', 'affected_users']);
+    const actions: ActionCardItem[] = state.result.preventionRecommendations.map(r => ({
+      title: r.title,
+      priority: r.priority,
+      strength: r.recommendationStrength,
+      capability: r.dynatraceCapability,
+      effort: r.effort,
+      evidenceUsed: r.evidenceUsed,
+    }));
     return (
       <Flex flexDirection="column" gap={8}>
-        <PanelSection title="Reliability Signals">
-          <Flex flexDirection="column" gap={8}>
-            {state.result.reliabilitySignals.map((signal, index) => (
-              <Container key={`${signal.signal}-${index}`} color="neutral" variant="default" padding={8}>
-                <Flex flexDirection="column" gap={6}>
-                  <Flex justifyContent="space-between" alignItems="center" gap={8}>
-                    <Text textStyle="small" style={{ fontWeight: 700 }}>{signal.signal}</Text>
-                    {signal.recommendationStrength !== 'Evidence-backed' && (
-                      <InlineMetaChip tone={signal.recommendationStrength === 'Candidate' ? 'warning' : 'neutral'}>
-                        {displayStrength(signal.recommendationStrength)}
-                      </InlineMetaChip>
-                    )}
-                  </Flex>
-                  <TextList items={signal.evidence} />
-                </Flex>
-              </Container>
-            ))}
-          </Flex>
-        </PanelSection>
-        <PanelSection title="Recurrence Drivers"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.recurrenceDrivers} /></Container></PanelSection>
-        <PanelSection title="Operational Weaknesses"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.operationalWeaknesses} /></Container></PanelSection>
-        <PanelSection title="Automation Opportunities"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.automationOpportunities} /></Container></PanelSection>
-        <PanelSection title="Prevention Recommendations">
-          <Flex flexDirection="column" gap={8}>
-            {state.result.preventionRecommendations.map((rec, index) => (
-              <Container key={`${rec.title}-${index}`} color="neutral" variant="default" padding={8}>
-                <Flex flexDirection="column" gap={6}>
-                  <Text textStyle="small" style={{ fontWeight: 700 }}>{rec.title}</Text>
-                  <RecommendationMeta priority={rec.priority} strength={rec.recommendationStrength} capability={rec.dynatraceCapability} effort={rec.effort} />
-                  <TextList items={rec.evidenceUsed} />
-                </Flex>
-              </Container>
-            ))}
-          </Flex>
-        </PanelSection>
-        {state.result.risks.length > 0 && <PanelSection title="Risks"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.risks} /></Container></PanelSection>}
-        {state.result.dataGaps.length > 0 && <PanelSection title="Data Gaps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.dataGaps} /></Container></PanelSection>}
+        {signals.length > 0 && <SignalSnapshot signals={signals} />}
+        <TieredActions items={actions} />
+        <DisclosureRow label="Risks" items={state.result.risks} />
+        <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
       </Flex>
     );
   }
 
+  // ── Developer ─────────────────────────────────────────────────────────────
   if (isDeveloperResult(state.result)) {
-    return (
-      <Flex flexDirection="column" gap={8}>
-        <PanelSection title="Investigation Summary">
+    if (kind === 'analysis') {
+      // Analysis: debugging path + affected components
+      const signals = buildSignalSnapshot(ev, ['occurrence_count', 'affected_services', 'rca_availability', 'event_category', 'affected_entity_count', 'trend']);
+      const steps: ActionCardItem[] = state.result.debuggingPath.map(s => ({
+        title: s.step,
+        strength: s.recommendationStrength,
+        capability: s.dynatraceCapability,
+        effort: s.effort,
+        evidenceUsed: s.evidenceUsed,
+      }));
+      return (
+        <Flex flexDirection="column" gap={8}>
+          {signals.length > 0 && <SignalSnapshot signals={signals} />}
           <Container color="neutral" variant="default" padding={8}>
             <Text textStyle="small">{state.result.investigationSummary}</Text>
           </Container>
-        </PanelSection>
-        <PanelSection title="Affected Components">
-          <Flex flexDirection="column" gap={8}>
-            {state.result.affectedComponents.map((component, index) => (
-              <Container key={`${component.component}-${index}`} color="neutral" variant="default" padding={8}>
-                <Flex flexDirection="column" gap={4}>
-                  <Text textStyle="small" style={{ fontWeight: 700 }}>{component.component}</Text>
-                  <TextList items={component.evidence} />
-                </Flex>
-              </Container>
-            ))}
-          </Flex>
-        </PanelSection>
-        <PanelSection title="Debugging Path">
-          <Flex flexDirection="column" gap={8}>
-            {state.result.debuggingPath.map((step, index) => (
-              <Container key={`${step.step}-${index}`} color="neutral" variant="default" padding={8}>
-                <Flex flexDirection="column" gap={6}>
-                  <Text textStyle="small" style={{ fontWeight: 700 }}>{step.step}</Text>
-                  <RecommendationMeta strength={step.recommendationStrength} capability={step.dynatraceCapability} effort={step.effort} />
-                  <TextList items={step.evidenceUsed} />
-                </Flex>
-              </Container>
-            ))}
-          </Flex>
-        </PanelSection>
-        <PanelSection title="Validation Steps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.validationSteps} /></Container></PanelSection>
-        <PanelSection title="Remediation Candidates">
-          <Flex flexDirection="column" gap={8}>
-            {state.result.remediationCandidates.map((candidate, index) => (
-              <Container key={`${candidate.title}-${index}`} color="neutral" variant="default" padding={8}>
-                <Flex flexDirection="column" gap={6}>
-                  <Text textStyle="small" style={{ fontWeight: 700 }}>{candidate.title}</Text>
-                  <RecommendationMeta priority={candidate.priority} strength={candidate.recommendationStrength} capability={candidate.dynatraceCapability} effort={candidate.effort} />
-                  <TextList items={candidate.evidenceUsed} />
-                </Flex>
-              </Container>
-            ))}
-          </Flex>
-        </PanelSection>
-        {state.result.risks.length > 0 && <PanelSection title="Risks"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.risks} /></Container></PanelSection>}
-        {state.result.dataGaps.length > 0 && <PanelSection title="Data Gaps"><Container color="neutral" variant="default" padding={8}><TextList items={state.result.dataGaps} /></Container></PanelSection>}
+          {state.result.affectedComponents.length > 0 && (
+            <PanelSection title="Affected components">
+              <Flex flexDirection="column" gap={4}>
+                {state.result.affectedComponents.map((c, i) => (
+                  <div key={i} style={{ padding: '5px 8px', background: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)', border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)', borderRadius: 6 }}>
+                    <Text textStyle="small" style={{ fontWeight: 600 }}>{c.component}</Text>
+                    {c.evidence.map((ev, j) => (
+                      <Text key={j} textStyle="small" style={{ color: MUTED }}>{ev}</Text>
+                    ))}
+                  </div>
+                ))}
+              </Flex>
+            </PanelSection>
+          )}
+          {steps.length > 0 && (
+            <PanelSection title="Debugging path">
+              <Flex flexDirection="column" gap={6}>
+                {steps.map((step, i) => <ActionCard key={i} item={step} />)}
+              </Flex>
+            </PanelSection>
+          )}
+          {state.result.validationSteps.length > 0 && (
+            <DisclosureRow label="Validation steps" items={state.result.validationSteps} />
+          )}
+          <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
+        </Flex>
+      );
+    }
+    // Remediation: tiered remediation candidates
+    const signals = buildSignalSnapshot(ev, ['occurrence_count', 'affected_services', 'rca_availability', 'root_cause_entity', 'avg_duration', 'event_category']);
+    const actions: ActionCardItem[] = state.result.remediationCandidates.map(r => ({
+      title: r.title,
+      priority: r.priority,
+      strength: r.recommendationStrength,
+      capability: r.dynatraceCapability,
+      effort: r.effort,
+      evidenceUsed: r.evidenceUsed,
+    }));
+    return (
+      <Flex flexDirection="column" gap={8}>
+        {signals.length > 0 && <SignalSnapshot signals={signals} />}
+        <TieredActions items={actions} />
+        {state.result.validationSteps.length > 0 && (
+          <DisclosureRow label="Validation steps" items={state.result.validationSteps} />
+        )}
+        <DisclosureRow label="Risks" items={state.result.risks} />
+        <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
       </Flex>
     );
   }
 
+  // ── Legacy fallback ────────────────────────────────────────────────────────
   if (!isLegacyResult(state.result)) return null;
-  const parsedEvidence = evidenceItems(state.result.action.reason);
-  const primaryDriver = state.result.drivers[0];
-
+  const legacySignalKeys = kind === 'alert_tuning'
+    ? ['occurrence_count', 'alert_event_count', 'avg_duration', 'trend', 'scope_tier', 'recommendation_type']
+    : persona === 'executive'
+      ? ['operational_cost', 'potential_savings', 'affected_users', 'occurrence_count', 'trend', 'rca_availability']
+      : ['occurrence_count', 'trend', 'rca_availability', 'affected_entity_count', 'avg_duration', 'affected_users'];
+  const signals = buildSignalSnapshot(ev, legacySignalKeys);
+  const action: ActionCardItem = {
+    title: state.result.action.title,
+    priority: state.result.action.priority,
+    strength: state.result.action.strength,
+    capability: state.result.action.capability,
+    evidenceUsed: evidenceItems(state.result.action.reason).map(i => `${i.label}: ${i.value}`),
+  };
   return (
     <Flex flexDirection="column" gap={8}>
-      <PanelSection title="Summary">
-        <Container color="neutral" variant="default" padding={8}>
-          <Text textStyle="small">{state.result.assessment}</Text>
-        </Container>
-      </PanelSection>
-      <PanelSection title="Observed Signals">
-        <SignalGrid>
-          {state.result.drivers.slice(0, 4).map(driver => (
-            <SignalCard
-              key={driver.signal}
-              label={signalLabel(driver.signal)}
-              value={displaySignalValue(driver.signal, driver.value)}
-            />
-          ))}
-        </SignalGrid>
-      </PanelSection>
-      <PanelSection title="Recommendation">
-        <Container color="neutral" variant="default" padding={8}>
-          <Flex flexDirection="column" gap={6}>
-            <Flex justifyContent="space-between" alignItems="flex-start" gap={8}>
-              <Text textStyle="small" style={{ fontWeight: 700 }}>{state.result.action.title}</Text>
-              <InlineMetaChip tone={priorityTone(state.result.action.priority)}>
-                {displayPriority(state.result.action.priority)}
-              </InlineMetaChip>
-            </Flex>
-            <Flex alignItems="center" gap={6} style={{ flexWrap: 'wrap' }}>
-              <InlineMetaChip tone="accent">{state.result.action.capability}</InlineMetaChip>
-              {state.result.action.strength !== 'Evidence-backed' && (
-                <InlineMetaChip tone={state.result.action.strength === 'Candidate' ? 'warning' : 'neutral'}>
-                  {displayStrength(state.result.action.strength)}
-                </InlineMetaChip>
-              )}
-            </Flex>
-            {primaryDriver && (
-              <Container color="neutral" variant="emphasized" padding={8}>
-                <Flex flexDirection="column" gap={4}>
-                  <Text textStyle="small" style={{ fontWeight: 600 }}>Why it matters</Text>
-                  <Text textStyle="small" style={{ color: MUTED }}>{primaryDriver.whyItMatters}</Text>
-                </Flex>
-              </Container>
-            )}
-            <Flex flexDirection="column" gap={4}>
-              <Text textStyle="small" style={{ fontWeight: 600 }}>Recommended action</Text>
-              <Text textStyle="small">{state.result.action.title}</Text>
-            </Flex>
-            {parsedEvidence.length > 0 && (
-              <Flex flexDirection="column" gap={6}>
-                <Text textStyle="small" style={{ color: MUTED, fontWeight: 600 }}>
-                  Evidence used: {parsedEvidence.map(item => `${item.label} ${item.value}`).join(' | ')}
-                </Text>
-              </Flex>
-            )}
-          </Flex>
-        </Container>
-      </PanelSection>
-      {state.result.dataGaps.length > 0 && (
-        <PanelSection title="Missing Evidence">
-          <Container color="neutral" variant="default" padding={8}>
-            <Flex flexDirection="column" gap={4}>
-              {state.result.dataGaps.map(gap => (
-                <Text key={gap} textStyle="small" style={{ color: MUTED }}>{gap}</Text>
-              ))}
-            </Flex>
-          </Container>
-        </PanelSection>
-      )}
-      {state.result.risks && state.result.risks.length > 0 && (
-        <PanelSection title="Tuning Risks">
-          <Container color="neutral" variant="default" padding={8}>
-            <Flex flexDirection="column" gap={4}>
-              {state.result.risks.map(risk => (
-                <Text key={risk} textStyle="small" style={{ color: MUTED }}>{risk}</Text>
-              ))}
-            </Flex>
-          </Container>
-        </PanelSection>
-      )}
+      {signals.length > 0 && <SignalSnapshot signals={signals} />}
+      <ActionCard item={action} />
+      <DisclosureRow label="Risks" items={state.result.risks ?? []} />
+      <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
     </Flex>
   );
 }
@@ -1334,7 +1454,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {execActionState.status === 'loading' ? 'Generating...' : execButtonLabel}
                       </Button>
                       <RawPrompt pattern={pattern} kind={execActionKind} />
-                      <GeneratedOutput state={execActionState} />
+                      <GeneratedOutput state={execActionState} pattern={pattern} kind={execActionKind} />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1361,7 +1481,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {analysis.status === 'loading' ? 'Analysing...' : 'Get Analysis'}
                       </Button>
                       <RawPrompt pattern={pattern} kind="analysis" />
-                      <GeneratedOutput state={analysis} />
+                      <GeneratedOutput state={analysis} pattern={pattern} kind="analysis" />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1386,7 +1506,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {remediation.status === 'loading' ? 'Generating...' : 'Get Remediation Path'}
                       </Button>
                       <RawPrompt pattern={pattern} kind="remediation" />
-                      <GeneratedOutput state={remediation} />
+                      <GeneratedOutput state={remediation} pattern={pattern} kind="remediation" />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1411,7 +1531,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                         {alertTuning.status === 'loading' ? 'Generating...' : 'Suggest Alert Tuning'}
                       </Button>
                       <RawPrompt pattern={pattern} kind="alert_tuning" />
-                      <GeneratedOutput state={alertTuning} />
+                      <GeneratedOutput state={alertTuning} pattern={pattern} kind="alert_tuning" />
                     </Flex>
                   </Container>
                 </Flex>
