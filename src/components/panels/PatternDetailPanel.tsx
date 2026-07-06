@@ -7,6 +7,13 @@ import { EmptyState } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { PatternDetail, TrendDirection } from '../../types/views';
 import { buildSignalPrompt } from '../../persona/PersonaPromptBuilder';
+import {
+  ActionPlanOutputs,
+  actionPlanFilename,
+  buildActionPlanExport,
+  copyToClipboard,
+  downloadTextFile,
+} from '../../lib/action-plan-export';
 
 const MUTED  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
 const DANGER = 'var(--dt-colors-text-critical-default, #c41a00)';
@@ -17,6 +24,7 @@ const ACCENT = 'var(--dt-colors-background-container-primary-accent, #1496ff)';
 interface PatternDetailPanelProps {
   pattern: PatternDetail | null;
   onClose: () => void;
+  timeWindow?: string;
 }
 
 type RecommendationStatus = 'idle' | 'loading' | 'ready' | 'insufficient' | 'error';
@@ -1447,7 +1455,81 @@ function LegacyGeneratedOutput({ state }: { state: RecommendationState }) {
   );
 }
 
-export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps) {
+function readyResult(state: RecommendationState): RecommendationResult | undefined {
+  return state.status === 'ready' ? state.result : undefined;
+}
+
+function hasActionPlanOutput(outputs: ActionPlanOutputs): boolean {
+  return Boolean(outputs.analysis || outputs.remediation || outputs.recommendations);
+}
+
+function ExportActionPlanControl({
+  pattern,
+  timeWindow,
+  outputs,
+}: {
+  pattern: PatternDetail;
+  timeWindow?: string;
+  outputs: ActionPlanOutputs;
+}) {
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  if (pattern.assistContext.persona === 'executive' || !hasActionPlanOutput(outputs)) return null;
+
+  const input = {
+    persona: pattern.assistContext.persona,
+    objective: pattern.assistContext.objective,
+    timeWindow: timeWindow || 'Not available',
+    pattern: {
+      id: pattern.id,
+      title: pattern.title,
+      problemIds: pattern.assistContext.problemIds,
+    },
+    observedSignals: pattern.assistContext.evidence,
+    outputs,
+  };
+
+  async function run(action: 'copy-md' | 'download-md' | 'download-json') {
+    try {
+      const generatedAt = new Date().toISOString();
+      const exportInput = { ...input, generatedAt };
+      const exported = buildActionPlanExport(exportInput);
+      if (action === 'copy-md') {
+        await copyToClipboard(exported.markdown);
+        setStatus({ type: 'success', message: 'Markdown copied.' });
+      } else if (action === 'download-md') {
+        downloadTextFile(actionPlanFilename(exportInput, 'md'), exported.markdown, 'text/markdown;charset=utf-8');
+        setStatus({ type: 'success', message: 'Markdown downloaded.' });
+      } else {
+        downloadTextFile(actionPlanFilename(exportInput, 'json'), JSON.stringify(exported.json, null, 2), 'application/json;charset=utf-8');
+        setStatus({ type: 'success', message: 'JSON downloaded.' });
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Export failed.' });
+    }
+  }
+
+  return (
+    <Container color="neutral" variant="default" padding={8}>
+      <Flex flexDirection="column" gap={6}>
+        <Flex justifyContent="space-between" alignItems="center" gap={8}>
+          <Text textStyle="small" style={{ fontWeight: 700 }}>Export Action Plan</Text>
+          {status && (
+            <Text textStyle="small" style={{ color: status.type === 'success' ? OK : DANGER }}>
+              {status.message}
+            </Text>
+          )}
+        </Flex>
+        <Flex gap={6} style={{ flexWrap: 'wrap' }}>
+          <Button variant="default" onClick={() => run('copy-md')}>Copy Markdown</Button>
+          <Button variant="default" onClick={() => run('download-md')}>Download Markdown</Button>
+          <Button variant="default" onClick={() => run('download-json')}>Download JSON</Button>
+        </Flex>
+      </Flex>
+    </Container>
+  );
+}
+
+export function PatternDetailPanel({ pattern, onClose, timeWindow }: PatternDetailPanelProps) {
   const [panelTab, setPanelTab] = useState(0);
   const [recommendation, setRecommendation] = useState<RecommendationState>({ status: 'idle' });
   const [analysis, setAnalysis] = useState<RecommendationState>({ status: 'idle' });
@@ -1462,6 +1544,11 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
   const execActionState = execActionKind === 'remediation' ? remediation : recommendation;
   const execTabTitle = activeObjective === 'cost_impact' ? 'Remediation' : 'Recommendations';
   const execButtonLabel = activeObjective === 'cost_impact' ? 'Get Remediation Path' : 'Generate Recommendations';
+  const actionPlanOutputs: ActionPlanOutputs = {
+    analysis: readyResult(analysis),
+    remediation: readyResult(remediation),
+    recommendations: readyResult(recommendation) ?? readyResult(alertTuning),
+  };
 
   useEffect(() => {
     setRecommendation({ status: 'idle' });
@@ -1724,6 +1811,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                       <RawPrompt pattern={pattern} kind="analysis" />
                       <RawResponse state={analysis} />
                       <GeneratedOutput state={analysis} pattern={pattern} kind="analysis" />
+                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} outputs={actionPlanOutputs} />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1750,6 +1838,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                       <RawPrompt pattern={pattern} kind="remediation" />
                       <RawResponse state={remediation} />
                       <GeneratedOutput state={remediation} pattern={pattern} kind="remediation" />
+                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} outputs={actionPlanOutputs} />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1776,6 +1865,7 @@ export function PatternDetailPanel({ pattern, onClose }: PatternDetailPanelProps
                       <RawPrompt pattern={pattern} kind="alert_tuning" />
                       <RawResponse state={alertTuning} />
                       <GeneratedOutput state={alertTuning} pattern={pattern} kind="alert_tuning" />
+                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} outputs={actionPlanOutputs} />
                     </Flex>
                   </Container>
                 </Flex>

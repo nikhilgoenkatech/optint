@@ -114,6 +114,7 @@ export function App() {
     () => buildWorkspaceViewModel('developer', objective, developerPatterns, buildDeveloperKPIs(developerPatterns), selectedPatternId, costConfig),
     [objective, developerPatterns, selectedPatternId, costConfig],
   );
+  const timeWindowLabel = `${timeframe?.from?.absoluteDate ?? 'now-7d'} to ${timeframe?.to?.absoluteDate ?? 'now'}`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -181,6 +182,7 @@ export function App() {
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={executiveViewModel}
+              timeWindow={timeWindowLabel}
             />
           </Tab>
           <Tab title={PERSONA_LABELS.sre}>
@@ -189,6 +191,7 @@ export function App() {
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={sreViewModel}
+              timeWindow={timeWindowLabel}
             />
           </Tab>
           <Tab title={PERSONA_LABELS.developer}>
@@ -197,6 +200,7 @@ export function App() {
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={developerViewModel}
+              timeWindow={timeWindowLabel}
               developerScopes={developerScopes}
               selectedDeveloperScopeId={developerScopeId}
               onDeveloperScopeChange={(scopeId: string) => {

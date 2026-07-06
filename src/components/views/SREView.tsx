@@ -16,9 +16,10 @@ interface SREViewProps {
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<SREKPIs>;
+  timeWindow?: string;
 }
 
-export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel }: SREViewProps) {
+export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow }: SREViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -86,6 +87,7 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
         <PatternDetailPanel
           pattern={selectedPattern}
           onClose={() => onPatternSelect?.(null)}
+          timeWindow={timeWindow}
         />
       </div>
     </Flex>

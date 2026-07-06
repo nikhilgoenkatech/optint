@@ -17,6 +17,7 @@ interface DeveloperViewProps {
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<DeveloperKPIs>;
+  timeWindow?: string;
   developerScopes?: DeveloperScopeOption[];
   selectedDeveloperScopeId?: string;
   onDeveloperScopeChange?: (scopeId: string) => void;
@@ -27,6 +28,7 @@ export function DeveloperView({
   onObjectiveChange,
   onPatternSelect,
   viewModel,
+  timeWindow,
   developerScopes = [],
   selectedDeveloperScopeId = '',
   onDeveloperScopeChange,
@@ -133,6 +135,7 @@ export function DeveloperView({
         <PatternDetailPanel
           pattern={selectedPattern}
           onClose={() => onPatternSelect?.(null)}
+          timeWindow={timeWindow}
         />
       </div>
     </Flex>

@@ -16,9 +16,10 @@ interface ExecutiveViewProps {
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<ExecKPIs>;
+  timeWindow?: string;
 }
 
-export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, viewModel }: ExecutiveViewProps) {
+export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow }: ExecutiveViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleExecKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -86,6 +87,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
         <PatternDetailPanel
           pattern={selectedPattern}
           onClose={() => onPatternSelect?.(null)}
+          timeWindow={timeWindow}
         />
       </div>
     </Flex>
