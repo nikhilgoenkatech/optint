@@ -1479,6 +1479,7 @@ function ExportActionPlanControl({
     persona: pattern.assistContext.persona,
     objective: pattern.assistContext.objective,
     timeWindow: timeWindow || 'Not available',
+    patternDetail: pattern,
     pattern: {
       id: pattern.id,
       title: pattern.title,
@@ -1488,17 +1489,20 @@ function ExportActionPlanControl({
     outputs,
   };
 
-  async function run(action: 'copy-md' | 'download-md' | 'download-json') {
+  async function run(action: 'copy-md' | 'download-md' | 'copy-json' | 'download-json') {
     try {
       const generatedAt = new Date().toISOString();
       const exportInput = { ...input, generatedAt };
       const exported = buildActionPlanExport(exportInput);
       if (action === 'copy-md') {
         await copyToClipboard(exported.markdown);
-        setStatus({ type: 'success', message: 'Markdown copied.' });
+        setStatus({ type: 'success', message: 'Action plan copied.' });
       } else if (action === 'download-md') {
         downloadTextFile(actionPlanFilename(exportInput, 'md'), exported.markdown, 'text/markdown;charset=utf-8');
         setStatus({ type: 'success', message: 'Markdown downloaded.' });
+      } else if (action === 'copy-json') {
+        await copyToClipboard(JSON.stringify(exported.json, null, 2));
+        setStatus({ type: 'success', message: 'JSON copied.' });
       } else {
         downloadTextFile(actionPlanFilename(exportInput, 'json'), JSON.stringify(exported.json, null, 2), 'application/json;charset=utf-8');
         setStatus({ type: 'success', message: 'JSON downloaded.' });
@@ -1520,8 +1524,9 @@ function ExportActionPlanControl({
           )}
         </Flex>
         <Flex gap={6} style={{ flexWrap: 'wrap' }}>
-          <Button variant="default" onClick={() => run('copy-md')}>Copy Markdown</Button>
-          <Button variant="default" onClick={() => run('download-md')}>Download Markdown</Button>
+          <Button variant="default" onClick={() => run('copy-md')}>Copy Detailed Markdown</Button>
+          <Button variant="default" onClick={() => run('download-md')}>Download Detailed Markdown</Button>
+          <Button variant="default" onClick={() => run('copy-json')}>Copy JSON</Button>
           <Button variant="default" onClick={() => run('download-json')}>Download JSON</Button>
         </Flex>
       </Flex>
