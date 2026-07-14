@@ -23,6 +23,38 @@ export type EvidenceNotebookInput = {
   outputs: ActionPlanOutputs;
 };
 
+export type EvidenceNotebookSection =
+  | { type: 'markdown'; title: string; content: string }
+  | { type: 'dql'; title: string; query: string; purpose: string; parameters: Record<string, string | number | null>; rowCount: number | null; lastExecutionTime: string | null }
+  | { type: 'table'; title: string; columns: string[]; rows: Array<Array<string | number | null>> }
+  | { type: 'json'; title: string; data: Record<string, unknown> };
+
+export type DynatraceEvidenceNotebookJson = {
+  schemaVersion: '1.0';
+  sourceApplication: 'Calibrate';
+  exportType: 'dynatrace_notebook';
+  generatedAt: string;
+  title: string;
+  persona: string;
+  objective: string;
+  timeWindow: string | null;
+  pattern: {
+    id: string;
+    title: string;
+    problemIds: string[];
+  };
+  sections: EvidenceNotebookSection[];
+  evidenceBoundaries: {
+    dqlRetrievedProblemRecords: true;
+    calibrateGroupedPatternsClientSide: true;
+    assistUsedSelectedPatternSignalsOnly: true;
+    rcaCorrectnessValidated: false;
+    hiddenDependenciesInferred: false;
+    remediationSuccessGuaranteed: false;
+  };
+  disclaimer: string;
+};
+
 const NOTEBOOK_DISCLAIMER = 'This notebook distinguishes DQL retrieval, Calibrate client-side pattern grouping, and Dynatrace Assist interpretation. DQL retrieved the Davis problem records. Calibrate grouped and ranked the selected pattern client-side. Dynatrace Assist recommendations are based only on the observed signals supplied from the selected pattern.';
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -113,6 +145,23 @@ function buildSignalTable(pattern: PatternDetail): string {
   ].join('\n');
 }
 
+function signalRows(pattern: PatternDetail): Array<Array<string | number | null>> {
+  const lineage = pattern.assistContext.lineage ?? {};
+  return Object.entries(pattern.assistContext.evidence)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([signal, value]) => {
+      const source = lineage[signal];
+      return [
+        signal,
+        cleanString(value),
+        cleanString(source?.sourceField, ''),
+        cleanString(source?.transformation, ''),
+        cleanString(source?.fallbackUsed ?? source?.missingReason, ''),
+      ];
+    });
+}
+
 function buildDqlSection(context?: DqlNotebookContext): string {
   const queries = context?.queries ?? [];
   if (!queries.length) return 'No DQL context was available in the current UI state.';
@@ -133,6 +182,178 @@ ${params}
 ${query.dql}
 \`\`\``;
   }).join('\n\n');
+}
+
+function buildDqlSections(context?: DqlNotebookContext): EvidenceNotebookSection[] {
+  return (context?.queries ?? []).map(query => ({
+    type: 'dql',
+    title: query.name,
+    purpose: query.purpose,
+    query: query.dql,
+    parameters: query.parameters ?? {},
+    rowCount: query.rowCount ?? null,
+    lastExecutionTime: query.lastExecutionTime ?? null,
+  }));
+}
+
+function notebookCoreData(input: EvidenceNotebookInput, generatedAt: string) {
+  const pattern = input.pattern;
+  return {
+    generatedAt,
+    context: {
+      application: 'Calibrate',
+      notebookType: 'Evidence Notebook',
+      persona: input.persona,
+      objective: input.objective,
+      timeWindow: cleanString(input.timeWindow, ''),
+      patternTitle: pattern.title,
+      patternId: pattern.id,
+      problemIds: pattern.assistContext.problemIds,
+    },
+    patternOverview: {
+      title: pattern.title,
+      occurrences: pattern.recurrence.occurrences,
+      trend: pattern.recurrence.trend,
+      exposure: pattern.businessImpact.exposure,
+      recoverableValue: pattern.businessImpact.recoverableValue,
+      openIncidents: pattern.businessImpact.openIncidents,
+      affectedUsers: pattern.businessImpact.affectedUsers,
+      evidenceQuality: pattern.technicalActionability.evidenceQuality,
+      investigationReadiness: pattern.technicalActionability.investigationReadiness,
+      remediationEffort: pattern.technicalActionability.remediationEffort,
+      rcaAvailability: cleanString(pattern.assistContext.evidence.rca_availability, ''),
+      rootCauseEntity: cleanString(pattern.assistContext.evidence.root_cause_entity, ''),
+    },
+    recurrenceTimeline: pattern.recurrence.timeline.map(bucket => ({
+      label: bucket.label,
+      count: bucket.count,
+      startTime: bucket.startTime ?? null,
+      endTime: bucket.endTime ?? null,
+      estimated: bucket.estimated ?? false,
+    })),
+    assistInputBoundary: {
+      persona: pattern.assistContext.persona,
+      objective: pattern.assistContext.objective,
+      statement: 'Assist received selected-pattern evidence only. Missing evidence remains a data gap and is not treated as evidence of a problem.',
+    },
+    assistInterpretation: [
+      ...outputSummary(input.outputs.analysis),
+      ...outputSummary(input.outputs.recommendations),
+      ...outputSummary(input.outputs.remediation),
+    ],
+    actions: [
+      ...outputActions(input.outputs.analysis),
+      ...outputActions(input.outputs.recommendations),
+      ...outputActions(input.outputs.remediation),
+    ],
+    dataGaps: outputGaps(input.outputs),
+  };
+}
+
+export function buildEvidenceNotebookJson(input: EvidenceNotebookInput): DynatraceEvidenceNotebookJson {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const pattern = input.pattern;
+  const core = notebookCoreData(input, generatedAt);
+  const sections: EvidenceNotebookSection[] = [
+    {
+      type: 'markdown',
+      title: 'Context',
+      content: [
+        '# Calibrate Evidence Notebook',
+        '',
+        `- Persona: ${input.persona}`,
+        `- Objective: ${input.objective}`,
+        `- Time window: ${cleanString(input.timeWindow)}`,
+        `- Generated at: ${generatedAt}`,
+        `- Selected pattern: ${pattern.title}`,
+        `- Pattern ID: ${pattern.id}`,
+        '',
+        NOTEBOOK_DISCLAIMER,
+      ].join('\n'),
+    },
+    ...buildDqlSections(input.dqlContext),
+    {
+      type: 'markdown',
+      title: 'Query and Data Lineage Notes',
+      content: [
+        '- DQL retrieves non-duplicate Davis problem records for the selected time window.',
+        '- Pattern grouping is performed by Calibrate client-side after DQL results are normalized.',
+        '- Remediation and recommendations are generated by Dynatrace Assist from selected pattern signals, not by a remediation DQL query.',
+        '- RCA availability means Davis supplied a root-cause entity; Calibrate does not independently validate RCA correctness.',
+      ].join('\n'),
+    },
+    {
+      type: 'table',
+      title: 'Observed Signals and Transformations',
+      columns: ['Signal', 'Observed value', 'Source field', 'Calibrate transformation', 'Fallback / missing note'],
+      rows: signalRows(pattern),
+    },
+    {
+      type: 'table',
+      title: 'Recurrence Timeline',
+      columns: ['Label', 'Count', 'Start time', 'End time', 'Estimated'],
+      rows: pattern.recurrence.timeline.map(bucket => [
+        bucket.label,
+        bucket.count,
+        bucket.startTime ?? null,
+        bucket.endTime ?? null,
+        bucket.estimated ? 'true' : 'false',
+      ]),
+    },
+    {
+      type: 'json',
+      title: 'Selected Pattern Evidence Context',
+      data: core,
+    },
+    {
+      type: 'markdown',
+      title: 'What Calibrate Did Not Infer',
+      content: [
+        '- RCA correctness',
+        '- Blast-radius completeness',
+        '- Hidden service dependencies',
+        '- Ownership failures',
+        '- Governance failures',
+        '- Release or deployment causation',
+        '- Future incidents',
+        '- Guaranteed outcomes',
+        '- MTTR reduction',
+        '- Cost savings not present in the evidence',
+        '- Remediation success',
+      ].join('\n'),
+    },
+    {
+      type: 'markdown',
+      title: 'Evidence Disclaimer',
+      content: 'Calibrate recommendations are derived only from the observed signals included in this notebook. Missing evidence is treated as a data gap and not as evidence of a problem. Root-cause availability indicates whether a root-cause entity was supplied; it does not represent independent validation of RCA correctness.',
+    },
+  ];
+
+  return {
+    schemaVersion: '1.0',
+    sourceApplication: 'Calibrate',
+    exportType: 'dynatrace_notebook',
+    generatedAt,
+    title: `Calibrate Evidence Notebook - ${pattern.title}`,
+    persona: input.persona,
+    objective: input.objective,
+    timeWindow: cleanString(input.timeWindow, ''),
+    pattern: {
+      id: pattern.id,
+      title: pattern.title,
+      problemIds: pattern.assistContext.problemIds,
+    },
+    sections,
+    evidenceBoundaries: {
+      dqlRetrievedProblemRecords: true,
+      calibrateGroupedPatternsClientSide: true,
+      assistUsedSelectedPatternSignalsOnly: true,
+      rcaCorrectnessValidated: false,
+      hiddenDependenciesInferred: false,
+      remediationSuccessGuaranteed: false,
+    },
+    disclaimer: NOTEBOOK_DISCLAIMER,
+  };
 }
 
 export function buildEvidenceNotebookMarkdown(input: EvidenceNotebookInput): string {
@@ -248,12 +469,12 @@ Calibrate recommendations are derived only from the observed signals included in
 `;
 }
 
-export function evidenceNotebookFilename(input: EvidenceNotebookInput): string {
+export function evidenceNotebookFilename(input: EvidenceNotebookInput, extension: 'md' | 'json' = 'json'): string {
   const date = (input.generatedAt ?? new Date().toISOString()).slice(0, 10);
   const patternPart = (input.pattern.id || input.pattern.title || 'pattern')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'pattern';
-  return `calibrate-evidence-notebook-${input.persona}-${input.objective}-${patternPart}-${date}.md`;
+  return `calibrate-evidence-notebook-${input.persona}-${input.objective}-${patternPart}-${date}.${extension}`;
 }

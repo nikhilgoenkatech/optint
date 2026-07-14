@@ -15,7 +15,7 @@ import {
   downloadTextFile,
 } from '../../lib/action-plan-export';
 import {
-  buildEvidenceNotebookMarkdown,
+  buildEvidenceNotebookJson,
   evidenceNotebookFilename,
   type DqlNotebookContext,
 } from '../../lib/evidence-notebook-export';
@@ -1497,7 +1497,7 @@ function ExportActionPlanControl({
     outputs,
   };
 
-  async function run(action: 'copy-md' | 'download-md' | 'copy-json' | 'download-json' | 'notebook') {
+  async function run(action: 'copy-md' | 'download-md' | 'copy-json' | 'download-json' | 'copy-notebook-json' | 'download-notebook-json') {
     try {
       const generatedAt = new Date().toISOString();
       const exportInput = { ...input, generatedAt };
@@ -1511,7 +1511,7 @@ function ExportActionPlanControl({
       } else if (action === 'copy-json') {
         await copyToClipboard(JSON.stringify(exported.json, null, 2));
         setStatus({ type: 'success', message: 'JSON copied.' });
-      } else if (action === 'notebook') {
+      } else if (action === 'copy-notebook-json' || action === 'download-notebook-json') {
         const notebookInput = {
           persona: pattern.assistContext.persona,
           objective: pattern.assistContext.objective,
@@ -1521,9 +1521,15 @@ function ExportActionPlanControl({
           dqlContext: dqlNotebookContext,
           outputs,
         };
-        const notebook = buildEvidenceNotebookMarkdown(notebookInput);
-        downloadTextFile(evidenceNotebookFilename(notebookInput), notebook, 'text/markdown;charset=utf-8');
-        setStatus({ type: 'success', message: 'Evidence notebook created.' });
+        const notebook = buildEvidenceNotebookJson(notebookInput);
+        const notebookJson = JSON.stringify(notebook, null, 2);
+        if (action === 'copy-notebook-json') {
+          await copyToClipboard(notebookJson);
+          setStatus({ type: 'success', message: 'Notebook JSON copied.' });
+        } else {
+          downloadTextFile(evidenceNotebookFilename(notebookInput, 'json'), notebookJson, 'application/json;charset=utf-8');
+          setStatus({ type: 'success', message: 'Notebook JSON downloaded.' });
+        }
       } else {
         downloadTextFile(actionPlanFilename(exportInput, 'json'), JSON.stringify(exported.json, null, 2), 'application/json;charset=utf-8');
         setStatus({ type: 'success', message: 'JSON downloaded.' });
@@ -1549,7 +1555,8 @@ function ExportActionPlanControl({
           <Button variant="default" onClick={() => run('download-md')}>Download Detailed Markdown</Button>
           <Button variant="default" onClick={() => run('copy-json')}>Copy JSON</Button>
           <Button variant="default" onClick={() => run('download-json')}>Download JSON</Button>
-          <Button variant="default" onClick={() => run('notebook')}>Create Evidence Notebook</Button>
+          <Button variant="default" onClick={() => run('copy-notebook-json')}>Copy Notebook JSON</Button>
+          <Button variant="default" onClick={() => run('download-notebook-json')}>Download Notebook JSON</Button>
         </Flex>
       </Flex>
     </Container>
