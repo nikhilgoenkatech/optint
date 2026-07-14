@@ -10,6 +10,7 @@ import { ExecKpiRow } from '../kpis/ExecKpiRow';
 import { ActFirstMap } from '../charts/ActFirstMap';
 import { PatternTable } from '../table/PatternTable';
 import { PatternDetailPanel } from '../panels/PatternDetailPanel';
+import type { DqlNotebookContext } from '../../lib/evidence-notebook-export';
 
 interface ExecutiveViewProps {
   objective: ObjectiveType;
@@ -17,9 +18,10 @@ interface ExecutiveViewProps {
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<ExecKPIs>;
   timeWindow?: string;
+  dqlNotebookContext?: DqlNotebookContext;
 }
 
-export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow }: ExecutiveViewProps) {
+export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow, dqlNotebookContext }: ExecutiveViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleExecKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -88,6 +90,7 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
           pattern={selectedPattern}
           onClose={() => onPatternSelect?.(null)}
           timeWindow={timeWindow}
+          dqlNotebookContext={dqlNotebookContext}
         />
       </div>
     </Flex>

@@ -10,6 +10,7 @@ import { SREKpiRow } from '../kpis/SREKpiRow';
 import { ReliabilityRiskMatrix } from '../charts/ReliabilityRiskMatrix';
 import { PatternTable } from '../table/PatternTable';
 import { PatternDetailPanel } from '../panels/PatternDetailPanel';
+import type { DqlNotebookContext } from '../../lib/evidence-notebook-export';
 
 interface SREViewProps {
   objective: ObjectiveType;
@@ -17,9 +18,10 @@ interface SREViewProps {
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<SREKPIs>;
   timeWindow?: string;
+  dqlNotebookContext?: DqlNotebookContext;
 }
 
-export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow }: SREViewProps) {
+export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow, dqlNotebookContext }: SREViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -88,6 +90,7 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
           pattern={selectedPattern}
           onClose={() => onPatternSelect?.(null)}
           timeWindow={timeWindow}
+          dqlNotebookContext={dqlNotebookContext}
         />
       </div>
     </Flex>

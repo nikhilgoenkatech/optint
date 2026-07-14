@@ -11,6 +11,7 @@ import { DeveloperHeatMap } from '../charts/DeveloperHeatMap';
 import { PatternTable } from '../table/PatternTable';
 import { PatternDetailPanel } from '../panels/PatternDetailPanel';
 import { DeveloperScopeOption } from '../../lib/developer-scope';
+import type { DqlNotebookContext } from '../../lib/evidence-notebook-export';
 
 interface DeveloperViewProps {
   objective: ObjectiveType;
@@ -18,6 +19,7 @@ interface DeveloperViewProps {
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<DeveloperKPIs>;
   timeWindow?: string;
+  dqlNotebookContext?: DqlNotebookContext;
   developerScopes?: DeveloperScopeOption[];
   selectedDeveloperScopeId?: string;
   onDeveloperScopeChange?: (scopeId: string) => void;
@@ -29,6 +31,7 @@ export function DeveloperView({
   onPatternSelect,
   viewModel,
   timeWindow,
+  dqlNotebookContext,
   developerScopes = [],
   selectedDeveloperScopeId = '',
   onDeveloperScopeChange,
@@ -136,6 +139,7 @@ export function DeveloperView({
           pattern={selectedPattern}
           onClose={() => onPatternSelect?.(null)}
           timeWindow={timeWindow}
+          dqlNotebookContext={dqlNotebookContext}
         />
       </div>
     </Flex>

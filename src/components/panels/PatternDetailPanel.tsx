@@ -14,6 +14,11 @@ import {
   copyToClipboard,
   downloadTextFile,
 } from '../../lib/action-plan-export';
+import {
+  buildEvidenceNotebookMarkdown,
+  evidenceNotebookFilename,
+  type DqlNotebookContext,
+} from '../../lib/evidence-notebook-export';
 
 const MUTED  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
 const DANGER = 'var(--dt-colors-text-critical-default, #c41a00)';
@@ -25,6 +30,7 @@ interface PatternDetailPanelProps {
   pattern: PatternDetail | null;
   onClose: () => void;
   timeWindow?: string;
+  dqlNotebookContext?: DqlNotebookContext;
 }
 
 type RecommendationStatus = 'idle' | 'loading' | 'ready' | 'insufficient' | 'error';
@@ -1466,10 +1472,12 @@ function hasActionPlanOutput(outputs: ActionPlanOutputs): boolean {
 function ExportActionPlanControl({
   pattern,
   timeWindow,
+  dqlNotebookContext,
   outputs,
 }: {
   pattern: PatternDetail;
   timeWindow?: string;
+  dqlNotebookContext?: DqlNotebookContext;
   outputs: ActionPlanOutputs;
 }) {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -1489,7 +1497,7 @@ function ExportActionPlanControl({
     outputs,
   };
 
-  async function run(action: 'copy-md' | 'download-md' | 'copy-json' | 'download-json') {
+  async function run(action: 'copy-md' | 'download-md' | 'copy-json' | 'download-json' | 'notebook') {
     try {
       const generatedAt = new Date().toISOString();
       const exportInput = { ...input, generatedAt };
@@ -1503,6 +1511,19 @@ function ExportActionPlanControl({
       } else if (action === 'copy-json') {
         await copyToClipboard(JSON.stringify(exported.json, null, 2));
         setStatus({ type: 'success', message: 'JSON copied.' });
+      } else if (action === 'notebook') {
+        const notebookInput = {
+          persona: pattern.assistContext.persona,
+          objective: pattern.assistContext.objective,
+          timeWindow: timeWindow || 'Not available',
+          generatedAt,
+          pattern,
+          dqlContext: dqlNotebookContext,
+          outputs,
+        };
+        const notebook = buildEvidenceNotebookMarkdown(notebookInput);
+        downloadTextFile(evidenceNotebookFilename(notebookInput), notebook, 'text/markdown;charset=utf-8');
+        setStatus({ type: 'success', message: 'Evidence notebook created.' });
       } else {
         downloadTextFile(actionPlanFilename(exportInput, 'json'), JSON.stringify(exported.json, null, 2), 'application/json;charset=utf-8');
         setStatus({ type: 'success', message: 'JSON downloaded.' });
@@ -1528,13 +1549,14 @@ function ExportActionPlanControl({
           <Button variant="default" onClick={() => run('download-md')}>Download Detailed Markdown</Button>
           <Button variant="default" onClick={() => run('copy-json')}>Copy JSON</Button>
           <Button variant="default" onClick={() => run('download-json')}>Download JSON</Button>
+          <Button variant="default" onClick={() => run('notebook')}>Create Evidence Notebook</Button>
         </Flex>
       </Flex>
     </Container>
   );
 }
 
-export function PatternDetailPanel({ pattern, onClose, timeWindow }: PatternDetailPanelProps) {
+export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookContext }: PatternDetailPanelProps) {
   const [panelTab, setPanelTab] = useState(0);
   const [recommendation, setRecommendation] = useState<RecommendationState>({ status: 'idle' });
   const [analysis, setAnalysis] = useState<RecommendationState>({ status: 'idle' });
@@ -1816,7 +1838,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow }: PatternDeta
                       <RawPrompt pattern={pattern} kind="analysis" />
                       <RawResponse state={analysis} />
                       <GeneratedOutput state={analysis} pattern={pattern} kind="analysis" />
-                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} outputs={actionPlanOutputs} />
+                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={dqlNotebookContext} outputs={actionPlanOutputs} />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1843,7 +1865,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow }: PatternDeta
                       <RawPrompt pattern={pattern} kind="remediation" />
                       <RawResponse state={remediation} />
                       <GeneratedOutput state={remediation} pattern={pattern} kind="remediation" />
-                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} outputs={actionPlanOutputs} />
+                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={dqlNotebookContext} outputs={actionPlanOutputs} />
                     </Flex>
                   </Container>
                 </Flex>
@@ -1870,7 +1892,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow }: PatternDeta
                       <RawPrompt pattern={pattern} kind="alert_tuning" />
                       <RawResponse state={alertTuning} />
                       <GeneratedOutput state={alertTuning} pattern={pattern} kind="alert_tuning" />
-                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} outputs={actionPlanOutputs} />
+                      <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={dqlNotebookContext} outputs={actionPlanOutputs} />
                     </Flex>
                   </Container>
                 </Flex>

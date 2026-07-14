@@ -23,6 +23,8 @@ import {
 import { ConfigDialog, DEFAULT_EXTENDED_COST_CONFIG, DEFAULT_WEIGHTS, WeightsConfig } from './config/ConfigDialog';
 import { ExtendedCostConfig } from '../models';
 import { applyDeveloperScopeFilter, buildDeveloperScopeTaxonomy } from '../lib/developer-scope';
+import { DQL_QUERIES } from '../queries/dqlQueries';
+import type { DqlNotebookContext } from '../lib/evidence-notebook-export';
 
 const PERSONA_LABELS: Record<PersonaType, string> = {
   executive: 'Executive',
@@ -115,6 +117,22 @@ export function App() {
     [objective, developerPatterns, selectedPatternId, costConfig],
   );
   const timeWindowLabel = `${timeframe?.from?.absoluteDate ?? 'now-7d'} to ${timeframe?.to?.absoluteDate ?? 'now'}`;
+  const dqlNotebookContext: DqlNotebookContext = useMemo(() => {
+    const from = timeframe?.from?.absoluteDate ?? 'now-7d';
+    const to = timeframe?.to?.absoluteDate ?? 'now';
+    const filters = makeFilters(from, to, `${from} to ${to}`);
+    return {
+      queries: [{
+        name: 'rawProblemsQuery',
+        persona: 'all',
+        purpose: 'Retrieve non-duplicate Davis problem records that Calibrate normalizes before client-side pattern grouping.',
+        dql: DQL_QUERIES.fetchProblems(filters),
+        parameters: { from, to },
+        lastExecutionTime: null,
+        rowCount: problems.length,
+      }],
+    };
+  }, [timeframe, problems.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -183,6 +201,7 @@ export function App() {
               onPatternSelect={setSelectedPatternId}
               viewModel={executiveViewModel}
               timeWindow={timeWindowLabel}
+              dqlNotebookContext={dqlNotebookContext}
             />
           </Tab>
           <Tab title={PERSONA_LABELS.sre}>
@@ -192,6 +211,7 @@ export function App() {
               onPatternSelect={setSelectedPatternId}
               viewModel={sreViewModel}
               timeWindow={timeWindowLabel}
+              dqlNotebookContext={dqlNotebookContext}
             />
           </Tab>
           <Tab title={PERSONA_LABELS.developer}>
@@ -201,6 +221,7 @@ export function App() {
               onPatternSelect={setSelectedPatternId}
               viewModel={developerViewModel}
               timeWindow={timeWindowLabel}
+              dqlNotebookContext={dqlNotebookContext}
               developerScopes={developerScopes}
               selectedDeveloperScopeId={developerScopeId}
               onDeveloperScopeChange={(scopeId: string) => {
