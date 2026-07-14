@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppHeader } from '@dynatrace/strato-components/layouts';
-import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { TimeframeSelector } from '@dynatrace/strato-components/filters';
 import type { Timeframe } from '@dynatrace/strato-components/core';
@@ -43,7 +42,7 @@ export function App() {
     document.documentElement.setAttribute('data-color-scheme', theme);
   }, [theme]);
 
-  const [personaIndex, setPersonaIndex] = useState(0);
+  const [persona, setPersona] = useState<PersonaType>('executive');
   const [objective, setObjective] = useState<ObjectiveType>('cost_impact');
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
   const [problems, setProblems] = useState<DynatraceProblem[]>([]);
@@ -93,10 +92,13 @@ export function App() {
   const developerPatterns = useMemo(() => detectPatterns(scopedDeveloperProblems).patterns, [scopedDeveloperProblems]);
 
   useEffect(() => {
-    if (selectedPatternId && !patterns.some((pattern) => pattern.patternId === selectedPatternId)) {
-      setSelectedPatternId(null);
+    if (selectedPatternId) {
+      const activePatterns = persona === 'developer' ? developerPatterns : patterns;
+      if (!activePatterns.some((p) => p.patternId === selectedPatternId)) {
+        setSelectedPatternId(null);
+      }
     }
-  }, [patterns, developerPatterns, selectedPatternId]);
+  }, [patterns, developerPatterns, selectedPatternId, persona]);
 
   useEffect(() => {
     if (developerScopeId && !developerScopes.some(scope => scope.id === developerScopeId)) {
@@ -150,6 +152,34 @@ export function App() {
         }}
       >
         <CalibrateLogo />
+
+        {/* Persona segmented control */}
+        <div style={{ display: 'flex', border: '1px solid var(--dt-colors-border-neutral-default,#cfd3d8)', borderRadius: 4, overflow: 'hidden' }}>
+          {(['executive', 'sre', 'developer'] as PersonaType[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => {
+                if (p !== persona) {
+                  setPersona(p);
+                  setSelectedPatternId(null);
+                }
+              }}
+              style={{
+                padding: '5px 14px',
+                border: 'none',
+                borderRadius: 0,
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                background: p === persona ? 'var(--dt-colors-background-container-primary-accent, #1496ff)' : 'transparent',
+                color: p === persona ? '#fff' : 'var(--dt-colors-text-neutral-subdued, #74777a)',
+              }}
+            >
+              {PERSONA_LABELS[p]}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />
           <div style={{ width: 1, height: 20, background: 'var(--dt-colors-border-neutral-subdued, #ccc)', margin: '0 4px' }} />
@@ -193,8 +223,7 @@ export function App() {
         <div style={{ padding: 24 }}>{loadError}</div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Tabs selectedIndex={personaIndex} onChange={setPersonaIndex} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <Tab title={PERSONA_LABELS.executive}>
+          {persona === 'executive' && (
             <ExecutiveView
               objective={objective}
               onObjectiveChange={setObjective}
@@ -203,8 +232,8 @@ export function App() {
               timeWindow={timeWindowLabel}
               dqlNotebookContext={dqlNotebookContext}
             />
-          </Tab>
-          <Tab title={PERSONA_LABELS.sre}>
+          )}
+          {persona === 'sre' && (
             <SREView
               objective={objective}
               onObjectiveChange={setObjective}
@@ -213,8 +242,8 @@ export function App() {
               timeWindow={timeWindowLabel}
               dqlNotebookContext={dqlNotebookContext}
             />
-          </Tab>
-          <Tab title={PERSONA_LABELS.developer}>
+          )}
+          {persona === 'developer' && (
             <DeveloperView
               objective={objective}
               onObjectiveChange={setObjective}
@@ -229,8 +258,7 @@ export function App() {
                 setSelectedPatternId(null);
               }}
             />
-          </Tab>
-        </Tabs>
+          )}
         </div>
       )}
     </div>

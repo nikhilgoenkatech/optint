@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Flex } from '@dynatrace/strato-components/layouts';
-import { Heading } from '@dynatrace/strato-components/typography';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
@@ -43,17 +42,13 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
       <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
 
         <Flex
-          justifyContent="space-between"
+          justifyContent="flex-end"
           alignItems="center"
-          padding={20}
-          style={{ borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
+          style={{ gap: 8, padding: '8px 20px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
         >
-          <Flex flexDirection="column" gap={4}>
-            <Heading level={2} style={{ margin: 0 }}>SRE View</Heading>
-            <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-              Objective: {objectiveLabel}
-            </span>
-          </Flex>
+          <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
+            Objective: {objectiveLabel}
+          </span>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
         </Flex>
 
