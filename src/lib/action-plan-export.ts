@@ -599,10 +599,6 @@ function remediationMarkdown(step: RemediationStepExport): string {
   ].join('\n');
 }
 
-export function buildDetailedActionPlanJson(model: CalibrateActionPlanExport): CalibrateActionPlanExport {
-  return model;
-}
-
 export function buildMcpContext(model: CalibrateActionPlanExport) {
   return mcpContext(model);
 }
@@ -780,20 +776,8 @@ ${model.disclaimer}
 `;
 }
 
-export function buildActionPlanJson(input: ActionPlanExportInput): CalibrateActionPlanExport {
-  return buildDetailedActionPlanJson(buildActionPlanExportModel(input));
-}
-
 export function buildActionPlanMarkdown(input: ActionPlanExportInput): string {
   return buildDetailedActionPlanMarkdown(buildActionPlanExportModel(input));
-}
-
-export function buildActionPlanExport(input: ActionPlanExportInput) {
-  const model = buildActionPlanExportModel(input);
-  return {
-    json: buildDetailedActionPlanJson(model),
-    markdown: buildDetailedActionPlanMarkdown(model),
-  };
 }
 
 export function sanitizeFilenamePart(value: string | null | undefined): string {
@@ -804,10 +788,10 @@ export function sanitizeFilenamePart(value: string | null | undefined): string {
     .slice(0, 80) || 'pattern';
 }
 
-export function actionPlanFilename(input: ActionPlanExportInput, extension: 'md' | 'json'): string {
+export function actionPlanFilename(input: ActionPlanExportInput): string {
   const date = (input.generatedAt ?? new Date().toISOString()).slice(0, 10);
   const patternPart = sanitizeFilenamePart(input.pattern.id || input.pattern.title);
-  return `calibrate-action-plan-${sanitizeFilenamePart(input.persona)}-${sanitizeFilenamePart(input.objective)}-${patternPart}-${date}.${extension}`;
+  return `calibrate-action-plan-${sanitizeFilenamePart(input.persona)}-${sanitizeFilenamePart(input.objective)}-${patternPart}-${date}.md`;
 }
 
 export function downloadTextFile(filename: string, content: string, mimeType: string) {
@@ -820,20 +804,4 @@ export function downloadTextFile(filename: string, content: string, mimeType: st
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
-}
-
-export async function copyToClipboard(content: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content);
-    return;
-  }
-  const textarea = document.createElement('textarea');
-  textarea.value = content;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  const ok = document.execCommand('copy');
-  textarea.remove();
-  if (!ok) throw new Error('Clipboard copy failed.');
 }

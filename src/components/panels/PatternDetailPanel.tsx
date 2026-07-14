@@ -10,8 +10,7 @@ import { buildSignalPrompt } from '../../persona/PersonaPromptBuilder';
 import {
   ActionPlanOutputs,
   actionPlanFilename,
-  buildActionPlanExport,
-  copyToClipboard,
+  buildActionPlanMarkdown,
   downloadTextFile,
 } from '../../lib/action-plan-export';
 import {
@@ -1500,6 +1499,8 @@ function ExportActionPlanControl({
   outputs: ActionPlanOutputs;
 }) {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   if (pattern.assistContext.persona === 'executive' || !hasActionPlanOutput(outputs)) return null;
 
   const input = {
@@ -1516,21 +1517,17 @@ function ExportActionPlanControl({
     outputs,
   };
 
-  async function run(action: 'copy-md' | 'download-md' | 'copy-json' | 'download-json' | 'copy-notebook-json' | 'download-notebook-json') {
+  async function run(action: 'markdown' | 'notebook-json') {
+    if (isExporting) return;
+    setIsExporting(true);
     try {
       const generatedAt = new Date().toISOString();
       const exportInput = { ...input, generatedAt };
-      const exported = buildActionPlanExport(exportInput);
-      if (action === 'copy-md') {
-        await copyToClipboard(exported.markdown);
-        setStatus({ type: 'success', message: 'Action plan copied.' });
-      } else if (action === 'download-md') {
-        downloadTextFile(actionPlanFilename(exportInput, 'md'), exported.markdown, 'text/markdown;charset=utf-8');
-        setStatus({ type: 'success', message: 'Markdown downloaded.' });
-      } else if (action === 'copy-json') {
-        await copyToClipboard(JSON.stringify(exported.json, null, 2));
-        setStatus({ type: 'success', message: 'JSON copied.' });
-      } else if (action === 'copy-notebook-json' || action === 'download-notebook-json') {
+      if (action === 'markdown') {
+        const markdown = buildActionPlanMarkdown(exportInput);
+        downloadTextFile(actionPlanFilename(exportInput), markdown, 'text/markdown;charset=utf-8');
+        setStatus({ type: 'success', message: 'Markdown report downloaded.' });
+      } else {
         const notebookInput = {
           persona: pattern.assistContext.persona,
           objective: pattern.assistContext.objective,
@@ -1542,19 +1539,15 @@ function ExportActionPlanControl({
         };
         const notebook = buildEvidenceNotebookJson(notebookInput);
         const notebookJson = JSON.stringify(notebook, null, 2);
-        if (action === 'copy-notebook-json') {
-          await copyToClipboard(notebookJson);
-          setStatus({ type: 'success', message: 'Notebook JSON copied.' });
-        } else {
-          downloadTextFile(evidenceNotebookFilename(notebookInput, 'json'), notebookJson, 'application/json;charset=utf-8');
-          setStatus({ type: 'success', message: 'Notebook JSON downloaded.' });
-        }
-      } else {
-        downloadTextFile(actionPlanFilename(exportInput, 'json'), JSON.stringify(exported.json, null, 2), 'application/json;charset=utf-8');
-        setStatus({ type: 'success', message: 'JSON downloaded.' });
+        downloadTextFile(evidenceNotebookFilename(notebookInput, 'json'), notebookJson, 'application/json;charset=utf-8');
+        setStatus({ type: 'success', message: 'Notebook JSON downloaded.' });
       }
+      setMenuOpen(false);
     } catch (error) {
-      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Export failed.' });
+      console.error('[Calibrate export] Unable to generate export', error);
+      setStatus({ type: 'error', message: 'Unable to generate the export. Please try again.' });
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -1568,14 +1561,32 @@ function ExportActionPlanControl({
           </Text>
         )}
       </Flex>
-      <Flex gap={6} style={{ flexWrap: 'wrap' }}>
-        <Button variant="default" onClick={() => run('copy-md')}>Copy Detailed Markdown</Button>
-        <Button variant="default" onClick={() => run('download-md')}>Download Detailed Markdown</Button>
-        <Button variant="default" onClick={() => run('copy-json')}>Copy JSON</Button>
-        <Button variant="default" onClick={() => run('download-json')}>Download JSON</Button>
-        <Button variant="default" onClick={() => run('copy-notebook-json')}>Copy Notebook JSON</Button>
-        <Button variant="default" onClick={() => run('download-notebook-json')}>Download Notebook JSON</Button>
-      </Flex>
+      <div style={{ position: 'relative', alignSelf: 'flex-start' }}>
+        <Button variant="default" onClick={() => setMenuOpen(open => !open)} disabled={isExporting}>
+          {isExporting ? 'Exporting...' : 'Export v'}
+        </Button>
+        {menuOpen && (
+          <Flex
+            flexDirection="column"
+            gap={4}
+            style={{
+              position: 'absolute',
+              zIndex: 20,
+              top: 'calc(100% + 4px)',
+              left: 0,
+              minWidth: 220,
+              padding: 6,
+              border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
+              borderRadius: 6,
+              background: 'var(--dt-colors-background-container-neutral-default,#fff)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            }}
+          >
+            <Button variant="default" onClick={() => run('markdown')} disabled={isExporting}>Download Markdown Report</Button>
+            <Button variant="default" onClick={() => run('notebook-json')} disabled={isExporting}>Download Notebook JSON</Button>
+          </Flex>
+        )}
+      </div>
     </Flex>
   );
 }
