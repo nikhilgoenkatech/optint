@@ -10,10 +10,10 @@ interface DeveloperKpiRowProps {
 export function DeveloperKpiRow({ kpis }: DeveloperKpiRowProps) {
   return (
     <Flex gap={12}>
-      <KpiCard metric={kpis.openErrors} />
-      <KpiCard metric={kpis.servicesImpacted} />
-      <KpiCard metric={kpis.needsInvestigation} />
-      <KpiCard metric={kpis.medianResolutionTime} />
+      <KpiCard metric={kpis.openErrors}            semantic="danger"  />
+      <KpiCard metric={kpis.servicesImpacted}      semantic="warning" />
+      <KpiCard metric={kpis.needsInvestigation}    semantic="warning" />
+      <KpiCard metric={kpis.medianResolutionTime}  semantic="neutral" />
     </Flex>
   );
 }

@@ -10,10 +10,10 @@ interface SREKpiRowProps {
 export function SREKpiRow({ kpis }: SREKpiRowProps) {
   return (
     <Flex gap={12}>
-      <KpiCard metric={kpis.operationalDebt} />
-      <KpiCard metric={kpis.automationCandidates} />
-      <KpiCard metric={kpis.repeatOffenders} />
-      <KpiCard metric={kpis.medianMttr} />
+      <KpiCard metric={kpis.operationalDebt}      semantic="danger"  />
+      <KpiCard metric={kpis.automationCandidates} semantic="warning" />
+      <KpiCard metric={kpis.repeatOffenders}      semantic="danger"  />
+      <KpiCard metric={kpis.medianMttr}           semantic="neutral" />
     </Flex>
   );
 }

@@ -945,7 +945,6 @@ function SignalCard({ label, value, tone }: { label: string; value: string | num
         borderLeft: `3px solid ${color}`,
         borderRadius: 6,
         padding: '5px 8px',
-        background: 'var(--dt-colors-background-container-neutral-subdued, #f7f8fa)',
       }}
     >
       <div style={{
@@ -998,13 +997,21 @@ function RecommendationMeta({
   effort?: RecommendationEffort;
 }) {
   return (
-    <Flex alignItems="center" gap={6} style={{ flexWrap: 'wrap' }}>
-      {priority && <InlineMetaChip tone={priorityTone(priority)}>{displayPriority(priority)}</InlineMetaChip>}
-      {strength && strength !== 'Evidence-backed' && (
-        <InlineMetaChip tone={strength === 'Candidate' ? 'warning' : 'neutral'}>{displayStrength(strength)}</InlineMetaChip>
+    <Flex alignItems="center" gap={8} style={{ flexWrap: 'wrap' }}>
+      {priority && (
+        <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_TEXT_COLOR[priority], letterSpacing: '0.04em' }}>
+          {priority === 'IMMEDIATE' ? '⚡' : priority === 'SHORT_TERM' ? '⏱' : '◎'} {displayPriority(priority).toUpperCase()}
+        </span>
       )}
-      {capability && <InlineMetaChip tone="accent">{capability}</InlineMetaChip>}
-      {effort && <InlineMetaChip>{effort} effort</InlineMetaChip>}
+      {capability && (
+        <span style={{ fontSize: 10, color: 'var(--dt-colors-text-primary-default,#0b65c2)', border: '1px solid var(--dt-colors-border-primary-default,#1496ff)', borderRadius: 3, padding: '1px 5px' }}>
+          {capability}
+        </span>
+      )}
+      {effort && <span style={{ fontSize: 10, color: MUTED }}>{effort} effort</span>}
+      {strength && strength !== 'Evidence-backed' && (
+        <span style={{ fontSize: 10, color: strength === 'Candidate' ? WARNING : MUTED }}>{displayStrength(strength)}</span>
+      )}
     </Flex>
   );
 }
@@ -1047,7 +1054,6 @@ function SignalSnapshot({ signals }: { signals: KpiSignal[] }) {
         const color = textColor[tone];
         return (
           <div key={sig.label} style={{
-            background: 'var(--dt-colors-background-container-neutral-default,#fff)',
             border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
             borderRadius: 6,
             padding: '6px 8px',
@@ -1082,31 +1088,42 @@ type ActionCardItem = {
   evidenceUsed?: string[];
 };
 
+const PRIORITY_TEXT_COLOR: Record<RecommendationPriority, string> = {
+  IMMEDIATE: 'var(--dt-colors-text-critical-default,#c41425)',
+  SHORT_TERM: 'var(--dt-colors-text-warning-default,#b45309)',
+  STRATEGIC: 'var(--dt-colors-text-success-default,#1a7a4a)',
+};
+
 function ActionCard({ item }: { item: ActionCardItem }) {
-  const borderColor =
-    item.priority === 'IMMEDIATE' ? 'var(--dt-colors-text-critical-default,#c41425)'
-    : item.priority === 'SHORT_TERM' ? 'var(--dt-colors-text-warning-default,#b45309)'
-    : item.priority === 'STRATEGIC' ? 'var(--dt-colors-text-success-default,#1a7a4a)'
-    : 'var(--dt-colors-border-neutral-subdued,#d5d8df)';
+  const borderColor = item.priority ? PRIORITY_TEXT_COLOR[item.priority] : 'var(--dt-colors-border-neutral-subdued,#d5d8df)';
   return (
     <div style={{
-      background: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)',
       border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
       borderLeft: `3px solid ${borderColor}`,
       borderRadius: 6,
-      padding: '9px 10px',
+      padding: '8px 10px',
       display: 'flex',
       flexDirection: 'column',
-      gap: 5,
+      gap: 4,
     }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--dt-colors-text-neutral-default,#23282d)', lineHeight: 1.4 }}>{item.title}</span>
-      <Flex alignItems="center" gap={4} style={{ flexWrap: 'wrap' }}>
-        {item.priority && <InlineMetaChip tone={priorityTone(item.priority)}>{displayPriority(item.priority)}</InlineMetaChip>}
-        {item.strength && item.strength !== 'Evidence-backed' && (
-          <InlineMetaChip tone={item.strength === 'Candidate' ? 'warning' : 'neutral'}>{displayStrength(item.strength)}</InlineMetaChip>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--dt-colors-text-neutral-default,#23282d)', lineHeight: 1.4 }}>{item.title}</span>
+      <Flex alignItems="center" gap={8} style={{ flexWrap: 'wrap' }}>
+        {item.priority && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_TEXT_COLOR[item.priority], letterSpacing: '0.04em' }}>
+            {item.priority === 'IMMEDIATE' ? '⚡' : item.priority === 'SHORT_TERM' ? '⏱' : '◎'} {displayPriority(item.priority).toUpperCase()}
+          </span>
         )}
-        {item.capability && <InlineMetaChip tone="accent">{item.capability}</InlineMetaChip>}
-        {item.effort && item.effort !== 'Unknown' && <InlineMetaChip>{item.effort} effort</InlineMetaChip>}
+        {item.capability && (
+          <span style={{ fontSize: 10, color: 'var(--dt-colors-text-primary-default,#0b65c2)', border: '1px solid var(--dt-colors-border-primary-default,#1496ff)', borderRadius: 3, padding: '1px 5px' }}>
+            {item.capability}
+          </span>
+        )}
+        {item.effort && item.effort !== 'Unknown' && (
+          <span style={{ fontSize: 10, color: MUTED }}>{item.effort} effort</span>
+        )}
+        {item.strength && item.strength !== 'Evidence-backed' && (
+          <span style={{ fontSize: 10, color: item.strength === 'Candidate' ? WARNING : MUTED }}>{displayStrength(item.strength)}</span>
+        )}
       </Flex>
     </div>
   );

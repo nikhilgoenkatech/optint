@@ -43,23 +43,23 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
 
         {/* Decision control strip */}
         <Flex
-          justifyContent="flex-end"
+          justifyContent="space-between"
           alignItems="center"
-          style={{ gap: 8, padding: '8px 20px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
+          style={{ padding: '4px 16px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)', minHeight: 36 }}
         >
           <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-            Objective: {objectiveLabel}
+            Business Risk &amp; Exposure
           </span>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
         </Flex>
 
         {/* KPI row */}
-        <div style={{ padding: '20px 20px 0' }}>
+        <div style={{ padding: '10px 16px 0' }}>
           <ExecKpiRow kpis={kpis} />
         </div>
 
         {/* Primary workspace tabs */}
-        <div style={{ padding: '0 20px 20px', flex: 1 }}>
+        <div style={{ padding: '0 16px 16px', flex: 1 }}>
           <Tabs selectedIndex={viewTab} onChange={setViewTab}>
             <Tab title="Act-First Map">
               <ActFirstMap

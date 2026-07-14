@@ -42,21 +42,21 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
       <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
 
         <Flex
-          justifyContent="flex-end"
+          justifyContent="space-between"
           alignItems="center"
-          style={{ gap: 8, padding: '8px 20px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
+          style={{ padding: '4px 16px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)', minHeight: 36 }}
         >
           <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-            Objective: {objectiveLabel}
+            Reliability &amp; Automation
           </span>
           <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
         </Flex>
 
-        <div style={{ padding: '20px 20px 0' }}>
+        <div style={{ padding: '10px 16px 0' }}>
           <SREKpiRow kpis={kpis} />
         </div>
 
-        <div style={{ padding: '0 20px 20px', flex: 1 }}>
+        <div style={{ padding: '0 16px 16px', flex: 1 }}>
           {patterns.length === 0 && rawProblemRecords.length > 0 ? (
             <RawDqlFallback records={rawProblemRecords} />
           ) : (

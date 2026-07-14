@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AppHeader } from '@dynatrace/strato-components/layouts';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { TimeframeSelector } from '@dynatrace/strato-components/filters';
 import type { Timeframe } from '@dynatrace/strato-components/core';
+
+const DEFAULT_TIMEFRAME: Timeframe = {
+  from: { absoluteDate: 'now-7d', value: 'now-7d', type: 'expression' },
+  to:   { absoluteDate: 'now',    value: 'now',     type: 'expression' },
+};
 import { useCurrentTheme } from '@dynatrace/strato-components/core';
 import { SettingIcon } from '@dynatrace/strato-icons';
 import { CalibrateLogo } from './atoms/CalibrateLogo';
@@ -48,7 +52,7 @@ export function App() {
   const [problems, setProblems] = useState<DynatraceProblem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [timeframe, setTimeframe] = useState<Timeframe | null>(null);
+  const [timeframe, setTimeframe] = useState<Timeframe | null>(DEFAULT_TIMEFRAME);
   const [costConfig, setCostConfig] = useState<ExtendedCostConfig>(DEFAULT_EXTENDED_COST_CONFIG);
   const [weightsConfig, setWeightsConfig] = useState<WeightsConfig>(DEFAULT_WEIGHTS);
   const [configOpen, setConfigOpen] = useState(false);
@@ -138,8 +142,6 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <AppHeader />
-
       <div
         style={{
           display: 'flex',

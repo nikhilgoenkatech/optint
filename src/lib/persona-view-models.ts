@@ -61,19 +61,16 @@ export function buildSREKPIs(patterns: ProblemPattern[]): SREKPIs {
 }
 
 export function buildDeveloperKPIs(patterns: ProblemPattern[]): DeveloperKPIs {
-  const openErrors = patterns.reduce(
-    (sum, pattern) => sum + pattern.problems.filter(problem => problem.status === 'OPEN' && problem.severity === 'ERROR').length,
-    0,
-  );
+  const open = openProblems(patterns);
   const services = new Set(patterns.flatMap(pattern => pattern.affectedServices));
   const needsInvestigation = patterns.filter(pattern => pattern.evidenceQuality === 'LOW' || !pattern.hasRCA).length;
   const durations = resolvedDurations(patterns);
 
   return {
-    openErrors: metric('open-errors', 'Open Errors', String(openErrors), 'Open ERROR-category problems'),
+    openErrors: metric('open-errors', 'Open Problems', String(open), 'Total open problems across all categories'),
     servicesImpacted: metric('services-impacted', 'Services Impacted', String(services.size), 'Unique services or endpoints'),
     needsInvestigation: metric('needs-investigation', 'Needs Investigation', String(needsInvestigation), 'Missing RCA or low evidence quality'),
-    medianResolutionTime: metric('median-resolution-time', 'Median Resolution Time', formatMinutes(medianPositive(durations)), `${durations.length} resolved`),
+    medianResolutionTime: metric('median-resolution-time', 'Median MTTR', formatMinutes(medianPositive(durations)), `${durations.length} resolved`),
   };
 }
 
