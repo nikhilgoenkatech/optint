@@ -1550,46 +1550,40 @@ function ExportActionPlanControl({
   }
 
   return (
-    <Flex
-      flexDirection="column"
-      gap={6}
-      style={{
-        width: '100%',
-        maxWidth: '100%',
-        boxSizing: 'border-box',
-        overflow: 'hidden',
-        marginTop: 8,
-      }}
-    >
-      <Flex
-        flexDirection="column"
-        gap={6}
-        style={{
-          width: '100%',
-          maxWidth: '100%',
-          boxSizing: 'border-box',
-          padding: 8,
-          border: '1px solid var(--dt-colors-border-neutral-subdued,#2f3044)',
-          borderRadius: 8,
-          background: 'var(--dt-colors-background-container-neutral-subdued, rgba(255,255,255,0.03))',
-        }}
-      >
-        <Flex flexDirection="column" gap={4}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Export Action Plan</span>
-          {status && (
-            <Text textStyle="small" style={{ color: status.type === 'success' ? OK : DANGER, whiteSpace: 'normal' }}>
-              {status.message}
-            </Text>
-          )}
-        </Flex>
-        <Button variant="default" onClick={() => run('markdown')} disabled={isExporting} style={{ width: '100%' }}>
-          {isExporting ? 'Generating...' : 'Download Markdown Report'}
-        </Button>
-        <Button variant="default" onClick={() => run('notebook-json')} disabled={isExporting} style={{ width: '100%' }}>
-          {isExporting ? 'Generating...' : 'Download Notebook JSON'}
-        </Button>
+    <div style={{ borderTop: '1px solid var(--dt-colors-border-neutral-subdued, #eee)', paddingTop: 8, marginTop: 4 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Export</span>
+      {status && (
+        <Text textStyle="small" style={{ color: status.type === 'success' ? OK : DANGER, marginTop: 2, display: 'block' }}>
+          {status.message}
+        </Text>
+      )}
+      <Flex gap={12} style={{ marginTop: 4 }}>
+        <button
+          type="button"
+          onClick={() => run('markdown')}
+          disabled={isExporting}
+          style={{
+            background: 'none', border: 'none', padding: 0, cursor: isExporting ? 'default' : 'pointer',
+            fontSize: 11, color: isExporting ? MUTED : 'var(--dt-colors-text-primary-default, #0b65c2)',
+            textDecoration: 'underline', opacity: isExporting ? 0.5 : 1,
+          }}
+        >
+          ↓ Markdown Report
+        </button>
+        <button
+          type="button"
+          onClick={() => run('notebook-json')}
+          disabled={isExporting}
+          style={{
+            background: 'none', border: 'none', padding: 0, cursor: isExporting ? 'default' : 'pointer',
+            fontSize: 11, color: isExporting ? MUTED : 'var(--dt-colors-text-primary-default, #0b65c2)',
+            textDecoration: 'underline', opacity: isExporting ? 0.5 : 1,
+          }}
+        >
+          ↓ Notebook JSON
+        </button>
       </Flex>
-    </Flex>
+    </div>
   );
 }
 
@@ -1649,13 +1643,14 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
 
   return (
     <Surface
-      elevation="raised"
+      elevation="flat"
       style={{
         width: '100%',
         height: '100%',
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
+        borderLeft: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
       }}
       padding={0}
     >
@@ -1663,7 +1658,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
       <Flex
         justifyContent="space-between"
         alignItems="flex-start"
-        padding={16}
+        padding={12}
         style={{ borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}
       >
         <Flex flexDirection="column" gap={4} style={{ flex: 1, minWidth: 0 }}>
@@ -1691,33 +1686,22 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
 
           {/* Preview section placeholders */}
           <Divider />
-          <Text textStyle="small" style={{ color: MUTED, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', fontSize: 10 }}>
+          <Text textStyle="small" style={{ color: MUTED, fontSize: 11 }}>
             When selected, you'll see:
           </Text>
-
-          {[
-            { title: 'Business Impact', desc: 'Risk exposure, recoverable value, affected users' },
-            { title: 'Recurrence Timeline', desc: 'Occurrence history and trend direction' },
-            { title: 'Investigation Friction', desc: 'Evidence quality, readiness, remediation effort' },
-            { title: 'Recommended Remediation', desc: 'Davis-backed action with evidence status' },
-          ].map(section => (
-            <div key={section.title} style={{
-              paddingLeft: 10,
-              borderLeft: `2px solid var(--dt-colors-border-neutral-subdued, #d5d8df)`,
-              opacity: 0.6,
-            }}>
-              <Text textStyle="small" style={{ fontWeight: 600 }}>{section.title}</Text>
-              <Text textStyle="small" style={{ color: MUTED }}>{section.desc}</Text>
-            </div>
-          ))}
+          <Flex flexDirection="column" gap={4} style={{ opacity: 0.6 }}>
+            {['Business impact', 'Timeline', 'Investigation signals', 'Recommendations'].map(item => (
+              <Text key={item} textStyle="small" style={{ color: MUTED }}>· {item}</Text>
+            ))}
+          </Flex>
         </Flex>
       )}
 
       {pattern && (
-        <div style={{ padding: 16 }}>
+        <div style={{ padding: '0 12px 12px' }}>
           <Tabs selectedIndex={panelTab} onChange={setPanelTab}>
             <Tab title="Details">
-              <Flex flexDirection="column" gap={16} style={{ paddingTop: 12 }}>
+              <Flex flexDirection="column" gap={12} style={{ paddingTop: 8 }}>
 
         {/* Business Impact */}
         <PanelSection title={isExecutive ? 'Business Impact' : persona === 'sre' ? 'Reliability Context' : 'Developer Context'}>
@@ -1809,7 +1793,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
             {/* Executive: single objective tab */}
             {isExecutive && (
               <Tab title={execTabTitle}>
-                <Flex flexDirection="column" gap={8} style={{ paddingTop: 8 }}>
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 4 }}>
                   <Button variant="accent" style={{ alignSelf: 'flex-start' }}
                     onClick={() => generateRecommendation(execActionKind)}
                     disabled={execActionState.status === 'loading'}>
@@ -1826,7 +1810,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
             {/* SRE / Developer: Analysis tab (always) */}
             {!isExecutive && (
               <Tab title="Analysis">
-                <Flex flexDirection="column" gap={8} style={{ paddingTop: 8 }}>
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 4 }}>
                   <Button variant="accent" style={{ alignSelf: 'flex-start' }}
                     onClick={() => generateRecommendation('analysis')}
                     disabled={analysis.status === 'loading'}>
@@ -1844,7 +1828,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
             {/* SRE / Developer on cost_impact: Remediation tab */}
             {!isExecutive && activeObjective === 'cost_impact' && (
               <Tab title="Remediation">
-                <Flex flexDirection="column" gap={8} style={{ paddingTop: 8 }}>
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 4 }}>
                   <Button variant="accent" style={{ alignSelf: 'flex-start' }}
                     onClick={() => generateRecommendation('remediation')}
                     disabled={remediation.status === 'loading'}>
@@ -1862,7 +1846,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
             {/* SRE / Developer on alert_optimization: Alert Tuning tab */}
             {!isExecutive && activeObjective === 'alert_optimization' && (
               <Tab title="Alert Tuning">
-                <Flex flexDirection="column" gap={8} style={{ paddingTop: 8 }}>
+                <Flex flexDirection="column" gap={8} style={{ paddingTop: 4 }}>
                   <Button variant="accent" style={{ alignSelf: 'flex-start' }}
                     onClick={() => generateRecommendation('alert_tuning')}
                     disabled={alertTuning.status === 'loading'}>

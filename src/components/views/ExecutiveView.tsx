@@ -4,7 +4,6 @@ import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, ExecKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows, sampleExecKPIs } from '../../fixtures/patterns.sample';
-import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { ExecKpiRow } from '../kpis/ExecKpiRow';
 import { ActFirstMap } from '../charts/ActFirstMap';
 import { PatternTable } from '../table/PatternTable';
@@ -26,7 +25,6 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
   const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
-  const objectiveLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
 
   if (loading) {
     return (
@@ -40,18 +38,6 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
       {/* Primary decision workspace - 72% */}
       <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
-
-        {/* Decision control strip */}
-        <Flex
-          justifyContent="space-between"
-          alignItems="center"
-          style={{ padding: '4px 16px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)', minHeight: 36 }}
-        >
-          <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-            Business Risk &amp; Exposure
-          </span>
-          <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
-        </Flex>
 
         {/* KPI row */}
         <div style={{ padding: '10px 16px 0' }}>

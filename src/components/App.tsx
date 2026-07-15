@@ -29,6 +29,47 @@ import { applyDeveloperScopeFilter, buildDeveloperScopeTaxonomy } from '../lib/d
 import { DQL_QUERIES } from '../queries/dqlQueries';
 import type { DqlNotebookContext } from '../lib/evidence-notebook-export';
 
+const MUTED_COLOR = 'var(--dt-colors-text-neutral-subdued, #74777a)';
+
+const HEADER_SELECT_STYLE: React.CSSProperties = {
+  padding: '5px 24px 5px 10px',
+  borderRadius: 4,
+  border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+  background: 'var(--dt-colors-background-container-neutral-default, #fff)',
+  color: 'var(--dt-colors-text-neutral-default, #23282d)',
+  fontSize: 13,
+  fontWeight: 400,
+  cursor: 'pointer',
+  appearance: 'none' as const,
+  WebkitAppearance: 'none' as const,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2374777a'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 8px center',
+};
+
+const HEADER_SELECT_DISABLED_STYLE: React.CSSProperties = {
+  ...HEADER_SELECT_STYLE,
+  cursor: 'default',
+  color: MUTED_COLOR,
+  backgroundImage: 'none',
+  paddingRight: 10,
+};
+/** Inline "Label: [control]" pair — no stacking, no icons. */
+function ContextGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+      <span style={{ fontSize: 12, color: MUTED_COLOR, whiteSpace: 'nowrap' }}>{label}:</span>
+      {children}
+    </div>
+  );
+}
+
+const SCOPE_LABELS: Record<string, string> = {
+  executive: 'Organisation-wide',
+  sre: 'Platform-wide',
+  developer: 'All services',
+};
+
 const PERSONA_LABELS: Record<PersonaType, string> = {
   executive: 'Executive',
   sre: 'SRE',
@@ -142,21 +183,22 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Row 1: Logo + Persona tabs */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          padding: '10px 24px',
+          padding: '0 16px',
           borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
           background: 'var(--dt-colors-background-base-default, #f2f2f5)',
+          minHeight: 44,
         }}
       >
-        <CalibrateLogo />
-
-        {/* Persona segmented control */}
-        <div style={{ display: 'flex', border: '1px solid var(--dt-colors-border-neutral-default,#cfd3d8)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ flexShrink: 0, marginRight: 16 }}>
+          <CalibrateLogo />
+        </div>
+        <div style={{ width: 1, height: 22, background: 'var(--dt-colors-border-neutral-subdued, #ddd)', marginRight: 4, flexShrink: 0 }} />
+        <div style={{ display: 'flex', alignItems: 'stretch' }}>
           {(['executive', 'sre', 'developer'] as PersonaType[]).map((p) => (
             <button
               key={p}
@@ -167,38 +209,114 @@ export function App() {
                 }
               }}
               style={{
-                padding: '5px 14px',
+                padding: '0 14px',
                 border: 'none',
-                borderRadius: 0,
+                borderBottom: p === persona
+                  ? '2px solid var(--dt-colors-background-container-primary-accent, #1496ff)'
+                  : '2px solid transparent',
+                borderTop: '2px solid transparent',
+                background: 'transparent',
                 cursor: 'pointer',
                 fontSize: 13,
-                fontWeight: 500,
-                background: p === persona ? 'var(--dt-colors-background-container-primary-accent, #1496ff)' : 'transparent',
-                color: p === persona ? '#fff' : 'var(--dt-colors-text-neutral-subdued, #74777a)',
+                fontWeight: p === persona ? 600 : 400,
+                color: p === persona
+                  ? 'var(--dt-colors-text-primary-default, #0b65c2)'
+                  : MUTED_COLOR,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
               }}
             >
               {PERSONA_LABELS[p]}
             </button>
           ))}
         </div>
+      </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Row 2: Analysis context (left) ↔ Workspace controls (right) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 20px',
+          borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
+          background: 'var(--dt-colors-background-container-neutral-subdued, #f8f8fa)',
+          minHeight: 44,
+        }}
+      >
+        {/* Left: analysis context — what + scope */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          <ContextGroup label="Objective">
+            <select
+              value={objective}
+              onChange={e => setObjective(e.target.value as ObjectiveType)}
+              style={HEADER_SELECT_STYLE}
+            >
+              <option value="cost_impact">Cost Impact</option>
+              <option value="alert_optimization">Alert Optimization</option>
+            </select>
+          </ContextGroup>
+
+          <ContextGroup label="Scope">
+            {persona === 'developer' ? (
+              <select
+                value={developerScopeId}
+                onChange={e => {
+                  setDeveloperScopeId(e.target.value);
+                  setSelectedPatternId(null);
+                }}
+                disabled={!developerScopes.length}
+                style={HEADER_SELECT_STYLE}
+              >
+                <option value="">{developerScopes.length ? 'All Services' : 'No scopes found'}</option>
+                {[
+                  { type: 'service', label: 'Services' },
+                  { type: 'team', label: 'Teams' },
+                  { type: 'owner', label: 'Owners' },
+                  { type: 'namespace', label: 'Namespaces' },
+                  { type: 'application', label: 'Applications' },
+                  { type: 'environment', label: 'Environments' },
+                ].map(group => {
+                  const scopes = developerScopes.filter(s => s.type === group.type);
+                  if (!scopes.length) return null;
+                  return (
+                    <optgroup key={group.type} label={group.label}>
+                      {scopes.map(scope => (
+                        <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            ) : (
+              <span style={{ fontSize: 13, color: 'var(--dt-colors-text-neutral-default, #23282d)', whiteSpace: 'nowrap' }}>
+                {SCOPE_LABELS[persona]}
+              </span>
+            )}
+          </ContextGroup>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Right: workspace controls — period + navigation + configure */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-          <div style={{ width: 1, height: 20, background: 'var(--dt-colors-border-neutral-subdued, #ccc)', margin: '0 4px' }} />
+          <div style={{ width: 1, height: 22, background: 'var(--dt-colors-border-neutral-subdued, #ddd)', flexShrink: 0 }} />
           <button
             onClick={() => setConfigOpen(true)}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderRadius: 4,
               border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
-              background: configOpen ? 'var(--dt-colors-background-container-neutral-accent, #e8f0fe)' : 'var(--dt-colors-background-container-neutral-default, #fff)',
+              background: configOpen ? 'var(--dt-colors-background-container-neutral-accent, #e8f0fe)' : 'transparent',
               color: 'var(--dt-colors-text-neutral-default, #23282d)',
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
+              flexShrink: 0,
             }}
           >
             <SettingIcon />

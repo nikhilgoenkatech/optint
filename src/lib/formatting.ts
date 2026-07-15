@@ -8,9 +8,13 @@ export function formatCurrency(value: number): string {
 export function formatMinutes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '-';
   if (value < 60) return `${Math.round(value)}m`;
-  const hours = Math.floor(value / 60);
+  const totalHours = Math.floor(value / 60);
   const minutes = Math.round(value % 60);
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  if (totalHours < 24) return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  if (hours === 0) return `${days}d`;
+  return `${days}d ${hours}h`;
 }
 
 export function medianPositive(values: number[]): number {

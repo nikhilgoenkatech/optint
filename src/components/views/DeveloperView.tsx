@@ -4,7 +4,6 @@ import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, DeveloperKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows, sampleDeveloperKPIs } from '../../fixtures/patterns.sample';
-import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { DeveloperKpiRow } from '../kpis/DeveloperKpiRow';
 import { DeveloperHeatMap } from '../charts/DeveloperHeatMap';
 import { PatternTable } from '../table/PatternTable';
@@ -40,15 +39,6 @@ export function DeveloperView({
   const selectedPattern = viewModel?.selectedPattern ?? null;
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
-  const objectiveLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
-  const scopeGroups: Array<{ type: DeveloperScopeOption['type']; label: string }> = [
-    { type: 'service', label: 'Services' },
-    { type: 'team', label: 'Teams' },
-    { type: 'owner', label: 'Owners' },
-    { type: 'namespace', label: 'Namespaces' },
-    { type: 'application', label: 'Applications' },
-    { type: 'environment', label: 'Environments' },
-  ];
 
   if (loading) {
     return (
@@ -61,49 +51,6 @@ export function DeveloperView({
   return (
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
       <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
-
-        <Flex
-          justifyContent="space-between"
-          alignItems="center"
-          style={{ padding: '4px 16px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)', minHeight: 36 }}
-        >
-          {/* Left: scope filter */}
-          <Flex alignItems="center" gap={6}>
-            <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)', whiteSpace: 'nowrap' }}>
-              Scope
-            </span>
-            <select
-              value={selectedDeveloperScopeId}
-              onChange={(event) => onDeveloperScopeChange?.(event.target.value)}
-              disabled={!developerScopes.length}
-              style={{
-                minWidth: 200,
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
-                background: 'var(--dt-colors-background-container-neutral-default, #fff)',
-                color: 'var(--dt-colors-text-neutral-default, #23282d)',
-                fontSize: 12,
-              }}
-            >
-              <option value="">{developerScopes.length ? 'All services' : 'No developer scopes found'}</option>
-              {scopeGroups.map(group => {
-                const scopes = developerScopes.filter(scope => scope.type === group.type);
-                if (!scopes.length) return null;
-                return (
-                  <optgroup key={group.type} label={group.label}>
-                    {scopes.map(scope => (
-                      <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
-                    ))}
-                  </optgroup>
-                );
-              })}
-            </select>
-          </Flex>
-
-          {/* Right: objective toggle */}
-          <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
-        </Flex>
 
         <div style={{ padding: '10px 16px 0' }}>
           <DeveloperKpiRow kpis={kpis} />

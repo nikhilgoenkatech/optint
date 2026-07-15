@@ -4,7 +4,6 @@ import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
 import { samplePatternRows, sampleSREKPIs } from '../../fixtures/patterns.sample';
-import { ObjectiveToggle } from '../atoms/ObjectiveToggle';
 import { SREKpiRow } from '../kpis/SREKpiRow';
 import { ReliabilityRiskMatrix } from '../charts/ReliabilityRiskMatrix';
 import { PatternTable } from '../table/PatternTable';
@@ -27,7 +26,6 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
   const rawProblemRecords = viewModel?.rawProblemRecords ?? [];
   const loading = false;
   const [viewTab, setViewTab] = useState(0);
-  const objectiveLabel = objective === 'cost_impact' ? 'Cost Impact' : 'Alert Optimization';
 
   if (loading) {
     return (
@@ -40,17 +38,6 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
   return (
     <Flex style={{ height: '100%', overflow: 'hidden' }}>
       <Flex flexDirection="column" gap={0} style={{ flex: '0 0 72%', minWidth: 0, overflowY: 'auto', borderRight: '1px solid var(--dt-colors-border-neutral-subdued, #eee)' }}>
-
-        <Flex
-          justifyContent="space-between"
-          alignItems="center"
-          style={{ padding: '4px 16px', borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)', minHeight: 36 }}
-        >
-          <span style={{ fontSize: 12, color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
-            Reliability &amp; Automation
-          </span>
-          <ObjectiveToggle value={objective} onChange={onObjectiveChange} />
-        </Flex>
 
         <div style={{ padding: '10px 16px 0' }}>
           <SREKpiRow kpis={kpis} />
