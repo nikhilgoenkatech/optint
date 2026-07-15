@@ -1558,19 +1558,9 @@ function ExportActionPlanControl({
         maxWidth: '100%',
         boxSizing: 'border-box',
         overflow: 'hidden',
-        borderTop: '1px solid var(--dt-colors-border-neutral-subdued,#eee)',
-        paddingTop: 8,
-        marginTop: 4,
+        marginTop: 8,
       }}
     >
-      <Flex flexDirection="column" gap={4}>
-        <span style={{ fontSize: 10, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Export Action Plan</span>
-        {status && (
-          <Text textStyle="small" style={{ color: status.type === 'success' ? OK : DANGER, whiteSpace: 'normal' }}>
-            {status.message}
-          </Text>
-        )}
-      </Flex>
       <Flex
         flexDirection="column"
         gap={6}
@@ -1584,6 +1574,14 @@ function ExportActionPlanControl({
           background: 'var(--dt-colors-background-container-neutral-subdued, rgba(255,255,255,0.03))',
         }}
       >
+        <Flex flexDirection="column" gap={4}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Export Action Plan</span>
+          {status && (
+            <Text textStyle="small" style={{ color: status.type === 'success' ? OK : DANGER, whiteSpace: 'normal' }}>
+              {status.message}
+            </Text>
+          )}
+        </Flex>
         <Button variant="default" onClick={() => run('markdown')} disabled={isExporting} style={{ width: '100%' }}>
           {isExporting ? 'Generating...' : 'Download Markdown Report'}
         </Button>
