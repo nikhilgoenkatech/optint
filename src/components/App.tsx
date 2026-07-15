@@ -183,7 +183,7 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Row 1: Logo + Persona tabs */}
+      {/* Row 1: Logo + Persona tabs + centred Timeframe */}
       <div
         style={{
           display: 'flex',
@@ -231,98 +231,94 @@ export function App() {
             </button>
           ))}
         </div>
+
       </div>
 
-      {/* Row 2: Analysis context (left) ↔ Workspace controls (right) */}
+      {/* Row 2: Analysis context — Objective and Scope */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
+          gap: 24,
           padding: '0 20px',
           borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
           background: 'var(--dt-colors-background-container-neutral-subdued, #f8f8fa)',
-          minHeight: 44,
+          minHeight: 40,
         }}
       >
-        {/* Left: analysis context — what + scope */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <ContextGroup label="Objective">
+        <ContextGroup label="Objective">
+          <select
+            value={objective}
+            onChange={e => setObjective(e.target.value as ObjectiveType)}
+            style={HEADER_SELECT_STYLE}
+          >
+            <option value="cost_impact">Cost Impact</option>
+            <option value="alert_optimization">Alert Optimization</option>
+          </select>
+        </ContextGroup>
+
+        <ContextGroup label="Scope">
+          {persona === 'developer' ? (
             <select
-              value={objective}
-              onChange={e => setObjective(e.target.value as ObjectiveType)}
+              value={developerScopeId}
+              onChange={e => {
+                setDeveloperScopeId(e.target.value);
+                setSelectedPatternId(null);
+              }}
+              disabled={!developerScopes.length}
               style={HEADER_SELECT_STYLE}
             >
-              <option value="cost_impact">Cost Impact</option>
-              <option value="alert_optimization">Alert Optimization</option>
+              <option value="">{developerScopes.length ? 'All Services' : 'No scopes found'}</option>
+              {[
+                { type: 'service', label: 'Services' },
+                { type: 'team', label: 'Teams' },
+                { type: 'owner', label: 'Owners' },
+                { type: 'namespace', label: 'Namespaces' },
+                { type: 'application', label: 'Applications' },
+                { type: 'environment', label: 'Environments' },
+              ].map(group => {
+                const scopes = developerScopes.filter(s => s.type === group.type);
+                if (!scopes.length) return null;
+                return (
+                  <optgroup key={group.type} label={group.label}>
+                    {scopes.map(scope => (
+                      <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
-          </ContextGroup>
-
-          <ContextGroup label="Scope">
-            {persona === 'developer' ? (
-              <select
-                value={developerScopeId}
-                onChange={e => {
-                  setDeveloperScopeId(e.target.value);
-                  setSelectedPatternId(null);
-                }}
-                disabled={!developerScopes.length}
-                style={HEADER_SELECT_STYLE}
-              >
-                <option value="">{developerScopes.length ? 'All Services' : 'No scopes found'}</option>
-                {[
-                  { type: 'service', label: 'Services' },
-                  { type: 'team', label: 'Teams' },
-                  { type: 'owner', label: 'Owners' },
-                  { type: 'namespace', label: 'Namespaces' },
-                  { type: 'application', label: 'Applications' },
-                  { type: 'environment', label: 'Environments' },
-                ].map(group => {
-                  const scopes = developerScopes.filter(s => s.type === group.type);
-                  if (!scopes.length) return null;
-                  return (
-                    <optgroup key={group.type} label={group.label}>
-                      {scopes.map(scope => (
-                        <option key={scope.id} value={scope.id}>{scope.label} ({scope.count})</option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-              </select>
-            ) : (
-              <span style={{ fontSize: 13, color: 'var(--dt-colors-text-neutral-default, #23282d)', whiteSpace: 'nowrap' }}>
-                {SCOPE_LABELS[persona]}
-              </span>
-            )}
-          </ContextGroup>
-        </div>
+          ) : (
+            <span style={{ fontSize: 13, color: 'var(--dt-colors-text-neutral-default, #23282d)', whiteSpace: 'nowrap' }}>
+              {SCOPE_LABELS[persona]}
+            </span>
+          )}
+        </ContextGroup>
 
         <div style={{ flex: 1 }} />
 
-        {/* Right: workspace controls — period + navigation + configure */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-          <div style={{ width: 1, height: 22, background: 'var(--dt-colors-border-neutral-subdued, #ddd)', flexShrink: 0 }} />
-          <button
-            onClick={() => setConfigOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 4,
-              border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
-              background: configOpen ? 'var(--dt-colors-background-container-neutral-accent, #e8f0fe)' : 'transparent',
-              color: 'var(--dt-colors-text-neutral-default, #23282d)',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <SettingIcon />
-            Configure
-          </button>
-        </div>
+        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        <div style={{ width: 1, height: 22, background: 'var(--dt-colors-border-neutral-subdued, #ddd)', flexShrink: 0 }} />
+        <button
+          onClick={() => setConfigOpen(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 14px',
+            borderRadius: 4,
+            border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+            background: configOpen ? 'var(--dt-colors-background-container-neutral-accent, #e8f0fe)' : 'transparent',
+            color: 'var(--dt-colors-text-neutral-default, #23282d)',
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          <SettingIcon />
+          Configure
+        </button>
       </div>
 
       <ConfigDialog
