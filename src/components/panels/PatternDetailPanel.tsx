@@ -1499,7 +1499,6 @@ function ExportActionPlanControl({
   outputs: ActionPlanOutputs;
 }) {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   if (pattern.assistContext.persona === 'executive' || !hasActionPlanOutput(outputs)) return null;
 
@@ -1542,7 +1541,6 @@ function ExportActionPlanControl({
         downloadTextFile(evidenceNotebookFilename(notebookInput, 'json'), notebookJson, 'application/json;charset=utf-8');
         setStatus({ type: 'success', message: 'Notebook JSON downloaded.' });
       }
-      setMenuOpen(false);
     } catch (error) {
       console.error('[Calibrate export] Unable to generate export', error);
       setStatus({ type: 'error', message: 'Unable to generate the export. Please try again.' });
@@ -1561,32 +1559,14 @@ function ExportActionPlanControl({
           </Text>
         )}
       </Flex>
-      <div style={{ position: 'relative', alignSelf: 'flex-start' }}>
-        <Button variant="default" onClick={() => setMenuOpen(open => !open)} disabled={isExporting}>
-          {isExporting ? 'Exporting...' : 'Export v'}
+      <Flex gap={6} style={{ flexWrap: 'wrap' }}>
+        <Button variant="default" onClick={() => run('markdown')} disabled={isExporting}>
+          {isExporting ? 'Generating...' : 'Download Markdown Report'}
         </Button>
-        {menuOpen && (
-          <Flex
-            flexDirection="column"
-            gap={4}
-            style={{
-              position: 'absolute',
-              zIndex: 20,
-              top: 'calc(100% + 4px)',
-              left: 0,
-              minWidth: 220,
-              padding: 6,
-              border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)',
-              borderRadius: 6,
-              background: 'var(--dt-colors-background-container-neutral-default,#fff)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-            }}
-          >
-            <Button variant="default" onClick={() => run('markdown')} disabled={isExporting}>Download Markdown Report</Button>
-            <Button variant="default" onClick={() => run('notebook-json')} disabled={isExporting}>Download Notebook JSON</Button>
-          </Flex>
-        )}
-      </div>
+        <Button variant="default" onClick={() => run('notebook-json')} disabled={isExporting}>
+          {isExporting ? 'Generating...' : 'Download Notebook JSON'}
+        </Button>
+      </Flex>
     </Flex>
   );
 }
