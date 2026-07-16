@@ -1,5 +1,5 @@
 import { ExtendedCostConfig, ProblemPattern } from '../models';
-import { DEFAULT_EXTENDED_COST_CONFIG } from '../components/config/ConfigDialog';
+import { DEFAULT_EXTENDED_COST_CONFIG } from './default-cost-config';
 import type { EvidenceValue } from '../types/views';
 import { formatCurrency, formatMinutes, medianPositive } from './formatting';
 

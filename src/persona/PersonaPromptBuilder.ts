@@ -232,6 +232,7 @@ function buildEvidenceJson(req: AISummaryRequest): object {
       recommendation_type:   pattern.recommendation.type,
       rca_availability:      pattern.hasRCA ? 'Present' : 'Missing',
       root_cause_entity:     pattern.dimensions.primaryRootCause ?? 'absent',
+      problem_ids:           pattern.problems.map(problem => problem.problemId).filter(Boolean).slice(0, 10),
     };
     const trendEvidence = compactTrendEvidence(pattern.trendEnrichment);
     if (trendEvidence) evidence.trendEvidence = trendEvidence;

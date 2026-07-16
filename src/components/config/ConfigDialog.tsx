@@ -7,6 +7,7 @@ import { Button } from '@dynatrace/strato-components/buttons';
 import { FormField, Label, NumberInputV2 } from '@dynatrace/strato-components/forms';
 import { ExtendedCostConfig } from '../../models';
 import { ObjectiveType } from '../../types/views';
+export { DEFAULT_EXTENDED_COST_CONFIG } from '../../lib/default-cost-config';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -20,21 +21,6 @@ export interface WeightsConfig {
   cost_impact: WeightSegment[];
   alert_optimization: WeightSegment[];
 }
-
-export const DEFAULT_EXTENDED_COST_CONFIG: ExtendedCostConfig = {
-  affectedUserCostPerHr:  4.8,
-  fallbackEntityCost:     0,
-  engineeringHourlyRate:  150,
-  defaultResponders:      3,
-  recoveryRatePct:        35,
-  severityMultipliers: {
-    AVAILABILITY:        1.0,
-    ERROR:               0.7,
-    PERFORMANCE:         0.3,
-    RESOURCE_CONTENTION: 0.15,
-    CUSTOM_ALERT:        0.05,
-  },
-};
 
 export const DEFAULT_WEIGHTS: WeightsConfig = {
   cost_impact: [

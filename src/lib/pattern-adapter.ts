@@ -9,7 +9,7 @@ import {
   TrendDirection,
   confidenceToDisplayLevel,
 } from '../types/views';
-import { DEFAULT_EXTENDED_COST_CONFIG } from '../components/config/ConfigDialog';
+import { DEFAULT_EXTENDED_COST_CONFIG } from './default-cost-config';
 import { extractPatternSignals, PatternSignals, signalsToEvidence } from './pattern-signals';
 import { formatCurrency } from './formatting';
 import { compactTrendEvidence, trendObservation } from './pattern-trend-enrichment';
