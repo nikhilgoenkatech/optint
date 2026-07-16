@@ -66,7 +66,7 @@ function buildSelectedPatternFilter(pattern: {
   affectedEntityIds?: string[];
 }): string {
   const ids = (pattern.problemIds ?? []).filter(Boolean);
-  if (ids.length) return `event.id in [${ids.map(id => `"${quoteDql(id)}"`).join(', ')}]`;
+  if (ids.length) return `in(event.id, {${ids.map(id => `"${quoteDql(id)}"`).join(', ')}})`;
 
   const identityFilters = [
     pattern.rootCauseEntityId ? `root_cause_entity_id == "${quoteDql(pattern.rootCauseEntityId)}"` : '',
@@ -296,7 +296,7 @@ ${buildProblemFilters(filters)}
 fetch dt.davis.problems, ${buildAbsoluteTimeFilter(filters, bounds)}
 ${buildProblemFilters(filters)}
 | filter dt.davis.is_duplicate == false
-| filter event.status == "RESOLVED" or event.status == "CLOSED"
+| filter in(event.status, {"RESOLVED", "CLOSED"})
 | filter ${buildSelectedPatternFilter(pattern)}
 | fields problemId = event.id, startTime = event.start, endTime = event.end, nativeDuration = resolved_problem_duration, eventName = event.name, category = event.category, rootCauseEntityId = root_cause_entity_id, rootCauseEntityName = root_cause_entity_name
 | filter isNotNull(startTime) and isNotNull(endTime)
