@@ -1,5 +1,6 @@
 import { ExtendedCostConfig, ProblemPattern } from '../models';
 import { DEFAULT_EXTENDED_COST_CONFIG } from '../components/config/ConfigDialog';
+import type { EvidenceValue } from '../types/views';
 import { formatCurrency, formatMinutes, medianPositive } from './formatting';
 
 export interface SignalLineage {
@@ -168,6 +169,6 @@ export function extractPatternSignals(
   };
 }
 
-export function signalsToEvidence(signals: PatternSignals): Record<string, string | number | string[] | null> {
+export function signalsToEvidence(signals: PatternSignals): Record<string, EvidenceValue> {
   return Object.fromEntries(Object.entries(signals).map(([key, signal]) => [key, signal.value]));
 }

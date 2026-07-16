@@ -5,7 +5,7 @@ import { Button } from '@dynatrace/strato-components/buttons';
 import { Container } from '@dynatrace/strato-components/layouts';
 import { EmptyState } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
-import { PatternDetail, TrendDirection } from '../../types/views';
+import { EvidenceValue, PatternDetail, TrendDirection } from '../../types/views';
 import { buildSignalPrompt } from '../../persona/PersonaPromptBuilder';
 import {
   ActionPlanOutputs,
@@ -127,15 +127,21 @@ type RecommendationState = {
 
 type GenerationKind = 'recommendation' | 'analysis' | 'remediation' | 'alert_tuning';
 
-function isMeaningfulSignal(value: string | number | string[] | null | undefined): boolean {
+function isMeaningfulSignal(value: EvidenceValue | undefined): boolean {
   if (value === null || value === undefined) return false;
   if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
   if (typeof value === 'string') return value.trim() !== '' && value.trim().toLowerCase() !== 'absent';
   return Number.isFinite(value);
 }
 
-function signalText(value: string | number | string[] | null | undefined): string {
+function signalText(value: EvidenceValue | undefined): string {
   if (Array.isArray(value)) return value.join(', ');
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, entryValue]) => `${signalLabel(key)}: ${Array.isArray(entryValue) ? entryValue.join(', ') : entryValue}`)
+      .join('; ');
+  }
   if (value === null || value === undefined || value === '') return 'absent';
   return String(value);
 }
@@ -1483,6 +1489,39 @@ function readyResult(state: RecommendationState): RecommendationResult | undefin
   return state.status === 'ready' ? state.result : undefined;
 }
 
+function trendEvidenceRows(pattern: PatternDetail): Array<{ label: string; value: string }> {
+  const enrichment = pattern.trendEnrichment;
+  if (!enrichment) return [];
+  const rows: Array<{ label: string; value: string }> = [];
+  if (enrichment.creationRate && enrichment.creationRate.direction !== 'insufficient_data') {
+    rows.push({
+      label: 'Creation trend',
+      value: `${enrichment.creationRate.direction}${enrichment.creationRate.deltaPercent !== undefined ? ` (${enrichment.creationRate.deltaPercent}%)` : ''}`,
+    });
+  }
+  if (enrichment.lifecycle && enrichment.lifecycle.currentlyActive > 0) {
+    rows.push({ label: 'Lifecycle', value: `${enrichment.lifecycle.currentlyActive} currently active, peak ${enrichment.lifecycle.peakConcurrentActive ?? enrichment.lifecycle.currentlyActive}` });
+  }
+  if (enrichment.schedulePattern?.label) {
+    rows.push({ label: 'Timing evidence', value: enrichment.schedulePattern.label });
+  }
+  if (enrichment.mttrTrend && enrichment.mttrTrend.direction !== 'insufficient_data') {
+    const median = enrichment.mttrTrend.medianCurrent !== undefined ? `${Math.round(enrichment.mttrTrend.medianCurrent)}m median` : 'median unavailable';
+    const p85 = enrichment.mttrTrend.p85Current !== undefined ? `${Math.round(enrichment.mttrTrend.p85Current)}m p85` : 'p85 unavailable';
+    rows.push({ label: 'Median MTTR trend', value: `${enrichment.mttrTrend.direction} (${median}, ${p85})` });
+  }
+  if (enrichment.userImpactTrend?.source === 'affected_users' && enrichment.userImpactTrend.direction !== 'insufficient_data') {
+    rows.push({
+      label: 'Affected users',
+      value: `${enrichment.userImpactTrend.direction}${enrichment.userImpactTrend.deltaPercent !== undefined ? ` (${enrichment.userImpactTrend.deltaPercent}%)` : ''}`,
+    });
+  }
+  enrichment.dataQuality.limitations.slice(0, 3).forEach((limitation, index) => {
+    rows.push({ label: index === 0 ? 'Limitations' : '', value: limitation });
+  });
+  return rows;
+}
+
 function hasActionPlanOutput(outputs: ActionPlanOutputs): boolean {
   return Boolean(outputs.analysis || outputs.remediation || outputs.recommendations);
 }
@@ -1759,6 +1798,21 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
               );
             })}
           </Flex>
+          {pattern.trendObservation && (
+            <div style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--dt-colors-background-container-neutral-subdued, rgba(255,255,255,0.04))' }}>
+              <Text textStyle="small">{pattern.trendObservation}</Text>
+            </div>
+          )}
+          {trendEvidenceRows(pattern).length > 0 && (
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: MUTED }}>Trend evidence</summary>
+              <Flex flexDirection="column" gap={4} style={{ paddingTop: 6 }}>
+                {trendEvidenceRows(pattern).map((row, index) => (
+                  <StatRow key={`${row.label}-${index}`} label={row.label || ' '} value={row.value} />
+                ))}
+              </Flex>
+            </details>
+          )}
         </Flex>
 
         <Divider />

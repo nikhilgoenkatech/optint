@@ -1,4 +1,5 @@
-import type { PatternDetail } from '../types/views';
+import type { PatternTrendEnrichment } from '../models';
+import type { EvidenceValue, PatternDetail } from '../types/views';
 
 type ExportPersona = 'sre' | 'developer' | string;
 type ExportObjective = 'cost_impact' | 'alert_optimization' | string;
@@ -22,7 +23,7 @@ export type ActionPlanExportInput = {
     problemIds?: string[];
   };
   patternDetail?: PatternDetail | null;
-  observedSignals?: Record<string, string | number | string[] | null | undefined>;
+  observedSignals?: Record<string, EvidenceValue | undefined>;
   outputs: ActionPlanOutputs;
 };
 
@@ -115,6 +116,7 @@ export type CalibrateActionPlanExport = {
     rcaValidated: false;
     validationStatement: string;
   };
+  trendEnrichment?: PatternTrendEnrichment;
   observedSignals: ObservedSignalExport[];
   analysis: {
     summary: string | null;
@@ -197,6 +199,7 @@ function cleanScalar(value: unknown): string | number | null {
     if (!trimmed || /^(undefined|null|nan|n\/a)$/i.test(trimmed)) return null;
     return trimmed;
   }
+  if (typeof value === 'object') return null;
   return String(value);
 }
 
@@ -227,6 +230,7 @@ function cleanStringArray(value: unknown): string[] {
 
 function evidence(input: ActionPlanExportInput, key: string): string | number | string[] | null {
   const value = input.observedSignals?.[key];
+  if (value && typeof value === 'object' && !Array.isArray(value)) return null;
   if (Array.isArray(value)) return cleanStringArray(value);
   return cleanScalar(value);
 }
@@ -511,6 +515,7 @@ export function buildActionPlanExportModel(input: ActionPlanExportInput): Calibr
       rcaValidated: false,
       validationStatement: RCA_VALIDATION_STATEMENT,
     },
+    trendEnrichment: detail?.trendEnrichment,
     observedSignals: observedSignals(input),
     analysis: {
       summary: collectSummary(input.outputs, input),
@@ -597,6 +602,29 @@ function remediationMarkdown(step: RemediationStepExport): string {
     `- Expected output: ${contextValue(step.expectedOutput)}`,
     `- Stop or escalation condition: ${contextValue(step.escalationCondition)}`,
   ].join('\n');
+}
+
+function trendEvidenceMarkdown(model: CalibrateActionPlanExport): string {
+  const trend = model.trendEnrichment;
+  if (!trend) return '- Not available';
+  const lines: string[] = [];
+  if (trend.creationRate && trend.creationRate.direction !== 'insufficient_data') {
+    lines.push(`- Creation rate: ${trend.creationRate.direction}${trend.creationRate.deltaPercent !== undefined ? ` (${trend.creationRate.deltaPercent}% change)` : ''}`);
+  }
+  if (trend.lifecycle && trend.lifecycle.currentlyActive > 0) {
+    lines.push(`- Lifecycle: ${trend.lifecycle.currentlyActive} currently active; peak concurrent active ${contextValue(trend.lifecycle.peakConcurrentActive)}`);
+  }
+  if (trend.schedulePattern?.label) {
+    lines.push(`- Timing evidence: ${trend.schedulePattern.label}`);
+  }
+  if (trend.mttrTrend && trend.mttrTrend.direction !== 'insufficient_data') {
+    lines.push(`- Median MTTR trend: ${trend.mttrTrend.direction}${trend.mttrTrend.deltaPercent !== undefined ? ` (${trend.mttrTrend.deltaPercent}% median change)` : ''}; current median ${contextValue(trend.mttrTrend.medianCurrent)}m; current p85 ${contextValue(trend.mttrTrend.p85Current)}m`);
+  }
+  if (trend.userImpactTrend?.source === 'affected_users' && trend.userImpactTrend.direction !== 'insufficient_data') {
+    lines.push(`- Affected-user trend: ${trend.userImpactTrend.direction}${trend.userImpactTrend.deltaPercent !== undefined ? ` (${trend.userImpactTrend.deltaPercent}% change)` : ''}`);
+  }
+  trend.dataQuality.limitations.slice(0, 3).forEach(limitation => lines.push(`- Limitation: ${limitation}`));
+  return lines.length ? lines.join('\n') : '- No supported trend observations were available.';
 }
 
 export function buildMcpContext(model: CalibrateActionPlanExport) {
@@ -699,6 +727,10 @@ ${timeline}
 - Latest occurrence: ${contextValue(model.pattern.lastObserved)}
 - Trend classification: ${contextValue(model.pattern.trend)}
 - Duration range: ${contextValue(model.pattern.averageDuration)}
+
+### Trend Evidence
+
+${trendEvidenceMarkdown(model)}
 
 ## 7. Analysis
 

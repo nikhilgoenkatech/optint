@@ -28,6 +28,7 @@ import { ExtendedCostConfig } from '../models';
 import { applyDeveloperScopeFilter, buildDeveloperScopeTaxonomy } from '../lib/developer-scope';
 import { DQL_QUERIES } from '../queries/dqlQueries';
 import type { DqlNotebookContext } from '../lib/evidence-notebook-export';
+import { enrichPatterns, TimeframeBounds } from '../lib/pattern-trend-enrichment';
 
 const MUTED_COLOR = 'var(--dt-colors-text-neutral-subdued, #74777a)';
 
@@ -78,6 +79,27 @@ const PERSONA_LABELS: Record<PersonaType, string> = {
 
 function makeFilters(from: string, to: string, label: string): FilterState {
   return { timeRange: { from, to, label }, applications: [], tags: [], managementZones: [], severities: [], statuses: [], searchText: '' };
+}
+
+function resolveTimeExpression(value: string, evaluationNow: number): number | null {
+  const trimmed = value.trim();
+  if (trimmed === 'now') return evaluationNow;
+  const relative = trimmed.match(/^now-(\d+)([dhw])$/i);
+  if (relative) {
+    const amount = Number(relative[1]);
+    const unit = relative[2].toLowerCase();
+    const unitMs = unit === 'h' ? 3600000 : unit === 'w' ? 7 * 86400000 : 86400000;
+    return evaluationNow - (amount * unitMs);
+  }
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function resolveTimeframeBounds(from: string, to: string, evaluationNow: number): TimeframeBounds | undefined {
+  const fromMs = resolveTimeExpression(from, evaluationNow);
+  const toMs = resolveTimeExpression(to, evaluationNow);
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs! <= fromMs!) return undefined;
+  return { from: fromMs!, to: toMs!, evaluationNow };
 }
 
 export function App() {
@@ -133,8 +155,14 @@ export function App() {
     () => applyDeveloperScopeFilter(problems, selectedDeveloperScope),
     [problems, selectedDeveloperScope],
   );
-  const patterns = useMemo(() => detectPatterns(problems).patterns, [problems]);
-  const developerPatterns = useMemo(() => detectPatterns(scopedDeveloperProblems).patterns, [scopedDeveloperProblems]);
+  const evaluationNow = useMemo(() => Date.now(), [timeframe]);
+  const trendBounds = useMemo(() => {
+    const from = timeframe?.from?.absoluteDate ?? 'now-7d';
+    const to = timeframe?.to?.absoluteDate ?? 'now';
+    return resolveTimeframeBounds(from, to, evaluationNow);
+  }, [timeframe, evaluationNow]);
+  const patterns = useMemo(() => enrichPatterns(detectPatterns(problems).patterns, trendBounds), [problems, trendBounds]);
+  const developerPatterns = useMemo(() => enrichPatterns(detectPatterns(scopedDeveloperProblems).patterns, trendBounds), [scopedDeveloperProblems, trendBounds]);
 
   useEffect(() => {
     if (selectedPatternId) {
@@ -168,6 +196,41 @@ export function App() {
     const from = timeframe?.from?.absoluteDate ?? 'now-7d';
     const to = timeframe?.to?.absoluteDate ?? 'now';
     const filters = makeFilters(from, to, `${from} to ${to}`);
+    const activePatterns = persona === 'developer' ? developerPatterns : patterns;
+    const selectedPattern = activePatterns.find(pattern => pattern.patternId === selectedPatternId);
+    const selectedPatternContext = selectedPattern ? {
+      eventName: selectedPattern.problems[0]?.title,
+      rootCauseEntityName: selectedPattern.dimensions.primaryRootCause ?? undefined,
+    } : null;
+    const validationQueries = selectedPatternContext ? [
+      {
+        name: 'problemCreationRateQuery',
+        persona,
+        purpose: 'Validation template for selected-pattern creation rate buckets from event.start. Not executed automatically and does not replace client-side values.',
+        dql: DQL_QUERIES.problemCreationRateQuery(filters, selectedPatternContext),
+        parameters: { from, to, patternId: selectedPattern?.patternId ?? null },
+        lastExecutionTime: null,
+        rowCount: null,
+      },
+      {
+        name: 'peakProblemHoursQuery',
+        persona,
+        purpose: 'Validation template for selected-pattern peak UTC hour/day evidence from event.start. Not executed automatically.',
+        dql: DQL_QUERIES.peakProblemHoursQuery(filters, selectedPatternContext),
+        parameters: { from, to, patternId: selectedPattern?.patternId ?? null },
+        lastExecutionTime: null,
+        rowCount: null,
+      },
+      {
+        name: 'mttrTrendQuery',
+        persona,
+        purpose: 'Validation template for selected-pattern median and p85 MTTR trend using resolved/closed problems only. Not executed automatically.',
+        dql: DQL_QUERIES.mttrTrendQuery(filters, selectedPatternContext),
+        parameters: { from, to, patternId: selectedPattern?.patternId ?? null },
+        lastExecutionTime: null,
+        rowCount: null,
+      },
+    ] : [];
     return {
       queries: [{
         name: 'rawProblemsQuery',
@@ -177,9 +240,9 @@ export function App() {
         parameters: { from, to },
         lastExecutionTime: null,
         rowCount: problems.length,
-      }],
+      }, ...validationQueries],
     };
-  }, [timeframe, problems.length]);
+  }, [timeframe, problems.length, persona, patterns, developerPatterns, selectedPatternId]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

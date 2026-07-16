@@ -12,6 +12,7 @@ import {
 import { DEFAULT_EXTENDED_COST_CONFIG } from '../components/config/ConfigDialog';
 import { extractPatternSignals, PatternSignals, signalsToEvidence } from './pattern-signals';
 import { formatCurrency } from './formatting';
+import { compactTrendEvidence, trendObservation } from './pattern-trend-enrichment';
 
 function levelToScore(level: ProblemPattern['confidence']): number {
   if (level === 'HIGH') return 0.9;
@@ -109,6 +110,8 @@ export function patternToDetail(
   const affectedUsers = Number(signals.affected_users.value || 0);
   const problemIds = pattern.problems.map(problem => problem.problemId).filter(Boolean);
   const evidence = signalsToEvidence(signals);
+  const trendEvidence = compactTrendEvidence(pattern.trendEnrichment);
+  if (trendEvidence) evidence.trendEvidence = trendEvidence;
   const lineage = Object.fromEntries(Object.entries(signals).map(([key, signal]) => [key, signal.lineage]));
 
   return {
@@ -132,6 +135,8 @@ export function patternToDetail(
       trend: row.trend,
       timeline: buildTimeline(pattern),
     },
+    trendEnrichment: pattern.trendEnrichment,
+    trendObservation: trendObservation(pattern.trendEnrichment),
     recommendedAction: row.primaryAction,
     assistContext: {
       persona,

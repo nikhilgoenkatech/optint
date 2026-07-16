@@ -15,6 +15,77 @@ export type CloudProvider = 'aws' | 'azure' | 'gcp' | null;
 export type ProblemType   = 'RESOURCE' | 'CONFIG' | 'CODE_DEFECT' | 'DEPENDENCY' | 'UNKNOWN';
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 export type SystemDirection = 'IMPROVING' | 'STABLE' | 'DEGRADING';
+export type TrendDirectionEnrichment = 'increasing' | 'stable' | 'decreasing' | 'insufficient_data';
+export type MttrTrendDirection = 'improving' | 'stable' | 'worsening' | 'insufficient_data';
+
+export interface PatternTrendEnrichment {
+  creationRate?: {
+    currentPeriodCount: number;
+    previousPeriodCount?: number;
+    deltaPercent?: number;
+    direction: TrendDirectionEnrichment;
+  };
+  lifecycle?: {
+    currentlyActive: number;
+    peakConcurrentActive?: number;
+    activeOverTime?: Array<{
+      timestamp: string;
+      count: number;
+    }>;
+  };
+  categoryTrend?: {
+    category: string;
+    currentPeriodCount: number;
+    previousPeriodCount?: number;
+    deltaPercent?: number;
+    direction: TrendDirectionEnrichment;
+  };
+  serviceTrend?: {
+    serviceId?: string;
+    serviceName?: string;
+    activeCount: number;
+    closedCount: number;
+    occurrenceSeries?: Array<{
+      timestamp: string;
+      count: number;
+    }>;
+  };
+  schedulePattern?: {
+    peakHour?: number;
+    peakDay?: string;
+    matchingOccurrences: number;
+    totalOccurrences: number;
+    confidence: number;
+    label?: string;
+  };
+  mttrTrend?: {
+    medianCurrent?: number;
+    medianPrevious?: number;
+    p85Current?: number;
+    p85Previous?: number;
+    deltaPercent?: number;
+    direction: MttrTrendDirection;
+    resolvedCurrentCount: number;
+    resolvedPreviousCount: number;
+  };
+  userImpactTrend?: {
+    totalAffectedUsers: number;
+    averageAffectedUsersPerProblem?: number;
+    currentPeriodUsers?: number;
+    previousPeriodUsers?: number;
+    deltaPercent?: number;
+    direction: TrendDirectionEnrichment;
+    source: 'affected_users' | 'unavailable';
+  };
+  dataQuality: {
+    creationTrendAvailable: boolean;
+    lifecycleAvailable: boolean;
+    mttrTrendAvailable: boolean;
+    userImpactAvailable: boolean;
+    scheduleEvidenceAvailable: boolean;
+    limitations: string[];
+  };
+}
 
 // ── Core problem entity ────────────────────────────────────
 export interface DynatraceProblem {
@@ -115,6 +186,7 @@ export interface ProblemPattern {
   autoResolveRate:  number;
   sparkData:        TrendPoint[];
   recommendation:   PatternRecommendation;
+  trendEnrichment?: PatternTrendEnrichment;
 }
 
 export interface PatternDimensions {

@@ -199,6 +199,78 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
+   * Validation only: selected-pattern problem creation rate by event.start buckets.
+   * Does not replace client-side pattern membership.
+   */
+  problemCreationRateQuery: (
+    filters: FilterState,
+    pattern: { eventName?: string; rootCauseEntityId?: string; rootCauseEntityName?: string },
+    bucketSize: '1h' | '1d' = '1d'
+  ): string => `
+fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
+${buildProblemFilters(filters)}
+| filter dt.davis.is_duplicate == false
+| filter ${[
+    pattern.rootCauseEntityId ? `root_cause_entity_id == "${quoteDql(pattern.rootCauseEntityId)}"` : '',
+    pattern.rootCauseEntityName ? `root_cause_entity_name == "${quoteDql(pattern.rootCauseEntityName)}"` : '',
+    pattern.eventName ? `event.name == "${quoteDql(pattern.eventName)}"` : '',
+  ].filter(Boolean).join(' or ') || 'true'}
+| fields startTime = event.start, eventName = event.name, category = event.category, rootCauseEntityId = root_cause_entity_id, rootCauseEntityName = root_cause_entity_name
+| fieldsAdd bucket = bin(startTime, ${bucketSize})
+| summarize problemCount = count(), by: { bucket, eventName, category, rootCauseEntityId, rootCauseEntityName }
+| sort bucket asc
+  `.trim(),
+
+  /**
+   * Validation only: selected-pattern peak UTC hours from event.start.
+   */
+  peakProblemHoursQuery: (
+    filters: FilterState,
+    pattern: { eventName?: string; rootCauseEntityId?: string; rootCauseEntityName?: string }
+  ): string => `
+fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
+${buildProblemFilters(filters)}
+| filter dt.davis.is_duplicate == false
+| filter ${[
+    pattern.rootCauseEntityId ? `root_cause_entity_id == "${quoteDql(pattern.rootCauseEntityId)}"` : '',
+    pattern.rootCauseEntityName ? `root_cause_entity_name == "${quoteDql(pattern.rootCauseEntityName)}"` : '',
+    pattern.eventName ? `event.name == "${quoteDql(pattern.eventName)}"` : '',
+  ].filter(Boolean).join(' or ') || 'true'}
+| fields startTime = event.start, eventName = event.name, category = event.category
+| fieldsAdd utcHour = hour(startTime), utcDay = dayOfWeek(startTime)
+| summarize problemCount = count(), by: { utcHour, utcDay, eventName, category }
+| sort problemCount desc
+  `.trim(),
+
+  /**
+   * Validation only: selected-pattern median and p85 MTTR by timeframe bucket.
+   * Uses only resolved/closed problems with valid resolved_problem_duration.
+   */
+  mttrTrendQuery: (
+    filters: FilterState,
+    pattern: { eventName?: string; rootCauseEntityId?: string; rootCauseEntityName?: string },
+    bucketSize: '1d' | '1w' = '1d'
+  ): string => `
+fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
+${buildProblemFilters(filters)}
+| filter dt.davis.is_duplicate == false
+| filter event.status in ["RESOLVED", "CLOSED"] and isNotNull(resolved_problem_duration)
+| filter ${[
+    pattern.rootCauseEntityId ? `root_cause_entity_id == "${quoteDql(pattern.rootCauseEntityId)}"` : '',
+    pattern.rootCauseEntityName ? `root_cause_entity_name == "${quoteDql(pattern.rootCauseEntityName)}"` : '',
+    pattern.eventName ? `event.name == "${quoteDql(pattern.eventName)}"` : '',
+  ].filter(Boolean).join(' or ') || 'true'}
+| fields startTime = event.start, duration = resolved_problem_duration, eventName = event.name, category = event.category
+| fieldsAdd bucket = bin(startTime, ${bucketSize})
+| summarize
+    resolvedCount = count(),
+    medianMttr = median(duration),
+    p85Mttr = percentile(duration, 85),
+    by: { bucket, eventName, category }
+| sort bucket asc
+  `.trim(),
+
+  /**
    * Root cause clusters - groups recurring problems by root cause entity
    */
   fetchRootCauseClusters: (filters: FilterState): string => `

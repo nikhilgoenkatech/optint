@@ -223,6 +223,7 @@ function notebookCoreData(input: EvidenceNotebookInput, generatedAt: string) {
       remediationEffort: pattern.technicalActionability.remediationEffort,
       rcaAvailability: cleanString(pattern.assistContext.evidence.rca_availability, ''),
       rootCauseEntity: cleanString(pattern.assistContext.evidence.root_cause_entity, ''),
+      trendEnrichment: pattern.trendEnrichment ?? null,
     },
     recurrenceTimeline: pattern.recurrence.timeline.map(bucket => ({
       label: bucket.label,
@@ -299,6 +300,17 @@ export function buildEvidenceNotebookJson(input: EvidenceNotebookInput): Dynatra
         bucket.endTime ?? null,
         bucket.estimated ? 'true' : 'false',
       ]),
+    },
+    {
+      type: 'json',
+      title: 'Trend Enrichment',
+      data: {
+        sourceData: 'Dynatrace Davis problem records retrieved by DQL',
+        deterministicCalculation: 'Calibrate client-side trend enrichment from selected pattern membership',
+        modeledCostValues: 'Excluded from trend enrichment; cost remains modeled separately',
+        assistGeneratedRecommendations: 'Excluded from trend enrichment; Assist output appears in later sections',
+        trendEnrichment: pattern.trendEnrichment ?? null,
+      },
     },
     {
       type: 'json',

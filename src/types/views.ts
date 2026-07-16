@@ -1,4 +1,4 @@
-import { ConfidenceLevel, PersonaType as ModelPersonaType, Severity } from '../models';
+import { ConfidenceLevel, PatternTrendEnrichment, PersonaType as ModelPersonaType, Severity } from '../models';
 
 export type PersonaType = ModelPersonaType;
 export type ObjectiveType = 'cost_impact' | 'alert_optimization';
@@ -7,6 +7,7 @@ export type DisplayLevel = 'High' | 'Medium' | 'Low';
 export type TrendDirection = 'Increasing' | 'Stable' | 'Decreasing';
 export type PatternStatus = 'Open' | 'Resolved' | 'Mixed';
 export type RecommendationPriority = 'Immediate' | 'Short term' | 'Strategic' | 'Monitor';
+export type EvidenceValue = string | number | string[] | Record<string, string | number | string[]> | null;
 
 export interface MetricCardViewModel {
   id: string;
@@ -92,12 +93,14 @@ export interface PatternDetail {
     trend: TrendDirection;
     timeline: PatternTimelineBucket[];
   };
+  trendEnrichment?: PatternTrendEnrichment;
+  trendObservation?: string | null;
   recommendedAction: string;
   assistContext: {
     persona: PersonaType;
     objective: ObjectiveType;
     problemIds: string[];
-    evidence: Record<string, string | number | string[] | null>;
+    evidence: Record<string, EvidenceValue>;
     lineage?: Record<string, { sourceField: string; transformation: string; fallbackUsed?: string; missingReason?: string }>;
   };
 }

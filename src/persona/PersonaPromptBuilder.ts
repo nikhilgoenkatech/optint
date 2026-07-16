@@ -7,8 +7,10 @@
 
 import { CostEstimate, DynatraceProblem, ProblemPattern } from '../models';
 import { PersonaType } from './PersonaResolver';
+import { compactTrendEvidence } from '../lib/pattern-trend-enrichment';
 
 export type ObjectiveType = 'cost_impact' | 'alert_optimization';
+type PromptEvidenceValue = string | number | string[] | Record<string, string | number | string[]> | null;
 
 export interface AISummaryRequest {
   problems: DynatraceProblem[];
@@ -22,7 +24,7 @@ export interface AISummaryRequest {
 export interface SignalPromptRequest {
   persona: PersonaType;
   objective: ObjectiveType;
-  evidence: Record<string, string | number | string[] | null>;
+  evidence: Record<string, PromptEvidenceValue>;
   patternTitle?: string;
   recommendedAction?: string;
   kind?: 'recommendation' | 'analysis' | 'remediation' | 'alert_tuning';
@@ -219,7 +221,7 @@ function buildEvidenceJson(req: AISummaryRequest): object {
   const { problems, costEstimates, totalCost, pattern } = req;
 
   if (pattern) {
-    return {
+    const evidence: Record<string, PromptEvidenceValue> = {
       occurrence_count:      pattern.occurrences,
       alert_event_count:     pattern.problems.length,
       affected_users:        pattern.totalUsers,
@@ -231,6 +233,9 @@ function buildEvidenceJson(req: AISummaryRequest): object {
       rca_availability:      pattern.hasRCA ? 'Present' : 'Missing',
       root_cause_entity:     pattern.dimensions.primaryRootCause ?? 'absent',
     };
+    const trendEvidence = compactTrendEvidence(pattern.trendEnrichment);
+    if (trendEvidence) evidence.trendEvidence = trendEvidence;
+    return evidence;
   }
 
   const totalUsers  = problems.reduce((a, p) => a + (p.affectedUsers ?? 0), 0);
@@ -258,7 +263,7 @@ function buildEvidenceJson(req: AISummaryRequest): object {
 export function buildPrompt(req: AISummaryRequest): string {
   const { persona, objective = 'cost_impact' } = req;
   const evidence = buildEvidenceJson(req);
-  const taskReq: SignalPromptRequest = { persona, objective, evidence: evidence as Record<string, string | number | string[] | null> };
+  const taskReq: SignalPromptRequest = { persona, objective, evidence: evidence as Record<string, PromptEvidenceValue> };
 
   return `${roleFor(persona)}
 
