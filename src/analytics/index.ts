@@ -152,8 +152,12 @@ function normaliseEntityKey(entity: string | undefined): string {
 
 function patternEntityKey(problem: DynatraceProblem): string {
   if (problem.rootCauseEntity?.name) return `rca:${normaliseEntityKey(problem.rootCauseEntity.name)}`;
-  const primaryEntity = problem.impactedEntities.find(e => e.name)?.name;
-  return `entity:${normaliseEntityKey(primaryEntity)}`;
+  const primary = problem.impactedEntities.find(e => e.entityId || e.name);
+  if (primary?.entityId) return `entity:${primary.entityId.toLowerCase()}`;
+  if (primary?.name)     return `entity:${normaliseEntityKey(primary.name)}`;
+  // No entity at all — use problem ID so the incident stays a one-off rather than
+  // grouping with other entity-less problems of the same title.
+  return `entity:no-entity:${problem.problemId}`;
 }
 
 function isGenericMultiEntityTitle(title: string): boolean {
@@ -312,7 +316,7 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
     maxMTTR:         Math.max(...durations, 0),
     totalCost,
     totalUsers,
-    affectedServices:[...new Set(problems.flatMap(p => p.impactedEntities.map(e => e.name)))],
+    affectedServices:[...new Set(problems.flatMap(p => p.impactedEntities.map(e => e.entityId || e.name)))],
     severity:        problems[0].severity,
     problems,
     trend:           trend as ProblemPattern['trend'],

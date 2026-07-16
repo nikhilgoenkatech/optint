@@ -14,7 +14,7 @@ export function friendlyEntityFallback(type?: string): string {
 export function normalizeEntityName(value: unknown, type?: string, fallback?: string): string {
   const raw = String(value || '').trim();
   if (!raw || GENERIC_ENTITY_LABELS.has(raw.toUpperCase())) return fallback || friendlyEntityFallback(type);
-  if (/^[A-Z_]+-[A-Za-z0-9]/.test(raw)) return fallback || friendlyEntityFallback(type);
+  if (/^[A-Z0-9_]+-[A-Za-z0-9]/.test(raw)) return fallback || friendlyEntityFallback(type);
   return raw;
 }
 

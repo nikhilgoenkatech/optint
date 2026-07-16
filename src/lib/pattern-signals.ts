@@ -41,7 +41,7 @@ function unique(values: string[]): string[] {
 function readableServiceName(value: string): boolean {
   const normalized = value.trim();
   if (!normalized || /^unknown\s/i.test(normalized)) return false;
-  if (/^[A-Z_]+-[A-Za-z0-9]/.test(normalized)) return false;
+  if (/^[A-Z0-9_]+-[A-Za-z0-9]/.test(normalized)) return false;
   if (['SERVICE', 'HOST', 'APPLICATION', 'PROCESS_GROUP'].includes(normalized.toUpperCase())) return false;
   return true;
 }
@@ -122,9 +122,9 @@ export function extractPatternSignals(
       lineage: { sourceField: 'affected_entity_ids / smartscape.affected_entity.ids', transformation: 'unique affected entity count' },
     },
     affected_services: {
-      value: services.length ? services : ['Unknown Service'],
+      value: services.length ? services : unique(pattern.problems.flatMap(p => p.impactedEntities.map(e => e.entityId))),
       label: 'Affected services',
-      lineage: { sourceField: 'resolved affected entity names', transformation: 'unique readable service/entity names', fallbackUsed: services.length ? undefined : 'Unknown Service' },
+      lineage: { sourceField: 'resolved affected entity names', transformation: 'unique readable service/entity names or entity ID fallback', fallbackUsed: services.length ? undefined : 'entity IDs' },
     },
     event_category: {
       value: pattern.severity,
