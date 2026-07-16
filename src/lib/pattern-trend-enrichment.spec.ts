@@ -322,6 +322,8 @@ export function runPatternTrendEnrichmentTests(): TestResult[] {
       BOUNDS,
     );
     assertIncludes(dql, 'event.id in ["P-1", "P-2"]', 'DQL scopes to exact selected pattern problem IDs');
+    assertIncludes(dql, 'event.status == "RESOLVED" or event.status == "CLOSED"', 'DQL uses tenant-safe status filtering');
+    assertNotIncludes(dql, 'event.status in ["RESOLVED", "CLOSED"]', 'DQL does not use unsupported string array status filtering');
     assertIncludes(dql, 'nativeDuration / 60000000000', 'DQL uses native resolved duration when available');
     assertIncludes(dql, '(endTime - startTime) / 60000000000', 'DQL falls back to event.end - event.start');
     assertNotIncludes(dql, 'isNotNull(resolved_problem_duration)', 'DQL must not require native duration only');
