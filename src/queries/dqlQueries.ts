@@ -300,9 +300,9 @@ ${buildProblemFilters(filters)}
 | filter ${buildSelectedPatternFilter(pattern)}
 | fields problemId = event.id, startTime = event.start, endTime = event.end, nativeDuration = resolved_problem_duration, eventName = event.name, category = event.category, rootCauseEntityId = root_cause_entity_id, rootCauseEntityName = root_cause_entity_name
 | filter isNotNull(startTime) and isNotNull(endTime)
-| fieldsAdd durationMinutes = if(isNotNull(nativeDuration), nativeDuration / 60000000000, (endTime - startTime) / 60000000000)
+| fieldsAdd durationMinutes = if(isNotNull(nativeDuration), nativeDuration / 60000000000, else: (endTime - startTime) / 60000000000)
 | filter isNotNull(durationMinutes) and durationMinutes > 0
-| fieldsAdd period = if(startTime < toTimestamp("${bounds && Number.isFinite(bounds.from) && Number.isFinite(bounds.to) ? new Date(bounds.from + ((bounds.to - bounds.from) / 2)).toISOString() : ''}"), "previous", "current")
+| fieldsAdd period = if(startTime < toTimestamp("${bounds && Number.isFinite(bounds.from) && Number.isFinite(bounds.to) ? new Date(bounds.from + ((bounds.to - bounds.from) / 2)).toISOString() : ''}"), "previous", else: "current")
 | summarize
     resolvedCount = count(),
     medianMttr = percentile(durationMinutes, 50),

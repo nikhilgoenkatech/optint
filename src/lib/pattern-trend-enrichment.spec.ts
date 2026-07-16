@@ -326,6 +326,8 @@ export function runPatternTrendEnrichmentTests(): TestResult[] {
     assertNotIncludes(dql, 'event.status in ["RESOLVED", "CLOSED"]', 'DQL does not use unsupported string array status filtering');
     assertNotIncludes(dql, 'event.id in ["P-1", "P-2"]', 'DQL does not use unsupported string array problem ID filtering');
     assertIncludes(dql, 'nativeDuration / 60000000000', 'DQL uses native resolved duration when available');
+    assertIncludes(dql, 'else: (endTime - startTime) / 60000000000', 'DQL uses named else for fallback duration');
+    assertIncludes(dql, 'else: "current"', 'DQL uses named else for period classification');
     assertIncludes(dql, '(endTime - startTime) / 60000000000', 'DQL falls back to event.end - event.start');
     assertNotIncludes(dql, 'isNotNull(resolved_problem_duration)', 'DQL must not require native duration only');
     assertIncludes(dql, 'percentile(durationMinutes, 50)', 'DQL uses median percentile as primary MTTR measure');
