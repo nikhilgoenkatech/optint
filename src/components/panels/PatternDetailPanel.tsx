@@ -18,6 +18,13 @@ import {
   evidenceNotebookFilename,
   type DqlNotebookContext,
 } from '../../lib/evidence-notebook-export';
+import { fetchPatternMTTRTrendRecords } from '../../services/dynatraceService';
+import {
+  clientMttrTrendStats,
+  mttrStatsFromDqlRecords,
+  reconcileMttrTrend,
+  type MttrTrendReconciliation,
+} from '../../lib/mttr-trend-validation';
 
 const MUTED  = 'var(--dt-colors-text-neutral-subdued, #74777a)';
 const DANGER = 'var(--dt-colors-text-critical-default, #c41a00)';
@@ -122,6 +129,12 @@ type RecommendationResult =
 type RecommendationState = {
   status: RecommendationStatus;
   result?: RecommendationResult;
+  errorMessage?: string;
+};
+
+type MttrValidationState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  reconciliation?: MttrTrendReconciliation;
   errorMessage?: string;
 };
 
@@ -1522,6 +1535,46 @@ function trendEvidenceRows(pattern: PatternDetail): Array<{ label: string; value
   return rows;
 }
 
+function formatMinutes(value?: number): string {
+  if (!Number.isFinite(value)) return 'Not available';
+  const minutes = Math.round(value!);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem ? `${hours}h ${rem}m` : `${hours}h`;
+}
+
+function renderMttrValidation(state: MttrValidationState) {
+  if (state.status === 'idle') return null;
+  if (state.status === 'loading') {
+    return <Text textStyle="small" style={{ color: MUTED }}>Validating MTTR trend with selected-pattern DQL...</Text>;
+  }
+  if (state.status === 'error') {
+    return <Text textStyle="small" style={{ color: DANGER }}>DQL MTTR validation failed: {state.errorMessage}</Text>;
+  }
+  const reconciliation = state.reconciliation;
+  if (!reconciliation) return null;
+  const tone = reconciliation.status === 'MATCH'
+    ? 'success'
+    : reconciliation.status === 'MINOR_DIFFERENCE'
+      ? 'warning'
+      : reconciliation.status === 'MISMATCH'
+        ? 'critical'
+        : 'neutral';
+  return (
+    <Flex flexDirection="column" gap={6} style={{ marginTop: 8 }}>
+      <InlineMetaChip tone={tone}>{reconciliation.status.replace(/_/g, ' ')}</InlineMetaChip>
+      <Text textStyle="small" style={{ color: MUTED }}>{reconciliation.reason}</Text>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <SignalCard label="Client median" value={`${formatMinutes(reconciliation.client.medianPrevious)} -> ${formatMinutes(reconciliation.client.medianCurrent)}`} />
+        <SignalCard label="DQL median" value={`${formatMinutes(reconciliation.dql?.medianPrevious)} -> ${formatMinutes(reconciliation.dql?.medianCurrent)}`} />
+        <SignalCard label="Client p85" value={`${formatMinutes(reconciliation.client.p85Previous)} -> ${formatMinutes(reconciliation.client.p85Current)}`} />
+        <SignalCard label="DQL p85" value={`${formatMinutes(reconciliation.dql?.p85Previous)} -> ${formatMinutes(reconciliation.dql?.p85Current)}`} />
+      </div>
+    </Flex>
+  );
+}
+
 function hasActionPlanOutput(outputs: ActionPlanOutputs): boolean {
   return Boolean(outputs.analysis || outputs.remediation || outputs.recommendations);
 }
@@ -1632,6 +1685,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
   const [analysis, setAnalysis] = useState<RecommendationState>({ status: 'idle' });
   const [remediation, setRemediation] = useState<RecommendationState>({ status: 'idle' });
   const [alertTuning, setAlertTuning] = useState<RecommendationState>({ status: 'idle' });
+  const [mttrValidation, setMttrValidation] = useState<MttrValidationState>({ status: 'idle' });
   const persona = pattern?.assistContext.persona;
   const isExecutive = persona === 'executive';
   const activeObjective = pattern?.assistContext.objective ?? 'cost_impact';
@@ -1646,12 +1700,16 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
     remediation: readyResult(remediation),
     recommendations: readyResult(recommendation) ?? readyResult(alertTuning),
   };
+  const enhancedDqlNotebookContext: DqlNotebookContext | undefined = mttrValidation.reconciliation
+    ? { queries: dqlNotebookContext?.queries ?? [], mttrTrendReconciliation: mttrValidation.reconciliation }
+    : dqlNotebookContext;
 
   useEffect(() => {
     setRecommendation({ status: 'idle' });
     setAnalysis({ status: 'idle' });
     setRemediation({ status: 'idle' });
     setAlertTuning({ status: 'idle' });
+    setMttrValidation({ status: 'idle' });
   }, [pattern?.id, pattern?.assistContext.objective]);
 
   useEffect(() => {
@@ -1676,6 +1734,38 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
       setState({
         status: 'error',
         errorMessage: error instanceof Error ? error.message : 'Assist unavailable. Try again.',
+      });
+    }
+  }
+
+  async function validateMttrTrend() {
+    if (!pattern || mttrValidation.status === 'loading' || mttrValidation.status === 'ready') return;
+    const query = dqlNotebookContext?.queries.find(item => item.name === 'fetchPatternMTTRTrend')?.dql;
+    const client = clientMttrTrendStats(pattern.trendEnrichment);
+    if (!query) {
+      setMttrValidation({
+        status: 'ready',
+        reconciliation: reconcileMttrTrend(client, undefined, { error: 'No selected-pattern MTTR validation query is available.' }),
+      });
+      return;
+    }
+    try {
+      setMttrValidation({ status: 'loading' });
+      const records = await fetchPatternMTTRTrendRecords(query);
+      const dql = mttrStatsFromDqlRecords(records);
+      setMttrValidation({
+        status: 'ready',
+        reconciliation: reconcileMttrTrend(client, dql, {
+          lastRunTime: new Date().toISOString(),
+          rowCount: records.length,
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown DQL validation error';
+      setMttrValidation({
+        status: 'error',
+        errorMessage: message,
+        reconciliation: reconcileMttrTrend(client, undefined, { error: message }),
       });
     }
   }
@@ -1804,12 +1894,15 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
             </div>
           )}
           {trendEvidenceRows(pattern).length > 0 && (
-            <details>
+            <details onToggle={(event) => {
+              if ((event.currentTarget as HTMLDetailsElement).open) void validateMttrTrend();
+            }}>
               <summary style={{ cursor: 'pointer', fontSize: 12, color: MUTED }}>Trend evidence</summary>
               <Flex flexDirection="column" gap={4} style={{ paddingTop: 6 }}>
                 {trendEvidenceRows(pattern).map((row, index) => (
                   <StatRow key={`${row.label}-${index}`} label={row.label || ' '} value={row.value} />
                 ))}
+                {renderMttrValidation(mttrValidation)}
               </Flex>
             </details>
           )}
@@ -1874,7 +1967,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
                   <RawResponse state={analysis} />
                   <AssistAttribution state={analysis} />
                   <GeneratedOutput state={analysis} pattern={pattern} kind="analysis" />
-                  <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={dqlNotebookContext} outputs={actionPlanOutputs} />
+                  <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={enhancedDqlNotebookContext} outputs={actionPlanOutputs} />
                 </Flex>
               </Tab>
             )}
@@ -1892,7 +1985,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
                   <RawResponse state={remediation} />
                   <AssistAttribution state={remediation} />
                   <GeneratedOutput state={remediation} pattern={pattern} kind="remediation" />
-                  <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={dqlNotebookContext} outputs={actionPlanOutputs} />
+                  <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={enhancedDqlNotebookContext} outputs={actionPlanOutputs} />
                 </Flex>
               </Tab>
             )}
@@ -1910,7 +2003,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
                   <RawResponse state={alertTuning} />
                   <AssistAttribution state={alertTuning} />
                   <GeneratedOutput state={alertTuning} pattern={pattern} kind="alert_tuning" />
-                  <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={dqlNotebookContext} outputs={actionPlanOutputs} />
+                  <ExportActionPlanControl pattern={pattern} timeWindow={timeWindow} dqlNotebookContext={enhancedDqlNotebookContext} outputs={actionPlanOutputs} />
                 </Flex>
               </Tab>
             )}

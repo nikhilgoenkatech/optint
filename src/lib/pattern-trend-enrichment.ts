@@ -352,7 +352,13 @@ export function compactTrendEvidence(enrichment?: PatternTrendEnrichment): Recor
   }
   if (enrichment.mttrTrend?.direction && enrichment.mttrTrend.direction !== 'insufficient_data') {
     evidence.mttrDirection = enrichment.mttrTrend.direction;
+    if (enrichment.mttrTrend.medianPrevious !== undefined) evidence.medianMttrPrevious = enrichment.mttrTrend.medianPrevious;
+    if (enrichment.mttrTrend.medianCurrent !== undefined) evidence.medianMttrCurrent = enrichment.mttrTrend.medianCurrent;
     if (enrichment.mttrTrend.deltaPercent !== undefined) evidence.medianMttrDeltaPercent = enrichment.mttrTrend.deltaPercent;
+    if (enrichment.mttrTrend.p85Previous !== undefined) evidence.p85MttrPrevious = enrichment.mttrTrend.p85Previous;
+    if (enrichment.mttrTrend.p85Current !== undefined) evidence.p85MttrCurrent = enrichment.mttrTrend.p85Current;
+    evidence.resolvedPreviousCount = enrichment.mttrTrend.resolvedPreviousCount;
+    evidence.resolvedCurrentCount = enrichment.mttrTrend.resolvedCurrentCount;
     if (enrichment.mttrTrend.p85Current && enrichment.mttrTrend.p85Previous) {
       const p85Delta = pctDelta(enrichment.mttrTrend.p85Current, enrichment.mttrTrend.p85Previous);
       if (p85Delta !== undefined) evidence.p85MttrDeltaPercent = p85Delta;

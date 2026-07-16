@@ -1,5 +1,6 @@
 import type { PatternDetail } from '../types/views';
 import type { ActionPlanOutputs } from './action-plan-export';
+import type { MttrTrendReconciliation } from './mttr-trend-validation';
 
 export type DqlNotebookContext = {
   queries: Array<{
@@ -11,6 +12,7 @@ export type DqlNotebookContext = {
     lastExecutionTime?: string | null;
     rowCount?: number | null;
   }>;
+  mttrTrendReconciliation?: MttrTrendReconciliation;
 };
 
 export type EvidenceNotebookInput = {
@@ -310,6 +312,15 @@ export function buildEvidenceNotebookJson(input: EvidenceNotebookInput): Dynatra
         modeledCostValues: 'Excluded from trend enrichment; cost remains modeled separately',
         assistGeneratedRecommendations: 'Excluded from trend enrichment; Assist output appears in later sections',
         trendEnrichment: pattern.trendEnrichment ?? null,
+      },
+    },
+    {
+      type: 'json',
+      title: 'MTTR Trend Reconciliation',
+      data: {
+        purpose: 'Independent validation of selected-pattern client-side MTTR trend against a fallback-safe DQL query.',
+        status: input.dqlContext?.mttrTrendReconciliation?.status ?? 'INSUFFICIENT_DATA',
+        reconciliation: input.dqlContext?.mttrTrendReconciliation ?? null,
       },
     },
     {

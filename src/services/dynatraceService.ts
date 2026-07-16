@@ -16,6 +16,7 @@ import {
 import { DQL_QUERIES, computeRecurrenceScore, computeOperationalImpactScore } from '../queries/dqlQueries';
 import { DEFAULT_COST_CONFIG, estimateCost } from '../cost/CostModel';
 import { entityTypeFromId, normalizeEntity, normalizeEntityName } from '../lib/entity-normalization';
+import { DqlMttrTrendRecord } from '../lib/mttr-trend-validation';
 
 // ── Fetch problems via DQL ─────────────────────────────────
 
@@ -32,6 +33,22 @@ export async function fetchProblems(
   const records = (result.result?.records ?? [])
     .filter(Boolean) as Array<Record<string, unknown>>;
   return records.map(mapRecordToProblem);
+}
+
+export async function fetchPatternMTTRTrendRecords(query: string): Promise<DqlMttrTrendRecord[]> {
+  const result = await queryExecutionClient.queryExecute({
+    body: {
+      query,
+      requestTimeoutMilliseconds: 15000,
+      fetchTimeoutSeconds: 60,
+    },
+  });
+  return ((result.result?.records ?? []) as Array<Record<string, unknown>>).map(record => ({
+    period: record.period,
+    resolvedCount: record.resolvedCount,
+    medianMttr: record.medianMttr,
+    p85Mttr: record.p85Mttr,
+  }));
 }
 
 // ── Fetch KPIs ─────────────────────────────────────────────

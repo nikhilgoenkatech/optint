@@ -47,6 +47,41 @@ function buildProblemFilters(filters: FilterState): string {
   ].filter(Boolean).join('\n');
 }
 
+function dqlTimestamp(ms: number): string {
+  return `"${new Date(ms).toISOString()}"`;
+}
+
+function buildAbsoluteTimeFilter(filters: FilterState, bounds?: { from: number; to: number }): string {
+  if (!bounds || !Number.isFinite(bounds.from) || !Number.isFinite(bounds.to) || bounds.to <= bounds.from) {
+    return buildTimeFilter(filters.timeRange.from, filters.timeRange.to);
+  }
+  return `from: ${dqlTimestamp(bounds.from)}, to: ${dqlTimestamp(bounds.to)}`;
+}
+
+function buildSelectedPatternFilter(pattern: {
+  problemIds?: string[];
+  eventName?: string;
+  rootCauseEntityId?: string;
+  rootCauseEntityName?: string;
+  affectedEntityIds?: string[];
+}): string {
+  const ids = (pattern.problemIds ?? []).filter(Boolean);
+  if (ids.length) return `event.id in [${ids.map(id => `"${quoteDql(id)}"`).join(', ')}]`;
+
+  const identityFilters = [
+    pattern.rootCauseEntityId ? `root_cause_entity_id == "${quoteDql(pattern.rootCauseEntityId)}"` : '',
+    pattern.rootCauseEntityName ? `root_cause_entity_name == "${quoteDql(pattern.rootCauseEntityName)}"` : '',
+    ...(pattern.affectedEntityIds ?? []).filter(Boolean).map(id => `matchesValue(affected_entity_ids, "${quoteDql(id)}")`),
+    ...(pattern.affectedEntityIds ?? []).filter(Boolean).map(id => `matchesValue(smartscape.affected_entity.ids, "${quoteDql(id)}")`),
+  ].filter(Boolean);
+
+  if (pattern.eventName && identityFilters.length) {
+    return `event.name == "${quoteDql(pattern.eventName)}" and (${identityFilters.join(' or ')})`;
+  }
+  if (pattern.eventName) return `event.name == "${quoteDql(pattern.eventName)}"`;
+  return identityFilters.length ? identityFilters.join(' or ') : 'true';
+}
+
 // ── DQL Query Templates ────────────────────────────────────
 
 export const DQL_QUERIES = {
@@ -243,32 +278,50 @@ ${buildProblemFilters(filters)}
   `.trim(),
 
   /**
-   * Validation only: selected-pattern median and p85 MTTR by timeframe bucket.
-   * Uses only resolved/closed problems with valid resolved_problem_duration.
+   * Validation only: selected-pattern median and p85 MTTR split into previous/current periods.
+   * Uses resolved_problem_duration when available, otherwise derives duration from event.end - event.start.
+   * The client-side trend enrichment remains the production value; this query is a validation layer.
    */
-  mttrTrendQuery: (
+  fetchPatternMTTRTrend: (
     filters: FilterState,
-    pattern: { eventName?: string; rootCauseEntityId?: string; rootCauseEntityName?: string },
-    bucketSize: '1d' | '1w' = '1d'
+    pattern: {
+      problemIds?: string[];
+      eventName?: string;
+      rootCauseEntityId?: string;
+      rootCauseEntityName?: string;
+      affectedEntityIds?: string[];
+    },
+    bounds?: { from: number; to: number }
   ): string => `
-fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
+fetch dt.davis.problems, ${buildAbsoluteTimeFilter(filters, bounds)}
 ${buildProblemFilters(filters)}
 | filter dt.davis.is_duplicate == false
-| filter event.status in ["RESOLVED", "CLOSED"] and isNotNull(resolved_problem_duration)
-| filter ${[
-    pattern.rootCauseEntityId ? `root_cause_entity_id == "${quoteDql(pattern.rootCauseEntityId)}"` : '',
-    pattern.rootCauseEntityName ? `root_cause_entity_name == "${quoteDql(pattern.rootCauseEntityName)}"` : '',
-    pattern.eventName ? `event.name == "${quoteDql(pattern.eventName)}"` : '',
-  ].filter(Boolean).join(' or ') || 'true'}
-| fields startTime = event.start, duration = resolved_problem_duration, eventName = event.name, category = event.category
-| fieldsAdd bucket = bin(startTime, ${bucketSize})
+| filter event.status in ["RESOLVED", "CLOSED"]
+| filter ${buildSelectedPatternFilter(pattern)}
+| fields problemId = event.id, startTime = event.start, endTime = event.end, nativeDuration = resolved_problem_duration, eventName = event.name, category = event.category, rootCauseEntityId = root_cause_entity_id, rootCauseEntityName = root_cause_entity_name
+| filter isNotNull(startTime) and isNotNull(endTime)
+| fieldsAdd durationMinutes = if(isNotNull(nativeDuration), nativeDuration / 60000000000, (endTime - startTime) / 60000000000)
+| filter isNotNull(durationMinutes) and durationMinutes > 0
+| fieldsAdd period = if(startTime < toTimestamp("${bounds && Number.isFinite(bounds.from) && Number.isFinite(bounds.to) ? new Date(bounds.from + ((bounds.to - bounds.from) / 2)).toISOString() : ''}"), "previous", "current")
 | summarize
     resolvedCount = count(),
-    medianMttr = median(duration),
-    p85Mttr = percentile(duration, 85),
-    by: { bucket, eventName, category }
-| sort bucket asc
+    medianMttr = percentile(durationMinutes, 50),
+    p85Mttr = percentile(durationMinutes, 85),
+    by: { period }
+| sort period asc
   `.trim(),
+
+  mttrTrendQuery: (
+    filters: FilterState,
+    pattern: {
+      problemIds?: string[];
+      eventName?: string;
+      rootCauseEntityId?: string;
+      rootCauseEntityName?: string;
+      affectedEntityIds?: string[];
+    },
+    bounds?: { from: number; to: number }
+  ): string => DQL_QUERIES.fetchPatternMTTRTrend(filters, pattern, bounds),
 
   /**
    * Root cause clusters - groups recurring problems by root cause entity

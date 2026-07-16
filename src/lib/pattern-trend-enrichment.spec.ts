@@ -1,7 +1,14 @@
 import { detectPatterns } from '../analytics';
-import { DynatraceProblem, ProblemPattern } from '../models';
+import { DynatraceProblem, FilterState, ProblemPattern } from '../models';
 import { buildPrompt } from '../persona/PersonaPromptBuilder';
+import { DQL_QUERIES } from '../queries/dqlQueries';
 import { patternToDetail } from './pattern-adapter';
+import {
+  buildMttrTrendStats,
+  mttrStatsFromDqlProblemRecords,
+  mttrStatsFromDqlRecords,
+  reconcileMttrTrend,
+} from './mttr-trend-validation';
 import {
   buildTrendEnrichment,
   compactTrendEvidence,
@@ -280,6 +287,86 @@ export function runPatternTrendEnrichmentTests(): TestResult[] {
     assertNotIncludes(prompt, 'activeOverTime', 'prompt excludes lifecycle timeseries arrays');
     assertNotIncludes(prompt, '"source":"unavailable"', 'prompt omits unavailable source fields');
     return `promptLength=${prompt.length}`;
+  }));
+
+  results.push(run('DQL MTTR stats use native duration and fallback event timestamps', () => {
+    const stats = mttrStatsFromDqlProblemRecords([
+      { status: 'RESOLVED', startTime: BASE + DAY, endTime: BASE + DAY + (999 * 60000), nativeDuration: 30 * 60_000_000_000 },
+      { status: 'CLOSED', startTime: BASE + (2 * DAY), endTime: BASE + (2 * DAY) + (40 * 60000), nativeDuration: null },
+      { status: 'RESOLVED', startTime: BASE + (9 * DAY), endTime: BASE + (9 * DAY) + (390 * 60000), nativeDuration: null },
+      { status: 'CLOSED', startTime: BASE + (10 * DAY), endTime: BASE + (10 * DAY) + (420 * 60000), nativeDuration: null },
+      { status: 'OPEN', startTime: BASE + (10 * DAY), endTime: BASE + (10 * DAY) + (10 * 60000), nativeDuration: 10 },
+      { status: 'RESOLVED', startTime: BASE + (11 * DAY), endTime: undefined, nativeDuration: null },
+      { status: 'RESOLVED', startTime: BASE + (11 * DAY), endTime: BASE + (11 * DAY) - 60000, nativeDuration: null },
+    ], BOUNDS);
+    assertEqual(stats.previousResolvedCount, 2, 'native and fallback previous durations included');
+    assertEqual(stats.currentResolvedCount, 2, 'current fallback durations included');
+    assertEqual(stats.medianPrevious, 35, 'DQL median previous calculated');
+    assertEqual(stats.p85Current, 420, 'DQL p85 current calculated');
+    assertEqual(stats.direction, 'worsening', 'DQL fallback-safe MTTR direction calculated');
+  }));
+
+  results.push(run('production MTTR trend DQL is fallback-safe and selected-pattern scoped', () => {
+    const filters: FilterState = {
+      timeRange: { from: '2026-07-01T00:00:00.000Z', to: '2026-07-15T00:00:00.000Z', label: 'fixed' },
+      applications: [],
+      tags: [],
+      managementZones: [],
+      severities: [],
+      statuses: [],
+      searchText: '',
+    };
+    const dql = DQL_QUERIES.fetchPatternMTTRTrend(
+      filters,
+      { problemIds: ['P-1', 'P-2'], eventName: 'Failure rate increase' },
+      BOUNDS,
+    );
+    assertIncludes(dql, 'event.id in ["P-1", "P-2"]', 'DQL scopes to exact selected pattern problem IDs');
+    assertIncludes(dql, 'nativeDuration / 60000000000', 'DQL uses native resolved duration when available');
+    assertIncludes(dql, '(endTime - startTime) / 60000000000', 'DQL falls back to event.end - event.start');
+    assertNotIncludes(dql, 'isNotNull(resolved_problem_duration)', 'DQL must not require native duration only');
+    assertIncludes(dql, 'percentile(durationMinutes, 50)', 'DQL uses median percentile as primary MTTR measure');
+  }));
+
+  results.push(run('DQL MTTR stats support improving, stable, worsening, and insufficient states', () => {
+    assertEqual(buildMttrTrendStats([120, 140], [40, 50]).direction, 'improving', 'improving direction');
+    assertEqual(buildMttrTrendStats([100, 110], [105, 115]).direction, 'stable', 'stable direction');
+    assertEqual(buildMttrTrendStats([30, 35], [390, 420]).direction, 'worsening', 'worsening direction');
+    assertEqual(buildMttrTrendStats([30], [390, 420]).direction, 'insufficient_data', 'insufficient previous evidence');
+    assertEqual(buildMttrTrendStats([30, 35], [390]).direction, 'insufficient_data', 'insufficient current evidence');
+  }));
+
+  results.push(run('client and DQL MTTR reconciliation', () => {
+    const client = buildMttrTrendStats([30, 35], [390, 420]);
+    const dqlMatch = mttrStatsFromDqlRecords([
+      { period: 'previous', resolvedCount: 2, medianMttr: 32.5, p85Mttr: 35 },
+      { period: 'current', resolvedCount: 2, medianMttr: 405, p85Mttr: 420 },
+    ]);
+    assertEqual(reconcileMttrTrend(client, dqlMatch).status, 'MATCH', 'matching DQL and client stats');
+
+    const dqlMismatch = mttrStatsFromDqlRecords([
+      { period: 'previous', resolvedCount: 2, medianMttr: 300, p85Mttr: 330 },
+      { period: 'current', resolvedCount: 2, medianMttr: 30, p85Mttr: 35 },
+    ]);
+    assertEqual(reconcileMttrTrend(client, dqlMismatch).status, 'MISMATCH', 'mismatching DQL and client stats');
+  }));
+
+  results.push(run('MTTR trend remains objective-neutral and Assist payload is compact', () => {
+    const raw = [
+      problem('OBJ-1', 1, { duration: 30 }),
+      problem('OBJ-2', 2, { duration: 35 }),
+      problem('OBJ-3', 9, { duration: 390 }),
+      problem('OBJ-4', 10, { duration: 420 }),
+    ];
+    const enriched = enrichPattern(detectPatterns(raw).patterns[0], BOUNDS);
+    const costPrompt = buildPrompt({ problems: raw, persona: 'executive', costEstimates: [], totalCost: 100, objective: 'cost_impact', pattern: enriched });
+    const alertPrompt = buildPrompt({ problems: raw, persona: 'executive', costEstimates: [], totalCost: 100, objective: 'alert_optimization', pattern: enriched });
+    assertEqual(enriched.trendEnrichment?.mttrTrend?.direction, 'worsening', 'MTTR direction is objective-neutral evidence');
+    assertIncludes(costPrompt, 'medianMttrPrevious', 'cost prompt includes compact MTTR evidence');
+    assertIncludes(alertPrompt, 'medianMttrCurrent', 'alert prompt includes compact MTTR evidence');
+    assertNotIncludes(costPrompt, 'occurrenceSeries', 'cost prompt omits full series');
+    assertNotIncludes(alertPrompt, 'activeOverTime', 'alert prompt omits full lifecycle series');
+    assert(costPrompt.length < 10000 && alertPrompt.length < 10000, 'prompts remain below 10000 characters');
   }));
 
   return results;

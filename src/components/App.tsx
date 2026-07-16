@@ -199,8 +199,11 @@ export function App() {
     const activePatterns = persona === 'developer' ? developerPatterns : patterns;
     const selectedPattern = activePatterns.find(pattern => pattern.patternId === selectedPatternId);
     const selectedPatternContext = selectedPattern ? {
+      problemIds: selectedPattern.problems.map(problem => problem.problemId).filter(Boolean),
       eventName: selectedPattern.problems[0]?.title,
+      rootCauseEntityId: selectedPattern.problems.find(problem => problem.rootCauseEntity?.entityId)?.rootCauseEntity?.entityId,
       rootCauseEntityName: selectedPattern.dimensions.primaryRootCause ?? undefined,
+      affectedEntityIds: selectedPattern.problems.flatMap(problem => problem.impactedEntities.map(entity => entity.entityId)).filter(Boolean),
     } : null;
     const validationQueries = selectedPatternContext ? [
       {
@@ -208,7 +211,7 @@ export function App() {
         persona,
         purpose: 'Validation template for selected-pattern creation rate buckets from event.start. Not executed automatically and does not replace client-side values.',
         dql: DQL_QUERIES.problemCreationRateQuery(filters, selectedPatternContext),
-        parameters: { from, to, patternId: selectedPattern?.patternId ?? null },
+        parameters: { from, to, patternId: selectedPattern?.patternId ?? null, problemIdsCount: selectedPatternContext.problemIds.length },
         lastExecutionTime: null,
         rowCount: null,
       },
@@ -217,16 +220,16 @@ export function App() {
         persona,
         purpose: 'Validation template for selected-pattern peak UTC hour/day evidence from event.start. Not executed automatically.',
         dql: DQL_QUERIES.peakProblemHoursQuery(filters, selectedPatternContext),
-        parameters: { from, to, patternId: selectedPattern?.patternId ?? null },
+        parameters: { from, to, patternId: selectedPattern?.patternId ?? null, problemIdsCount: selectedPatternContext.problemIds.length },
         lastExecutionTime: null,
         rowCount: null,
       },
       {
-        name: 'mttrTrendQuery',
+        name: 'fetchPatternMTTRTrend',
         persona,
-        purpose: 'Validation template for selected-pattern median and p85 MTTR trend using resolved/closed problems only. Not executed automatically.',
-        dql: DQL_QUERIES.mttrTrendQuery(filters, selectedPatternContext),
-        parameters: { from, to, patternId: selectedPattern?.patternId ?? null },
+        purpose: 'Selected-pattern MTTR trend validation. Uses exact problem IDs when available, resolved/closed problems only, resolved_problem_duration fallback to event.end - event.start, and does not replace client-side MTTR trend.',
+        dql: DQL_QUERIES.fetchPatternMTTRTrend(filters, selectedPatternContext, trendBounds),
+        parameters: { from, to, patternId: selectedPattern?.patternId ?? null, problemIdsCount: selectedPatternContext.problemIds.length },
         lastExecutionTime: null,
         rowCount: null,
       },
@@ -242,7 +245,7 @@ export function App() {
         rowCount: problems.length,
       }, ...validationQueries],
     };
-  }, [timeframe, problems.length, persona, patterns, developerPatterns, selectedPatternId]);
+  }, [timeframe, problems.length, persona, patterns, developerPatterns, selectedPatternId, trendBounds]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
