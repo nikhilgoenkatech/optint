@@ -36,11 +36,6 @@ type PopupPosition = {
 
 const POPUP_WIDTH = 250;
 const POPUP_GAP = 14;
-const POPUP_HEIGHT = 130;
-const CHART_HEIGHT = 320;
-// Approximate px-per-percent for collision math (chart ~480px wide, 320px tall)
-const PX_PER_PCT_X = 4.8;
-const PX_PER_PCT_Y = 3.2;
 
 const PRIORITY_STYLE: Record<PriorityLevel, { border: string; background: string; text: string; glow: string }> = {
   High: {
@@ -111,24 +106,29 @@ function buildMapPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost
   });
 }
 
-// Returns display positions for each point (identity — no collision avoidance applied).
-function resolveCollisions(points: ReadonlyArray<MapPoint>): Map<string, { x: number; y: number }> {
-  return new Map(points.map(p => [p.id, { x: p.x, y: p.y }]));
-}
-
-function getSafePopupPosition(displayX: number, displayY: number, radius: number): PopupPosition {
+function getSafePopupPosition(point: MapPoint): PopupPosition {
   const inset = 8;
-  const left = `clamp(${inset}px, calc(${displayX}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
-  const verticalGap = radius + POPUP_GAP;
+  const left = `clamp(${inset}px, calc(${point.x}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
+  const verticalGap = point.radius + POPUP_GAP;
 
-  // Place popup below the bubble when there is enough room, otherwise above.
-  const pixelFromTop = (1 - displayY / 100) * CHART_HEIGHT;
-  const spaceBelow = CHART_HEIGHT - pixelFromTop - verticalGap;
-
-  if (spaceBelow >= POPUP_HEIGHT) {
-    return { left, top: `calc(${100 - displayY}% + ${verticalGap}px)` };
+  if (point.y > 64) {
+    return {
+      left,
+      top: `calc(${100 - point.y}% + ${verticalGap}px)`,
+    };
   }
-  return { left, bottom: `calc(${displayY}% + ${verticalGap}px)` };
+
+  if (point.y < 30) {
+    return {
+      left,
+      bottom: `calc(${point.y}% + ${verticalGap}px)`,
+    };
+  }
+
+  return {
+    left,
+    top: `calc(${100 - point.y}% + ${verticalGap}px)`,
+  };
 }
 
 export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
@@ -141,9 +141,6 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
     () => points.find(point => point.id === selectedPatternId) ?? null,
     [points, selectedPatternId],
   );
-
-  // Display positions after collision avoidance (visual only — scores unchanged).
-  const displayPos = useMemo(() => resolveCollisions(points), [points]);
 
   useEffect(() => {
     setClosedPopupId(null);
@@ -183,8 +180,6 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
     );
   }
 
-  const selectedDisplayPos = selectedPoint ? displayPos.get(selectedPoint.id) : null;
-
   return (
     <div
       ref={mapRef}
@@ -197,7 +192,7 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
       <div
         style={{
           position: 'relative',
-          height: CHART_HEIGHT,
+          height: 320,
           borderLeft: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
           borderBottom: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
           background:
@@ -217,7 +212,6 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
           const hovered = point.id === hoveredPointId;
           const style = PRIORITY_STYLE[point.priority];
           const diameter = selected ? point.radius + 8 : point.radius;
-          const dp = displayPos.get(point.id)!;
           return (
             <button
               key={point.id}
@@ -229,8 +223,8 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
               onClick={() => selectPoint(point)}
               style={{
                 position: 'absolute',
-                left: `${dp.x}%`,
-                bottom: `${dp.y}%`,
+                left: `${point.x}%`,
+                bottom: `${point.y}%`,
                 width: diameter,
                 height: diameter,
                 transform: 'translate(-50%, 50%)',
@@ -247,11 +241,9 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
           );
         })}
 
-        {selectedPoint && closedPopupId !== selectedPoint.id && selectedDisplayPos && (
+        {selectedPoint && closedPopupId !== selectedPoint.id && (
           <PatternPopup
             point={selectedPoint}
-            displayX={selectedDisplayPos.x}
-            displayY={selectedDisplayPos.y}
             onClose={() => setClosedPopupId(selectedPoint.id)}
           />
         )}
@@ -306,9 +298,9 @@ function QuadrantLabel({ label, left, top }: { label: string; left: string; top:
   );
 }
 
-function PatternPopup({ point, displayX, displayY, onClose }: { point: MapPoint; displayX: number; displayY: number; onClose: () => void }) {
+function PatternPopup({ point, onClose }: { point: MapPoint; onClose: () => void }) {
   const style = PRIORITY_STYLE[point.priority];
-  const position = getSafePopupPosition(displayX, displayY, point.radius);
+  const position = getSafePopupPosition(point);
 
   return (
     <div

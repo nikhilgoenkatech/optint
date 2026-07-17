@@ -27,10 +27,6 @@ type MatrixPoint = {
 
 const POPUP_WIDTH = 250;
 const POPUP_GAP = 14;
-const POPUP_HEIGHT = 130;
-const CHART_HEIGHT = 320;
-const PX_PER_PCT_X = 4.8;
-const PX_PER_PCT_Y = 3.2;
 
 const RISK_STYLE: Record<RiskLevel, { border: string; background: string; text: string; glow: string }> = {
   High: {
@@ -94,23 +90,20 @@ function buildPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost_im
   }));
 }
 
-// Returns display positions for each point (identity — no collision avoidance applied).
-function resolveCollisions(points: ReadonlyArray<MatrixPoint>): Map<string, { x: number; y: number }> {
-  return new Map(points.map(p => [p.id, { x: p.x, y: p.y }]));
-}
-
-function getSafePopupPosition(displayX: number, displayY: number, radius: number) {
+function getSafePopupPosition(point: MatrixPoint) {
   const inset = 8;
-  const left = `clamp(${inset}px, calc(${displayX}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
-  const verticalGap = radius + POPUP_GAP;
+  const left = `clamp(${inset}px, calc(${point.x}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
+  const verticalGap = point.radius + POPUP_GAP;
 
-  const pixelFromTop = (1 - displayY / 100) * CHART_HEIGHT;
-  const spaceBelow = CHART_HEIGHT - pixelFromTop - verticalGap;
-
-  if (spaceBelow >= POPUP_HEIGHT) {
-    return { left, top: `calc(${100 - displayY}% + ${verticalGap}px)` };
+  if (point.y > 64) {
+    return { left, top: `calc(${100 - point.y}% + ${verticalGap}px)` };
   }
-  return { left, bottom: `calc(${displayY}% + ${verticalGap}px)` };
+
+  if (point.y < 30) {
+    return { left, bottom: `calc(${point.y}% + ${verticalGap}px)` };
+  }
+
+  return { left, top: `calc(${100 - point.y}% + ${verticalGap}px)` };
 }
 
 export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: ReliabilityRiskMatrixProps) {
@@ -119,9 +112,6 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
   const points = useMemo(() => buildPoints(patterns, objective, weightsConfig), [patterns, objective, weightsConfig]);
   const selectedPoint = points.find(point => point.id === selectedPatternId) ?? null;
-
-  // Display positions after collision avoidance (visual only — scores unchanged).
-  const displayPos = useMemo(() => resolveCollisions(points), [points]);
 
   useEffect(() => {
     setClosedPopupId(null);
@@ -150,14 +140,12 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
     return <div style={{ minHeight: 320, display: 'grid', placeItems: 'center' }}>No reliability risks to display</div>;
   }
 
-  const selectedDisplayPos = selectedPoint ? displayPos.get(selectedPoint.id) : null;
-
   return (
     <div ref={matrixRef} style={{ position: 'relative', minHeight: 390, padding: '20px 24px 38px 54px' }}>
       <div
         style={{
           position: 'relative',
-          height: CHART_HEIGHT,
+          height: 320,
           borderLeft: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
           borderBottom: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
           background:
@@ -175,7 +163,6 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
           const hovered = point.id === hoveredPointId;
           const style = RISK_STYLE[point.priority];
           const diameter = selected ? point.radius + 8 : point.radius;
-          const dp = displayPos.get(point.id)!;
           return (
             <button
               key={point.id}
@@ -190,8 +177,8 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
               }}
               style={{
                 position: 'absolute',
-                left: `${dp.x}%`,
-                bottom: `${dp.y}%`,
+                left: `${point.x}%`,
+                bottom: `${point.y}%`,
                 width: diameter,
                 height: diameter,
                 transform: 'translate(-50%, 50%)',
@@ -207,8 +194,8 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
           );
         })}
 
-        {selectedPoint && closedPopupId !== selectedPoint.id && selectedDisplayPos && (
-          <RiskPopup point={selectedPoint} displayX={selectedDisplayPos.x} displayY={selectedDisplayPos.y} onClose={() => setClosedPopupId(selectedPoint.id)} />
+        {selectedPoint && closedPopupId !== selectedPoint.id && (
+          <RiskPopup point={selectedPoint} onClose={() => setClosedPopupId(selectedPoint.id)} />
         )}
       </div>
       <AxisLabel bottom>Higher recurrence -&gt;</AxisLabel>
@@ -217,9 +204,9 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
   );
 }
 
-function RiskPopup({ point, displayX, displayY, onClose }: { point: MatrixPoint; displayX: number; displayY: number; onClose: () => void }) {
+function RiskPopup({ point, onClose }: { point: MatrixPoint; onClose: () => void }) {
   const style = RISK_STYLE[point.priority];
-  const position = getSafePopupPosition(displayX, displayY, point.radius);
+  const position = getSafePopupPosition(point);
 
   return (
     <div
