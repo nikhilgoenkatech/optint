@@ -111,12 +111,20 @@ function buildMapPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost
   });
 }
 
-// Iterative collision avoidance: separates overlapping bubbles visually while
-// preserving underlying score coordinates (point.x / point.y remain unchanged).
+// Iterative collision avoidance (Jacobi): separates overlapping bubbles visually
+// while preserving underlying score coordinates (point.x / point.y remain unchanged).
+// Jacobi style — all forces computed first, then applied simultaneously — prevents
+// boundary pile-up that happens when Gauss-Seidel clamps one bubble mid-iteration.
 function resolveCollisions(points: ReadonlyArray<MapPoint>): Map<string, { x: number; y: number }> {
   const pos = new Map(points.map(p => [p.id, { x: p.x, y: p.y }]));
+  if (points.length < 2) return pos;
 
-  for (let iter = 0; iter < 12; iter++) {
+  const MIN_GAP_PX = 4;
+
+  for (let iter = 0; iter < 20; iter++) {
+    const deltas = new Map(points.map(p => [p.id, { dx: 0, dy: 0 }]));
+    let anyOverlap = false;
+
     for (let i = 0; i < points.length; i++) {
       for (let j = i + 1; j < points.length; j++) {
         const a = points[i];
@@ -124,22 +132,42 @@ function resolveCollisions(points: ReadonlyArray<MapPoint>): Map<string, { x: nu
         const pa = pos.get(a.id)!;
         const pb = pos.get(b.id)!;
 
-        const dpx = (pb.x - pa.x) * PX_PER_PCT_X;
-        const dpy = (pb.y - pa.y) * PX_PER_PCT_Y;
-        const distPx = Math.sqrt(dpx * dpx + dpy * dpy);
-        const minDistPx = a.radius + b.radius + 4;
+        let dpx = (pb.x - pa.x) * PX_PER_PCT_X;
+        let dpy = (pb.y - pa.y) * PX_PER_PCT_Y;
+        let distPx = Math.sqrt(dpx * dpx + dpy * dpy);
+        const minDistPx = a.radius + b.radius + MIN_GAP_PX;
 
-        if (distPx < minDistPx && distPx > 0.1) {
+        if (distPx < minDistPx) {
+          anyOverlap = true;
+          // Push coincident points apart horizontally to avoid division by zero.
+          if (distPx < 0.01) { dpx = 1; dpy = 0; distPx = 1; }
           const push = (minDistPx - distPx) / 2;
           const nx = dpx / distPx;
           const ny = dpy / distPx;
-          pa.x = Math.max(6, Math.min(94, pa.x - (nx * push) / PX_PER_PCT_X));
-          pa.y = Math.max(6, Math.min(94, pa.y - (ny * push) / PX_PER_PCT_Y));
-          pb.x = Math.max(6, Math.min(94, pb.x + (nx * push) / PX_PER_PCT_X));
-          pb.y = Math.max(6, Math.min(94, pb.y + (ny * push) / PX_PER_PCT_Y));
+          deltas.get(a.id)!.dx -= (nx * push) / PX_PER_PCT_X;
+          deltas.get(a.id)!.dy -= (ny * push) / PX_PER_PCT_Y;
+          deltas.get(b.id)!.dx += (nx * push) / PX_PER_PCT_X;
+          deltas.get(b.id)!.dy += (ny * push) / PX_PER_PCT_Y;
         }
       }
     }
+
+    if (!anyOverlap) break;
+
+    for (const p of points) {
+      const d = deltas.get(p.id)!;
+      const cur = pos.get(p.id)!;
+      cur.x += d.dx;
+      cur.y += d.dy;
+    }
+  }
+
+  // Clamp only once, after all iterations, so no bubble gets stuck at a boundary
+  // mid-simulation and causes another bubble to pile up there.
+  for (const p of points) {
+    const cur = pos.get(p.id)!;
+    cur.x = Math.max(8, Math.min(92, cur.x));
+    cur.y = Math.max(8, Math.min(92, cur.y));
   }
 
   return pos;

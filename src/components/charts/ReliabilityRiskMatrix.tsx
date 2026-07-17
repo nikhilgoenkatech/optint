@@ -96,8 +96,14 @@ function buildPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost_im
 
 function resolveCollisions(points: ReadonlyArray<MatrixPoint>): Map<string, { x: number; y: number }> {
   const pos = new Map(points.map(p => [p.id, { x: p.x, y: p.y }]));
+  if (points.length < 2) return pos;
 
-  for (let iter = 0; iter < 12; iter++) {
+  const MIN_GAP_PX = 4;
+
+  for (let iter = 0; iter < 20; iter++) {
+    const deltas = new Map(points.map(p => [p.id, { dx: 0, dy: 0 }]));
+    let anyOverlap = false;
+
     for (let i = 0; i < points.length; i++) {
       for (let j = i + 1; j < points.length; j++) {
         const a = points[i];
@@ -105,22 +111,40 @@ function resolveCollisions(points: ReadonlyArray<MatrixPoint>): Map<string, { x:
         const pa = pos.get(a.id)!;
         const pb = pos.get(b.id)!;
 
-        const dpx = (pb.x - pa.x) * PX_PER_PCT_X;
-        const dpy = (pb.y - pa.y) * PX_PER_PCT_Y;
-        const distPx = Math.sqrt(dpx * dpx + dpy * dpy);
-        const minDistPx = a.radius + b.radius + 4;
+        let dpx = (pb.x - pa.x) * PX_PER_PCT_X;
+        let dpy = (pb.y - pa.y) * PX_PER_PCT_Y;
+        let distPx = Math.sqrt(dpx * dpx + dpy * dpy);
+        const minDistPx = a.radius + b.radius + MIN_GAP_PX;
 
-        if (distPx < minDistPx && distPx > 0.1) {
+        if (distPx < minDistPx) {
+          anyOverlap = true;
+          if (distPx < 0.01) { dpx = 1; dpy = 0; distPx = 1; }
           const push = (minDistPx - distPx) / 2;
           const nx = dpx / distPx;
           const ny = dpy / distPx;
-          pa.x = Math.max(6, Math.min(94, pa.x - (nx * push) / PX_PER_PCT_X));
-          pa.y = Math.max(6, Math.min(94, pa.y - (ny * push) / PX_PER_PCT_Y));
-          pb.x = Math.max(6, Math.min(94, pb.x + (nx * push) / PX_PER_PCT_X));
-          pb.y = Math.max(6, Math.min(94, pb.y + (ny * push) / PX_PER_PCT_Y));
+          deltas.get(a.id)!.dx -= (nx * push) / PX_PER_PCT_X;
+          deltas.get(a.id)!.dy -= (ny * push) / PX_PER_PCT_Y;
+          deltas.get(b.id)!.dx += (nx * push) / PX_PER_PCT_X;
+          deltas.get(b.id)!.dy += (ny * push) / PX_PER_PCT_Y;
         }
       }
     }
+
+    if (!anyOverlap) break;
+
+    for (const p of points) {
+      const d = deltas.get(p.id)!;
+      const cur = pos.get(p.id)!;
+      cur.x += d.dx;
+      cur.y += d.dy;
+    }
+  }
+
+  // Clamp only once after all iterations — prevents mid-simulation boundary pile-up.
+  for (const p of points) {
+    const cur = pos.get(p.id)!;
+    cur.x = Math.max(8, Math.min(92, cur.x));
+    cur.y = Math.max(8, Math.min(92, cur.y));
   }
 
   return pos;
