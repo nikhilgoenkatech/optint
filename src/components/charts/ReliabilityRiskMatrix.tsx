@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PatternRow } from '../../types/views';
+import { ObjectiveType, PatternRow } from '../../types/views';
+import { computePriorityScores, yAxisLabel } from '../../lib/pattern-priority';
+import { DEFAULT_WEIGHTS, WeightsConfig } from '../config/ConfigDialog';
 
 interface ReliabilityRiskMatrixProps {
   patterns: PatternRow[];
+  objective?: ObjectiveType;
+  weightsConfig?: WeightsConfig;
   onPatternSelect?: (id: string) => void;
   selectedPatternId?: string | null;
 }
@@ -69,9 +73,9 @@ function bubbleRadius(value: number, values: number[]): number {
   return 12 + ((value - min) / (max - min)) * 12;
 }
 
-function buildPoints(patterns: PatternRow[]): MatrixPoint[] {
+function buildPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost_impact', weights: WeightsConfig = DEFAULT_WEIGHTS): MatrixPoint[] {
   const recurrences = patterns.map(pattern => pattern.recurrenceCount);
-  const impacts = patterns.map(pattern => pattern.blastRadius);
+  const priorityScores = computePriorityScores(patterns, objective, weights);
 
   return patterns.map(pattern => ({
     id: pattern.id,
@@ -81,7 +85,7 @@ function buildPoints(patterns: PatternRow[]): MatrixPoint[] {
     trend: pattern.trend,
     priority: riskFor(pattern),
     x: normalize(pattern.recurrenceCount, recurrences, 70),
-    y: normalize(pattern.blastRadius, impacts, 70),
+    y: 12 + (priorityScores.get(pattern.id) ?? 0) * 76,
     radius: bubbleRadius(pattern.recurrenceCount, recurrences),
   }));
 }
@@ -102,10 +106,10 @@ function getSafePopupPosition(point: MatrixPoint) {
   return { left, top: `calc(${100 - point.y}% + ${verticalGap}px)` };
 }
 
-export function ReliabilityRiskMatrix({ patterns, onPatternSelect, selectedPatternId }: ReliabilityRiskMatrixProps) {
+export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: ReliabilityRiskMatrixProps) {
   const matrixRef = useRef<HTMLDivElement>(null);
   const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
-  const points = useMemo(() => buildPoints(patterns), [patterns]);
+  const points = useMemo(() => buildPoints(patterns, objective, weightsConfig), [patterns, objective, weightsConfig]);
   const selectedPoint = points.find(point => point.id === selectedPatternId) ?? null;
 
   useEffect(() => {
@@ -190,7 +194,7 @@ export function ReliabilityRiskMatrix({ patterns, onPatternSelect, selectedPatte
         )}
       </div>
       <AxisLabel bottom>Higher recurrence -&gt;</AxisLabel>
-      <AxisLabel>Higher reliability impact -&gt;</AxisLabel>
+      <AxisLabel>{yAxisLabel(objective)}</AxisLabel>
     </div>
   );
 }

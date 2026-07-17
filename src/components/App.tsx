@@ -24,6 +24,7 @@ import {
   buildWorkspaceViewModel,
 } from '../lib/persona-view-models';
 import { ConfigDialog, DEFAULT_EXTENDED_COST_CONFIG, DEFAULT_WEIGHTS, WeightsConfig } from './config/ConfigDialog';
+import { calibrateState, calibratePatterns, calibrateProblems, calibrateScores, calibrateCostConfig } from '../lib/calibrate-debug';
 import { ExtendedCostConfig } from '../models';
 import { applyDeveloperScopeFilter, buildDeveloperScopeTaxonomy } from '../lib/developer-scope';
 import { DQL_QUERIES } from '../queries/dqlQueries';
@@ -165,6 +166,25 @@ export function App() {
   const developerPatterns = useMemo(() => enrichPatterns(detectPatterns(scopedDeveloperProblems).patterns, trendBounds), [scopedDeveloperProblems, trendBounds]);
 
   useEffect(() => {
+    const activePatterns = persona === 'developer' ? developerPatterns : patterns;
+    const w = window as any;
+    w.calibrateDebug    = () => calibrateScores(activePatterns, objective, weightsConfig, costConfig);
+    w.calibrateState    = () => calibrateState(persona, objective, { from: timeframe?.from?.absoluteDate, to: timeframe?.to?.absoluteDate }, problems, patterns, developerPatterns, weightsConfig, costConfig, loadError);
+    w.calibratePatterns = () => calibratePatterns(activePatterns, costConfig);
+    w.calibrateProblems = () => calibrateProblems(problems);
+    w.calibrateCost     = () => calibrateCostConfig(costConfig);
+    w.calibrateHelp     = () => {
+      console.group('%c[Calibrate] Debug utilities', 'font-weight:bold;color:#1a6af4');
+      console.log('calibrateDebug()     — Priority scores with per-signal breakdown (current objective + weights)');
+      console.log('calibrateState()     — Full app state snapshot: persona, objective, timeframe, problem/pattern counts, errors');
+      console.log('calibratePatterns()  — Per-pattern summary: cost, MTTR, trend, evidence quality, affected services');
+      console.log('calibrateProblems()  — Raw problems from Grail: IDs, status, severity, duration, entity count');
+      console.log('calibrateCost()      — Cost config rates and severity multipliers');
+      console.groupEnd();
+    };
+  }, [patterns, developerPatterns, objective, weightsConfig, costConfig, persona, problems, timeframe, loadError]);
+
+  useEffect(() => {
     if (selectedPatternId) {
       const activePatterns = persona === 'developer' ? developerPatterns : patterns;
       if (!activePatterns.some((p) => p.patternId === selectedPatternId)) {
@@ -255,7 +275,7 @@ export function App() {
           display: 'flex',
           alignItems: 'center',
           padding: '0 16px',
-          borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
+          borderBottom: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
           background: 'var(--dt-colors-background-base-default, #f2f2f5)',
           minHeight: 44,
         }}
@@ -307,8 +327,8 @@ export function App() {
           alignItems: 'center',
           gap: 24,
           padding: '0 20px',
-          borderBottom: '1px solid var(--dt-colors-border-neutral-subdued, #eee)',
-          background: 'var(--dt-colors-background-container-neutral-subdued, #f8f8fa)',
+          borderBottom: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+          background: 'var(--dt-colors-background-base-default, #ffffff)',
           minHeight: 40,
         }}
       >
@@ -363,7 +383,16 @@ export function App() {
 
         <div style={{ flex: 1 }} />
 
-        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+          borderRadius: 4,
+          background: 'var(--dt-colors-background-container-neutral-default, #fff)',
+          overflow: 'hidden',
+        }}>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        </div>
         <div style={{ width: 1, height: 22, background: 'var(--dt-colors-border-neutral-subdued, #ddd)', flexShrink: 0 }} />
         <button
           onClick={() => setConfigOpen(true)}
@@ -408,6 +437,7 @@ export function App() {
           {persona === 'executive' && (
             <ExecutiveView
               objective={objective}
+              weightsConfig={weightsConfig}
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={executiveViewModel}
@@ -418,6 +448,7 @@ export function App() {
           {persona === 'sre' && (
             <SREView
               objective={objective}
+              weightsConfig={weightsConfig}
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={sreViewModel}
@@ -428,6 +459,7 @@ export function App() {
           {persona === 'developer' && (
             <DeveloperView
               objective={objective}
+              weightsConfig={weightsConfig}
               onObjectiveChange={setObjective}
               onPatternSelect={setSelectedPatternId}
               viewModel={developerViewModel}

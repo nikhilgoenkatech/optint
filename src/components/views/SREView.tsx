@@ -3,6 +3,7 @@ import { Flex } from '@dynatrace/strato-components/layouts';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, SREKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
+import { DEFAULT_WEIGHTS, WeightsConfig } from '../config/ConfigDialog';
 import { samplePatternRows, sampleSREKPIs } from '../../fixtures/patterns.sample';
 import { SREKpiRow } from '../kpis/SREKpiRow';
 import { ReliabilityRiskMatrix } from '../charts/ReliabilityRiskMatrix';
@@ -12,6 +13,7 @@ import type { DqlNotebookContext } from '../../lib/evidence-notebook-export';
 
 interface SREViewProps {
   objective: ObjectiveType;
+  weightsConfig?: WeightsConfig;
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<SREKPIs>;
@@ -19,7 +21,7 @@ interface SREViewProps {
   dqlNotebookContext?: DqlNotebookContext;
 }
 
-export function SREView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow, dqlNotebookContext }: SREViewProps) {
+export function SREView({ objective, weightsConfig = DEFAULT_WEIGHTS, onObjectiveChange, onPatternSelect, viewModel, timeWindow, dqlNotebookContext }: SREViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleSREKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -51,6 +53,8 @@ export function SREView({ objective, onObjectiveChange, onPatternSelect, viewMod
               <Tab title="Reliability Risk Matrix">
                 <ReliabilityRiskMatrix
                   patterns={patterns}
+                  objective={objective}
+                  weightsConfig={weightsConfig}
                   selectedPatternId={viewModel?.selectedPatternId ?? null}
                   onPatternSelect={onPatternSelect}
                 />

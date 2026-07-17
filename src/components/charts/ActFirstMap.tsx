@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PatternRow, DisplayLevel } from '../../types/views';
+import { ObjectiveType, PatternRow, DisplayLevel } from '../../types/views';
+import { computePriorityScores, parseCostValue, yAxisLabel } from '../../lib/pattern-priority';
+import { DEFAULT_WEIGHTS, WeightsConfig } from '../config/ConfigDialog';
 
 interface ActFirstMapProps {
   patterns: PatternRow[];
+  objective?: ObjectiveType;
+  weightsConfig?: WeightsConfig;
   onPatternSelect?: (id: string) => void;
   selectedPatternId?: string | null;
 }
@@ -54,13 +58,6 @@ const PRIORITY_STYLE: Record<PriorityLevel, { border: string; background: string
   },
 };
 
-function parseCost(costFormatted: string): number {
-  const s = costFormatted.trim().replace(/^\$/, '');
-  if (s.endsWith('K')) return parseFloat(s) * 1000;
-  if (s.endsWith('M')) return parseFloat(s) * 1_000_000;
-  return parseFloat(s) || 0;
-}
-
 function normalize(value: number, values: number[], fallback: number): number {
   const finiteValues = values.filter(Number.isFinite);
   if (!finiteValues.length) return fallback;
@@ -85,13 +82,13 @@ function priorityFor(pattern: PatternRow): PriorityLevel {
   return 'Low';
 }
 
-function buildMapPoints(patterns: PatternRow[]): MapPoint[] {
-  const costs = patterns.map(pattern => parseCost(pattern.costFormatted));
-  const impacts = patterns.map(pattern => pattern.blastRadius);
+function buildMapPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost_impact', weights: WeightsConfig = DEFAULT_WEIGHTS): MapPoint[] {
+  const costs = patterns.map(pattern => parseCostValue(pattern.costFormatted));
   const recurrences = patterns.map(pattern => pattern.recurrenceCount);
+  const priorityScores = computePriorityScores(patterns, objective, weights);
 
   return patterns.map(pattern => {
-    const cost = parseCost(pattern.costFormatted);
+    const cost = parseCostValue(pattern.costFormatted);
     return {
       id: pattern.id,
       name: pattern.name,
@@ -103,7 +100,7 @@ function buildMapPoints(patterns: PatternRow[]): MapPoint[] {
       priority: priorityFor(pattern),
       severity: pattern.severity,
       x: normalize(cost, costs, 72),
-      y: normalize(pattern.blastRadius, impacts, 72),
+      y: 12 + (priorityScores.get(pattern.id) ?? 0) * 76,
       radius: bubbleRadius(pattern.recurrenceCount, recurrences),
     };
   });
@@ -134,11 +131,11 @@ function getSafePopupPosition(point: MapPoint): PopupPosition {
   };
 }
 
-export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
+export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
 
-  const points = useMemo(() => buildMapPoints(patterns), [patterns]);
+  const points = useMemo(() => buildMapPoints(patterns, objective, weightsConfig), [patterns, objective, weightsConfig]);
   const selectedPoint = useMemo(
     () => points.find(point => point.id === selectedPatternId) ?? null,
     [points, selectedPatternId],
@@ -257,7 +254,7 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
           color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
         }}
       >
-        Lower remediation effort -&gt;
+        Higher operational cost -&gt;
       </div>
       <div
         style={{
@@ -270,7 +267,7 @@ export function ActFirstMap({ patterns, onPatternSelect, selectedPatternId }: Ac
           color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
         }}
       >
-        Higher business impact -&gt;
+        {yAxisLabel(objective)}
       </div>
     </div>
   );

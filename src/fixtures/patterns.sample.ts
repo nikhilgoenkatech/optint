@@ -23,6 +23,8 @@ export const samplePatternRows: PatternRow[] = [
     rcaAvailability: 'Missing',
     primaryAction: 'Review recurring browser monitor availability impact and define ownership.',
     lastSeen: Date.parse('2026-06-30T14:00:00Z'),
+    avgMttr: 30,
+    autoResolveRate: 0.1,
   },
   {
     id: 'pat-activegate-token-expiry',
@@ -47,6 +49,8 @@ export const samplePatternRows: PatternRow[] = [
     rootCauseEntity: 'ActiveGate',
     primaryAction: 'Route certificate ownership and validate renewal workflow.',
     lastSeen: Date.parse('2026-06-28T09:00:00Z'),
+    avgMttr: 45,
+    autoResolveRate: 0.2,
   },
   {
     id: 'pat-failure-rate-increase',
@@ -70,6 +74,8 @@ export const samplePatternRows: PatternRow[] = [
     rcaAvailability: 'Missing',
     primaryAction: 'Improve evidence quality before recommending a remediation path.',
     lastSeen: Date.parse('2026-06-25T10:00:00Z'),
+    avgMttr: 20,
+    autoResolveRate: 0.5,
   },
 ];
 

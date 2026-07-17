@@ -3,6 +3,7 @@ import { Flex } from '@dynatrace/strato-components/layouts';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, ExecKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
+import { DEFAULT_WEIGHTS, WeightsConfig } from '../config/ConfigDialog';
 import { samplePatternRows, sampleExecKPIs } from '../../fixtures/patterns.sample';
 import { ExecKpiRow } from '../kpis/ExecKpiRow';
 import { ActFirstMap } from '../charts/ActFirstMap';
@@ -12,6 +13,7 @@ import type { DqlNotebookContext } from '../../lib/evidence-notebook-export';
 
 interface ExecutiveViewProps {
   objective: ObjectiveType;
+  weightsConfig?: WeightsConfig;
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<ExecKPIs>;
@@ -19,7 +21,7 @@ interface ExecutiveViewProps {
   dqlNotebookContext?: DqlNotebookContext;
 }
 
-export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, viewModel, timeWindow, dqlNotebookContext }: ExecutiveViewProps) {
+export function ExecutiveView({ objective, weightsConfig = DEFAULT_WEIGHTS, onObjectiveChange, onPatternSelect, viewModel, timeWindow, dqlNotebookContext }: ExecutiveViewProps) {
   const patterns: PatternRow[] = viewModel?.patterns ?? samplePatternRows;
   const kpis = viewModel?.kpis ?? sampleExecKPIs;
   const selectedPattern = viewModel?.selectedPattern ?? null;
@@ -50,6 +52,8 @@ export function ExecutiveView({ objective, onObjectiveChange, onPatternSelect, v
             <Tab title="Act-First Map">
               <ActFirstMap
                 patterns={patterns}
+                objective={objective}
+                weightsConfig={weightsConfig}
                 selectedPatternId={viewModel?.selectedPatternId ?? null}
                 onPatternSelect={onPatternSelect}
               />

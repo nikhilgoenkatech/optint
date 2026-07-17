@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PatternRow } from '../../types/views';
+import { ObjectiveType, PatternRow } from '../../types/views';
+import { sortByObjective } from '../../lib/pattern-priority';
+import { DEFAULT_WEIGHTS, WeightsConfig } from '../config/ConfigDialog';
 
 interface DeveloperHeatMapProps {
   patterns: PatternRow[];
+  objective?: ObjectiveType;
+  weightsConfig?: WeightsConfig;
   onPatternSelect?: (id: string) => void;
   selectedPatternId?: string | null;
 }
@@ -86,10 +90,11 @@ function getSafePopupPosition(tile: HeatTile, rowCount: number) {
     : { left, top: `${y + 36}px` };
 }
 
-export function DeveloperHeatMap({ patterns, onPatternSelect, selectedPatternId }: DeveloperHeatMapProps) {
+export function DeveloperHeatMap({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: DeveloperHeatMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
-  const tiles = useMemo(() => buildTiles(patterns), [patterns]);
+  const sorted = useMemo(() => sortByObjective(patterns, objective, weightsConfig), [patterns, objective, weightsConfig]);
+  const tiles = useMemo(() => buildTiles(sorted), [sorted]);
   const selectedTile = tiles.find(tile => tile.id === selectedPatternId) ?? null;
 
   useEffect(() => {

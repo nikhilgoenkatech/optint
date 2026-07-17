@@ -3,6 +3,7 @@ import { Flex } from '@dynatrace/strato-components/layouts';
 import { ProgressCircle } from '@dynatrace/strato-components/content';
 import { Tabs, Tab } from '@dynatrace/strato-components/navigation';
 import { ObjectiveType, DeveloperKPIs, PatternRow, WorkspaceViewModel } from '../../types/views';
+import { DEFAULT_WEIGHTS, WeightsConfig } from '../config/ConfigDialog';
 import { samplePatternRows, sampleDeveloperKPIs } from '../../fixtures/patterns.sample';
 import { DeveloperKpiRow } from '../kpis/DeveloperKpiRow';
 import { DeveloperHeatMap } from '../charts/DeveloperHeatMap';
@@ -13,6 +14,7 @@ import type { DqlNotebookContext } from '../../lib/evidence-notebook-export';
 
 interface DeveloperViewProps {
   objective: ObjectiveType;
+  weightsConfig?: WeightsConfig;
   onObjectiveChange: (o: ObjectiveType) => void;
   onPatternSelect?: (id: string | null) => void;
   viewModel?: WorkspaceViewModel<DeveloperKPIs>;
@@ -25,6 +27,7 @@ interface DeveloperViewProps {
 
 export function DeveloperView({
   objective,
+  weightsConfig = DEFAULT_WEIGHTS,
   onObjectiveChange,
   onPatternSelect,
   viewModel,
@@ -61,6 +64,8 @@ export function DeveloperView({
             <Tab title="Developer Heat Map">
               <DeveloperHeatMap
                 patterns={patterns}
+                objective={objective}
+                weightsConfig={weightsConfig}
                 selectedPatternId={viewModel?.selectedPatternId ?? null}
                 onPatternSelect={onPatternSelect}
               />

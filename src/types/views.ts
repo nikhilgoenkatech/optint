@@ -62,6 +62,8 @@ export interface PatternRow {
   rootCauseEntity?: string;
   primaryAction: string;
   lastSeen?: number;
+  avgMttr: number;
+  autoResolveRate: number;
 }
 
 export interface PatternTimelineBucket {

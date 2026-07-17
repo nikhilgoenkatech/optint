@@ -25,36 +25,41 @@ export type EvidenceNotebookInput = {
   outputs: ActionPlanOutputs;
 };
 
-export type EvidenceNotebookSection =
+type InternalSection =
   | { type: 'markdown'; title: string; content: string }
   | { type: 'dql'; title: string; query: string; purpose: string; parameters: Record<string, string | number | null>; rowCount: number | null; lastExecutionTime: string | null }
   | { type: 'table'; title: string; columns: string[]; rows: Array<Array<string | number | null>> }
   | { type: 'json'; title: string; data: Record<string, unknown> };
 
-export type DynatraceEvidenceNotebookJson = {
-  schemaVersion: '1.0';
-  sourceApplication: 'Calibrate';
-  exportType: 'dynatrace_notebook';
-  generatedAt: string;
+/** @deprecated Internal type only — use DynatraceEvidenceNotebookJson for the exported format */
+export type EvidenceNotebookSection = InternalSection;
+
+type DynatraceNotebookMarkdownSection = {
+  id: string;
+  type: 'markdown';
+  markdown: string;
+};
+
+type DynatraceNotebookDqlSection = {
+  id: string;
+  type: 'dql';
   title: string;
-  persona: string;
-  objective: string;
-  timeWindow: string | null;
-  pattern: {
-    id: string;
-    title: string;
-    problemIds: string[];
+  showInput: boolean;
+  state: {
+    input: { value: string };
+    visualization: string;
+    visualizationSettings: { autoSelectVisualization: boolean; chartSettings: Record<string, unknown> };
+    querySettings: { maxResultRecords: number; defaultScanLimitGbytes: number; maxResultMegaBytes: number; defaultSamplingRatio: number; enableSampling: boolean };
   };
-  sections: EvidenceNotebookSection[];
-  evidenceBoundaries: {
-    dqlRetrievedProblemRecords: true;
-    calibrateGroupedPatternsClientSide: true;
-    assistUsedSelectedPatternSignalsOnly: true;
-    rcaCorrectnessValidated: false;
-    hiddenDependenciesInferred: false;
-    remediationSuccessGuaranteed: false;
-  };
-  disclaimer: string;
+};
+
+type DynatraceNotebookSection = DynatraceNotebookMarkdownSection | DynatraceNotebookDqlSection;
+
+export type DynatraceEvidenceNotebookJson = {
+  version: '7';
+  defaultTimeframe: { from: string; to: string };
+  defaultSegments: unknown[];
+  sections: DynatraceNotebookSection[];
 };
 
 const NOTEBOOK_DISCLAIMER = 'This notebook distinguishes DQL retrieval, Calibrate client-side pattern grouping, and Dynatrace Assist interpretation. DQL retrieved the Davis problem records. Calibrate grouped and ranked the selected pattern client-side. Dynatrace Assist recommendations are based only on the observed signals supplied from the selected pattern.';
@@ -71,6 +76,7 @@ function cleanString(value: unknown, fallback = 'Not available'): string {
   if (value === null || value === undefined || value === '') return fallback;
   if (typeof value === 'number' && !Number.isFinite(value)) return fallback;
   if (Array.isArray(value)) return value.length ? value.map(item => cleanString(item)).join(', ') : fallback;
+  if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
 
@@ -186,7 +192,7 @@ ${query.dql}
   }).join('\n\n');
 }
 
-function buildDqlSections(context?: DqlNotebookContext): EvidenceNotebookSection[] {
+function buildDqlSections(context?: DqlNotebookContext): InternalSection[] {
   return (context?.queries ?? []).map(query => ({
     type: 'dql',
     title: query.name,
@@ -196,6 +202,52 @@ function buildDqlSections(context?: DqlNotebookContext): EvidenceNotebookSection
     rowCount: query.rowCount ?? null,
     lastExecutionTime: query.lastExecutionTime ?? null,
   }));
+}
+
+function tableToMarkdown(columns: string[], rows: Array<Array<string | number | null>>): string {
+  const header = `| ${columns.join(' | ')} |`;
+  const separator = `| ${columns.map(() => '---').join(' | ')} |`;
+  const body = rows.map(row => `| ${row.map(cell => markdownTableEscape(cell)).join(' | ')} |`).join('\n');
+  return `${header}\n${separator}\n${body}`;
+}
+
+function parseTimeWindow(timeWindow: string | null | undefined): { from: string; to: string } {
+  const match = (timeWindow ?? '').match(/^(.+?)\s+to\s+(.+?)$/);
+  if (match) return { from: match[1].trim(), to: match[2].trim() };
+  return { from: 'now()-30d', to: 'now()' };
+}
+
+let _sectionIdCounter = 0;
+function nextId(): string {
+  return String(++_sectionIdCounter);
+}
+
+function toNotebookSection(section: InternalSection): DynatraceNotebookSection {
+  if (section.type === 'dql') {
+    return {
+      id: nextId(),
+      type: 'dql',
+      title: section.title,
+      showInput: true,
+      state: {
+        input: { value: section.query },
+        visualization: 'table',
+        visualizationSettings: { autoSelectVisualization: true, chartSettings: {} },
+        querySettings: { maxResultRecords: 1000, defaultScanLimitGbytes: 500, maxResultMegaBytes: 1, defaultSamplingRatio: 10, enableSampling: false },
+      },
+    };
+  }
+  if (section.type === 'table') {
+    const markdown = `## ${section.title}\n\n${tableToMarkdown(section.columns, section.rows)}`;
+    return { id: nextId(), type: 'markdown', markdown };
+  }
+  if (section.type === 'json') {
+    const markdown = `## ${section.title}\n\n\`\`\`json\n${JSON.stringify(section.data, null, 2)}\n\`\`\``;
+    return { id: nextId(), type: 'markdown', markdown };
+  }
+  // markdown
+  const markdown = section.content.startsWith('#') ? section.content : `## ${section.title}\n\n${section.content}`;
+  return { id: nextId(), type: 'markdown', markdown };
 }
 
 function notebookCoreData(input: EvidenceNotebookInput, generatedAt: string) {
@@ -244,20 +296,22 @@ function notebookCoreData(input: EvidenceNotebookInput, generatedAt: string) {
       ...outputSummary(input.outputs.recommendations),
       ...outputSummary(input.outputs.remediation),
     ],
-    actions: [
+    actions: Array.from(new Set([
       ...outputActions(input.outputs.analysis),
       ...outputActions(input.outputs.recommendations),
       ...outputActions(input.outputs.remediation),
-    ],
+    ])),
     dataGaps: outputGaps(input.outputs),
   };
 }
 
 export function buildEvidenceNotebookJson(input: EvidenceNotebookInput): DynatraceEvidenceNotebookJson {
+  _sectionIdCounter = 0;
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const pattern = input.pattern;
   const core = notebookCoreData(input, generatedAt);
-  const sections: EvidenceNotebookSection[] = [
+  const timeframe = parseTimeWindow(input.timeWindow);
+  const internalSections: InternalSection[] = [
     {
       type: 'markdown',
       title: 'Context',
@@ -353,29 +407,10 @@ export function buildEvidenceNotebookJson(input: EvidenceNotebookInput): Dynatra
   ];
 
   return {
-    schemaVersion: '1.0',
-    sourceApplication: 'Calibrate',
-    exportType: 'dynatrace_notebook',
-    generatedAt,
-    title: `Calibrate Evidence Notebook - ${pattern.title}`,
-    persona: input.persona,
-    objective: input.objective,
-    timeWindow: cleanString(input.timeWindow, ''),
-    pattern: {
-      id: pattern.id,
-      title: pattern.title,
-      problemIds: pattern.assistContext.problemIds,
-    },
-    sections,
-    evidenceBoundaries: {
-      dqlRetrievedProblemRecords: true,
-      calibrateGroupedPatternsClientSide: true,
-      assistUsedSelectedPatternSignalsOnly: true,
-      rcaCorrectnessValidated: false,
-      hiddenDependenciesInferred: false,
-      remediationSuccessGuaranteed: false,
-    },
-    disclaimer: NOTEBOOK_DISCLAIMER,
+    version: '7',
+    defaultTimeframe: timeframe,
+    defaultSegments: [],
+    sections: internalSections.map(toNotebookSection),
   };
 }
 

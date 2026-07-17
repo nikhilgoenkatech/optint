@@ -272,7 +272,7 @@ ${buildProblemFilters(filters)}
     pattern.eventName ? `event.name == "${quoteDql(pattern.eventName)}"` : '',
   ].filter(Boolean).join(' or ') || 'true'}
 | fields startTime = event.start, eventName = event.name, category = event.category
-| fieldsAdd utcHour = hour(startTime), utcDay = dayOfWeek(startTime)
+| fieldsAdd utcHour = formatTimestamp(startTime, format:"hh"), utcDay = formatTimestamp(startTime, format:"EE")
 | summarize problemCount = count(), by: { utcHour, utcDay, eventName, category }
 | sort problemCount desc
   `.trim(),
@@ -301,7 +301,7 @@ ${buildProblemFilters(filters)}
 | fields problemId = event.id, startTime = event.start, endTime = event.end, nativeDuration = resolved_problem_duration, eventName = event.name, category = event.category, rootCauseEntityId = root_cause_entity_id, rootCauseEntityName = root_cause_entity_name
 | filter isNotNull(startTime) and isNotNull(endTime)
 | fieldsAdd durationMinutes = if(isNotNull(nativeDuration), nativeDuration / 60000000000, else: (endTime - startTime) / 60000000000)
-| filter isNotNull(durationMinutes) and durationMinutes > 0
+| filter isNotNull(durationMinutes) and toDouble(durationMinutes) > 0
 | fieldsAdd period = if(startTime < toTimestamp("${bounds && Number.isFinite(bounds.from) && Number.isFinite(bounds.to) ? new Date(bounds.from + ((bounds.to - bounds.from) / 2)).toISOString() : ''}"), "previous", else: "current")
 | summarize
     resolvedCount = count(),
@@ -422,12 +422,12 @@ ${buildProblemFilters(filters)}
 | fieldsAdd entityName = entityName(affectedEntityId)
 | fields
     service     = entityName,
-    hour        = hour(startTime),
-    dayOfWeek   = dayOfWeek(startTime),
+    utcHour     = formatTimestamp(startTime, format:"hh"),
+    utcDay      = formatTimestamp(startTime, format:"EE"),
     severityLevel
 | summarize
     count = count(),
-    by: { service, hour, dayOfWeek }
+    by: { service, utcHour, utcDay }
 | sort count desc
 | limit 500
   `.trim(),

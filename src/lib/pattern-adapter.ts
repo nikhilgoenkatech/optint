@@ -96,6 +96,8 @@ export function patternToRow(pattern: ProblemPattern, config: ExtendedCostConfig
     rootCauseEntity: pattern.dimensions.primaryRootCause || undefined,
     primaryAction: primaryAction(pattern),
     lastSeen: pattern.lastSeen,
+    avgMttr: pattern.avgMTTR,
+    autoResolveRate: pattern.autoResolveRate,
   };
 }
 
