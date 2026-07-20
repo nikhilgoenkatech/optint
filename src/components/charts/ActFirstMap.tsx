@@ -106,41 +106,37 @@ function buildMapPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost
   });
 }
 
+const POPUP_HEIGHT = 130;
+const CHART_HEIGHT = 320;
+
 function getSafePopupPosition(point: MapPoint): PopupPosition {
   const inset = 8;
   const left = `clamp(${inset}px, calc(${point.x}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
   const verticalGap = point.radius + POPUP_GAP;
-
-  if (point.y > 64) {
-    return {
-      left,
-      top: `calc(${100 - point.y}% + ${verticalGap}px)`,
-    };
+  const pixelFromTop = (1 - point.y / 100) * CHART_HEIGHT;
+  const spaceBelow = CHART_HEIGHT - pixelFromTop - verticalGap;
+  if (spaceBelow >= POPUP_HEIGHT) {
+    return { left, top: `calc(${100 - point.y}% + ${verticalGap}px)` };
   }
-
-  if (point.y < 30) {
-    return {
-      left,
-      bottom: `calc(${point.y}% + ${verticalGap}px)`,
-    };
-  }
-
-  return {
-    left,
-    top: `calc(${100 - point.y}% + ${verticalGap}px)`,
-  };
+  return { left, bottom: `calc(${point.y}% + ${verticalGap}px)` };
 }
 
 export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: ActFirstMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
+  const [clickedPoint, setClickedPoint] = useState<MapPoint | null>(null);
 
   const points = useMemo(() => buildMapPoints(patterns, objective, weightsConfig), [patterns, objective, weightsConfig]);
-  const selectedPoint = useMemo(
-    () => points.find(point => point.id === selectedPatternId) ?? null,
-    [points, selectedPatternId],
-  );
+
+  // Prefer the exact clicked point (handles duplicate IDs); fall back to first match for external selection.
+  const selectedPoint = selectedPatternId
+    ? (clickedPoint?.id === selectedPatternId ? clickedPoint : (points.find(p => p.id === selectedPatternId) ?? null))
+    : null;
+
+  useEffect(() => {
+    if (!selectedPatternId) setClickedPoint(null);
+  }, [selectedPatternId]);
 
   useEffect(() => {
     setClosedPopupId(null);
@@ -168,6 +164,7 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
   }, [onPatternSelect]);
 
   function selectPoint(point: MapPoint) {
+    setClickedPoint(point);
     setClosedPopupId(null);
     onPatternSelect?.(point.id);
   }

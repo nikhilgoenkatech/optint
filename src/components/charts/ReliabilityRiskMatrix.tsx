@@ -90,28 +90,36 @@ function buildPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost_im
   }));
 }
 
+const POPUP_HEIGHT = 130;
+const CHART_HEIGHT = 320;
+
 function getSafePopupPosition(point: MatrixPoint) {
   const inset = 8;
   const left = `clamp(${inset}px, calc(${point.x}% - ${POPUP_WIDTH / 2}px), calc(100% - ${POPUP_WIDTH + inset}px))`;
   const verticalGap = point.radius + POPUP_GAP;
-
-  if (point.y > 64) {
+  const pixelFromTop = (1 - point.y / 100) * CHART_HEIGHT;
+  const spaceBelow = CHART_HEIGHT - pixelFromTop - verticalGap;
+  if (spaceBelow >= POPUP_HEIGHT) {
     return { left, top: `calc(${100 - point.y}% + ${verticalGap}px)` };
   }
-
-  if (point.y < 30) {
-    return { left, bottom: `calc(${point.y}% + ${verticalGap}px)` };
-  }
-
-  return { left, top: `calc(${100 - point.y}% + ${verticalGap}px)` };
+  return { left, bottom: `calc(${point.y}% + ${verticalGap}px)` };
 }
 
 export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', weightsConfig = DEFAULT_WEIGHTS, onPatternSelect, selectedPatternId }: ReliabilityRiskMatrixProps) {
   const matrixRef = useRef<HTMLDivElement>(null);
   const [closedPopupId, setClosedPopupId] = useState<string | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
+  const [clickedPoint, setClickedPoint] = useState<MatrixPoint | null>(null);
   const points = useMemo(() => buildPoints(patterns, objective, weightsConfig), [patterns, objective, weightsConfig]);
-  const selectedPoint = points.find(point => point.id === selectedPatternId) ?? null;
+
+  // Prefer the exact clicked point (handles duplicate IDs); fall back to first match for external selection.
+  const selectedPoint = selectedPatternId
+    ? (clickedPoint?.id === selectedPatternId ? clickedPoint : (points.find(p => p.id === selectedPatternId) ?? null))
+    : null;
+
+  useEffect(() => {
+    if (!selectedPatternId) setClickedPoint(null);
+  }, [selectedPatternId]);
 
   useEffect(() => {
     setClosedPopupId(null);
@@ -172,6 +180,7 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
               onMouseEnter={() => setHoveredPointId(point.id)}
               onMouseLeave={() => setHoveredPointId(null)}
               onClick={() => {
+                setClickedPoint(point);
                 setClosedPopupId(null);
                 onPatternSelect?.(point.id);
               }}
