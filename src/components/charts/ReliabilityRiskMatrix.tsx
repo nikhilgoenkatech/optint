@@ -126,20 +126,12 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
   }, [selectedPatternId]);
 
   useEffect(() => {
-    function onPointerDown(event: PointerEvent) {
-      if (!matrixRef.current?.contains(event.target as Node)) {
-        onPatternSelect?.(null);
-      }
-    }
-
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') onPatternSelect?.(null);
     }
 
-    document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [onPatternSelect]);
