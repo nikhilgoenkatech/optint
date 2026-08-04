@@ -184,15 +184,13 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
           borderBottom: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
           background:
             'linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px)), ' +
-            'linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px)), ' +
-            'linear-gradient(90deg, transparent calc(25% - 0.5px), rgba(104, 112, 122, 0.10) calc(25% - 0.5px), rgba(104, 112, 122, 0.10) calc(25% + 0.5px), transparent calc(25% + 0.5px)), ' +
-            'linear-gradient(90deg, transparent calc(75% - 0.5px), rgba(104, 112, 122, 0.10) calc(75% - 0.5px), rgba(104, 112, 122, 0.10) calc(75% + 0.5px), transparent calc(75% + 0.5px))',
+            'linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px))',
         }}
       >
-        <QuadrantLabel label="Plan & Fund" left="6%" top="8%" />
-        <QuadrantLabel label="Act Now" left="58%" top="8%" />
-        <QuadrantLabel label="Deprioritize" left="6%" top="78%" />
-        <QuadrantLabel label="Quick Win" left="58%" top="78%" />
+        <QuadrantLabel label="Plan & Fund" left="6%" top="8%" tooltip="No RCA yet — investigate before acting" />
+        <QuadrantLabel label="Act Now" left="58%" top="8%" tooltip="RCA known, high cost — fix it now" />
+        <QuadrantLabel label="Deprioritize" left="6%" top="78%" tooltip="Low cost, no signal — monitor only" />
+        <QuadrantLabel label="Quick Win" left="58%" top="78%" tooltip="High cost, easy fix — tune or suppress" />
 
         {points.map(point => {
           const selected = point.id === selectedPatternId;
@@ -265,9 +263,10 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
   );
 }
 
-function QuadrantLabel({ label, left, top }: { label: string; left: string; top: string }) {
+function QuadrantLabel({ label, left, top, tooltip }: { label: string; left: string; top: string; tooltip?: string }) {
   return (
     <div
+      title={tooltip}
       style={{
         position: 'absolute',
         left,
@@ -277,7 +276,8 @@ function QuadrantLabel({ label, left, top }: { label: string; left: string; top:
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
         color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
-        pointerEvents: 'none',
+        pointerEvents: tooltip ? 'auto' : 'none',
+        cursor: tooltip ? 'help' : undefined,
       }}
     >
       {label}

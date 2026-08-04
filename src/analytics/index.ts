@@ -6,6 +6,12 @@ import { DynatraceProblem, ProblemPattern, TrendPoint, Severity, PatternRecommen
 import { normaliseTitle } from '../queries/dqlQueries';
 import { estimateCost }   from '../cost/CostModel';
 
+function hashSignature(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (((h << 5) + h) ^ s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
 function level(score: number): 'HIGH' | 'MEDIUM' | 'LOW' {
   return score >= 0.65 ? 'HIGH' : score >= 0.4 ? 'MEDIUM' : 'LOW';
 }
@@ -304,7 +310,7 @@ function buildPattern(problems: DynatraceProblem[]): ProblemPattern {
   });
 
   return {
-    patternId:       `pat-${patternSignature(problems[0]).replace(/\W+/g, '-').substring(0, 36)}`,
+    patternId:       `pat-${hashSignature(patternSignature(problems[0]))}`,
     signature:       patternSignature(problems[0]),
     causalEntity:    patternEntityKey(problems[0]),
     dimensions,

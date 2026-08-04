@@ -929,7 +929,7 @@ function RawResponse({ state }: { state: RecommendationState }) {
 }
 
 function TrendArrow({ trend }: { trend: TrendDirection }) {
-  const arrow = trend === 'Increasing' ? 'Up' : trend === 'Decreasing' ? 'Down' : 'Stable';
+  const arrow = trend === 'Increasing' ? '↑' : trend === 'Decreasing' ? '↓' : '→';
   const color = trend === 'Increasing' ? DANGER : trend === 'Decreasing' ? OK : MUTED;
   return <span style={{ color, fontWeight: 600 }}>{arrow} {trend}</span>;
 }
@@ -1876,7 +1876,7 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
             </Flex>
           </Flex>
           {/* Sparkline */}
-          <Flex gap={4} alignItems="flex-end" style={{ height: 36 }}>
+          <Flex gap={4} alignItems="flex-end">
             {pattern.recurrence.timeline.map((bucket, i) => {
               const max = Math.max(...pattern.recurrence.timeline.map(b => b.count), 1);
               const h   = Math.max(4, Math.round((bucket.count / max) * 28));

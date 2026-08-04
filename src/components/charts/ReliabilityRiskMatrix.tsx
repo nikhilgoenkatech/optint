@@ -153,10 +153,10 @@ export function ReliabilityRiskMatrix({ patterns, objective = 'cost_impact', wei
             'linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px))',
         }}
       >
-        <QuadrantLabel label="Act Now" left="6%" top="8%" />
-        <QuadrantLabel label="Strategic Investment" left="58%" top="8%" />
-        <QuadrantLabel label="Monitor" left="6%" top="78%" />
-        <QuadrantLabel label="Quick Win" left="58%" top="78%" />
+        <QuadrantLabel label="Act Now" left="6%" top="8%" tooltip="RCA confirmed — escalate and remediate" />
+        <QuadrantLabel label="Strategic Investment" left="58%" top="8%" tooltip="Systemic, no quick fix — plan a solution" />
+        <QuadrantLabel label="Monitor" left="6%" top="78%" tooltip="Rare, low risk — watch for changes" />
+        <QuadrantLabel label="Quick Win" left="58%" top="78%" tooltip="Frequent, low impact — automate or tune" />
 
         {points.map(point => {
           const selected = point.id === selectedPatternId;
@@ -276,8 +276,8 @@ function PopupStat({ label, value }: { label: string; value: string | number }) 
   );
 }
 
-function QuadrantLabel({ label, left, top }: { label: string; left: string; top: string }) {
-  return <div style={{ position: 'absolute', left, top, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--dt-colors-text-neutral-subdued, #74777a)', pointerEvents: 'none' }}>{label}</div>;
+function QuadrantLabel({ label, left, top, tooltip }: { label: string; left: string; top: string; tooltip?: string }) {
+  return <div title={tooltip} style={{ position: 'absolute', left, top, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--dt-colors-text-neutral-subdued, #74777a)', pointerEvents: tooltip ? 'auto' : 'none', cursor: tooltip ? 'help' : undefined }}>{label}</div>;
 }
 
 function AxisLabel({ children, bottom = false }: { children: React.ReactNode; bottom?: boolean }) {
