@@ -187,10 +187,10 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
             'linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% - 0.5px), rgba(104, 112, 122, 0.28) calc(50% + 0.5px), transparent calc(50% + 0.5px))',
         }}
       >
-        <QuadrantLabel label="Plan & Fund" left="6%" top="8%" tooltip="No RCA yet — investigate before acting" />
-        <QuadrantLabel label="Act Now" left="58%" top="8%" tooltip="RCA known, high cost — fix it now" />
-        <QuadrantLabel label="Deprioritize" left="6%" top="78%" tooltip="Low cost, no signal — monitor only" />
-        <QuadrantLabel label="Quick Win" left="58%" top="78%" tooltip="High cost, easy fix — tune or suppress" />
+        <QuadrantLabel label="Plan & Fund" left="6%" top="8%" tooltip="High priority but root cause is unclear or cost impact is not yet confirmed. Investigate the failure mode, assign ownership, and secure budget before committing engineering effort." />
+        <QuadrantLabel label="Act Now" left="58%" top="8%" tooltip="Root cause is known and the cost impact is high. Every recurrence burns budget and degrades reliability — escalate immediately and drive to resolution." />
+        <QuadrantLabel label="Deprioritize" left="6%" top="78%" tooltip="Low cost and low priority signal. No immediate action needed — continue monitoring and revisit if recurrence or severity increases." />
+        <QuadrantLabel label="Quick Win" left="58%" top="78%" tooltip="High operational cost but lower urgency. Strong candidates for quick fixes, threshold tuning, or automation — high return for minimal engineering investment." />
 
         {points.map(point => {
           const selected = point.id === selectedPatternId;
@@ -264,23 +264,22 @@ export function ActFirstMap({ patterns, objective = 'cost_impact', weightsConfig
 }
 
 function QuadrantLabel({ label, left, top, tooltip }: { label: string; left: string; top: string; tooltip?: string }) {
+  const [show, setShow] = useState(false);
   return (
-    <div
-      title={tooltip}
-      style={{
-        position: 'absolute',
-        left,
-        top,
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
-        pointerEvents: tooltip ? 'auto' : 'none',
-        cursor: tooltip ? 'help' : undefined,
-      }}
-    >
-      {label}
+    <div style={{ position: 'absolute', left, top, display: 'flex', alignItems: 'center', gap: 4, pointerEvents: 'none' }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--dt-colors-text-neutral-subdued, #74777a)' }}>
+        {label}
+      </span>
+      {tooltip && (
+        <div style={{ position: 'relative', pointerEvents: 'auto' }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+          <div style={{ width: 14, height: 14, borderRadius: '50%', border: '1px solid var(--dt-colors-text-neutral-subdued, #74777a)', color: 'var(--dt-colors-text-neutral-subdued, #74777a)', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help', userSelect: 'none' }}>i</div>
+          {show && (
+            <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 20, background: 'var(--dt-colors-background-container-neutral-default, #ffffff)', border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)', borderRadius: 6, padding: '6px 10px', fontSize: 11, color: 'var(--dt-colors-text-neutral-default, #1f262e)', maxWidth: 240, lineHeight: 1.5, boxShadow: '0 4px 12px rgba(31,38,46,0.14)' }}>
+              {tooltip}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
