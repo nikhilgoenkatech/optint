@@ -180,6 +180,77 @@ export function runPatternTrendEnrichmentTests(): TestResult[] {
     assert(enrichment.schedulePattern?.label, 'schedule label appears when confidence threshold is met');
   }));
 
+  results.push(run('alert-quality fire rate, short-lived rate, and frequent-event ratio', () => {
+    const alertQuality = buildTrendEnrichment([
+      problem('AQ1', 1, { duration: 5, isFrequentEvent: true }),
+      problem('AQ2', 2, { duration: 12, isFrequentEvent: true }),
+      problem('AQ3', 3, { duration: 30, isFrequentEvent: false }),
+      problem('AQ4', 10, { status: 'OPEN', endTime: undefined, duration: undefined, isFrequentEvent: false }),
+    ], BOUNDS);
+    assertEqual(alertQuality.alertQuality?.fireRatePerDay, 0.29, 'fire rate is normalized by selected timeframe');
+    assertEqual(alertQuality.alertQuality?.shortLivedRate, 0.67, 'short-lived rate uses resolved occurrences with valid duration');
+    assertEqual(alertQuality.alertQuality?.shortLivedResolvedCount, 2, 'short-lived count calculated');
+    assertEqual(alertQuality.alertQuality?.resolvedOccurrenceCount, 3, 'resolved duration denominator calculated');
+    assertEqual(alertQuality.alertQuality?.frequentEventRatio, 0.5, 'frequent-event ratio uses observed Davis flag values');
+    assertEqual(alertQuality.alertQuality?.frequentEventCount, 2, 'frequent-event count calculated');
+    assertEqual(alertQuality.alertQuality?.frequentEventObservedCount, 4, 'frequent-event observed denominator calculated');
+
+    const compact = compactTrendEvidence(alertQuality);
+    assertEqual(compact?.fireRatePerDay, 0.29, 'compact evidence includes fire rate');
+    assertEqual(compact?.shortLivedRate, 0.67, 'compact evidence includes short-lived rate');
+    assertEqual(compact?.frequentEventRatio, 0.5, 'compact evidence includes frequent-event ratio');
+    assertNotIncludes(JSON.stringify(compact), 'occurrenceSeries', 'alert-quality compact evidence remains compact');
+  }));
+
+  results.push(run('custom-alert entity binding is evidence-only and compact', () => {
+    const strong = buildTrendEnrichment([
+      problem('CAB1', 1, {
+        severity: 'CUSTOM_ALERT',
+        rootCauseEntity: undefined,
+        hasRootCause: false,
+        impactedEntities: [{ entityId: 'CUSTOM_DEVICE-1', name: 'payments alert detector', type: 'CUSTOM_DEVICE' }],
+      }),
+      problem('CAB2', 2, {
+        severity: 'CUSTOM_ALERT',
+        rootCauseEntity: undefined,
+        hasRootCause: false,
+        impactedEntities: [{ entityId: 'CUSTOM_DEVICE-1', name: 'payments alert detector', type: 'CUSTOM_DEVICE' }],
+      }),
+    ], BOUNDS);
+    assertEqual(strong.customAlertEntityBinding?.level, 'Strong', 'concrete affected entity creates strong custom-alert binding');
+    assertIncludes(JSON.stringify(compactTrendEvidence(strong)), 'customAlertEntityBinding', 'compact evidence includes custom-alert binding');
+    assertIncludes(JSON.stringify(compactTrendEvidence(strong)), 'event_category=CUSTOM_ALERT', 'compact evidence includes observed custom-alert category');
+
+    const partial = buildTrendEnrichment([
+      problem('CAB3', 1, {
+        severity: 'CUSTOM_ALERT',
+        rootCauseEntity: undefined,
+        hasRootCause: false,
+        impactedEntities: [{ entityId: 'HOST-1', name: 'HOST', type: 'HOST' }],
+      }),
+      problem('CAB4', 2, {
+        severity: 'CUSTOM_ALERT',
+        rootCauseEntity: undefined,
+        hasRootCause: false,
+        impactedEntities: [],
+      }),
+    ], BOUNDS);
+    assertEqual(partial.customAlertEntityBinding?.level, 'Partial', 'entity ID with generic name creates partial custom-alert binding');
+
+    const weak = buildTrendEnrichment([
+      problem('CAB5', 1, { severity: 'CUSTOM_ALERT', rootCauseEntity: undefined, hasRootCause: false, impactedEntities: [] }),
+      problem('CAB6', 2, { severity: 'CUSTOM_ALERT', rootCauseEntity: undefined, hasRootCause: false, impactedEntities: [] }),
+    ], BOUNDS);
+    assertEqual(weak.customAlertEntityBinding?.level, 'Weak', 'missing RCA and affected entity creates weak custom-alert binding');
+
+    const nonCustom = buildTrendEnrichment([
+      problem('CAB7', 1, { severity: 'ERROR' }),
+      problem('CAB8', 2, { severity: 'ERROR' }),
+    ], BOUNDS);
+    assertEqual(nonCustom.customAlertEntityBinding, undefined, 'non-custom patterns omit custom-alert binding');
+    assertNotIncludes(JSON.stringify(compactTrendEvidence(nonCustom)), 'customAlertEntityBinding', 'non-custom compact evidence omits custom-alert binding');
+  }));
+
   results.push(run('native affected-user trend and unavailable affected-user evidence', () => {
     const withUsers = [
       problem('U1', 1, { affectedUsers: 5 }),

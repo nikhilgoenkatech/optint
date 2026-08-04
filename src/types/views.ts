@@ -7,7 +7,7 @@ export type DisplayLevel = 'High' | 'Medium' | 'Low';
 export type TrendDirection = 'Increasing' | 'Stable' | 'Decreasing';
 export type PatternStatus = 'Open' | 'Resolved' | 'Mixed';
 export type RecommendationPriority = 'Immediate' | 'Short term' | 'Strategic' | 'Monitor';
-export type EvidenceValue = string | number | string[] | Record<string, string | number | string[]> | null;
+export type EvidenceValue = string | number | string[] | Record<string, string | number | string[] | Record<string, string | number | string[]>> | null;
 
 export interface MetricCardViewModel {
   id: string;

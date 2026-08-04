@@ -174,6 +174,15 @@ function signalLabel(signal: string): string {
     root_cause_entity: 'Root cause entity',
     scope_tier: 'Blast radius',
     trend: 'Trend',
+    fireRatePerDay: 'Fire rate per day',
+    shortLivedRate: 'Short-lived rate',
+    shortLivedEvidence: 'Short-lived evidence',
+    frequentEventRatio: 'Frequent-event ratio',
+    frequentEventEvidence: 'Frequent-event evidence',
+    customAlertEntityBinding: 'Custom alert entity binding',
+    level: 'Binding level',
+    reason: 'Reason',
+    evidence: 'Evidence',
   };
   return labels[signal] || signal.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
@@ -1527,6 +1536,27 @@ function trendEvidenceRows(pattern: PatternDetail): Array<{ label: string; value
     rows.push({
       label: 'Affected users',
       value: `${enrichment.userImpactTrend.direction}${enrichment.userImpactTrend.deltaPercent !== undefined ? ` (${enrichment.userImpactTrend.deltaPercent}%)` : ''}`,
+    });
+  }
+  if (enrichment.alertQuality?.fireRatePerDay !== undefined) {
+    rows.push({ label: 'Fire rate', value: `${enrichment.alertQuality.fireRatePerDay} per day` });
+  }
+  if (enrichment.alertQuality?.shortLivedRate !== undefined) {
+    rows.push({
+      label: 'Short-lived recurrence',
+      value: `${Math.round(enrichment.alertQuality.shortLivedRate * 100)}% (${enrichment.alertQuality.shortLivedResolvedCount} of ${enrichment.alertQuality.resolvedOccurrenceCount} resolved <= 15m)`,
+    });
+  }
+  if (enrichment.alertQuality?.frequentEventRatio !== undefined) {
+    rows.push({
+      label: 'Davis frequent-event signal',
+      value: `${Math.round(enrichment.alertQuality.frequentEventRatio * 100)}% (${enrichment.alertQuality.frequentEventCount} of ${enrichment.alertQuality.frequentEventObservedCount} records)`,
+    });
+  }
+  if (enrichment.customAlertEntityBinding) {
+    rows.push({
+      label: 'Custom alert entity binding',
+      value: `${enrichment.customAlertEntityBinding.level}: ${enrichment.customAlertEntityBinding.reason}`,
     });
   }
   enrichment.dataQuality.limitations.slice(0, 3).forEach((limitation, index) => {

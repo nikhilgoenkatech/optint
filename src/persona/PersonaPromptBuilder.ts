@@ -10,7 +10,7 @@ import { PersonaType } from './PersonaResolver';
 import { compactTrendEvidence } from '../lib/pattern-trend-enrichment';
 
 export type ObjectiveType = 'cost_impact' | 'alert_optimization';
-type PromptEvidenceValue = string | number | string[] | Record<string, string | number | string[]> | null;
+type PromptEvidenceValue = string | number | string[] | Record<string, string | number | string[] | Record<string, string | number | string[]>> | null;
 
 export interface AISummaryRequest {
   problems: DynatraceProblem[];

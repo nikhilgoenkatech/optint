@@ -1,9 +1,10 @@
-import { DynatraceProblem, PatternTrendEnrichment, ProblemPattern, Severity } from '../models';
+import { CustomAlertEntityBindingLevel, DynatraceProblem, Entity, PatternTrendEnrichment, ProblemPattern, Severity } from '../models';
 
 export const MTTR_TREND_NEUTRAL_TOLERANCE_PCT = 15;
 export const MIN_PERIOD_OBSERVATIONS = 2;
 export const MIN_SCHEDULE_OCCURRENCES = 3;
 export const SCHEDULE_CONFIDENCE_THRESHOLD = 0.6;
+export const SHORT_LIVED_THRESHOLD_MINUTES = 15;
 
 export type TimeframeBounds = {
   from: number;
@@ -110,6 +111,99 @@ function buildCreationRate(problems: DynatraceProblem[], split: PeriodSplit | nu
     deltaPercent: pctDelta(current, previous),
     direction,
   };
+}
+
+function selectedTimeframeDays(problems: DynatraceProblem[], bounds?: TimeframeBounds): number | undefined {
+  if (bounds && Number.isFinite(bounds.from) && Number.isFinite(bounds.to) && bounds.to > bounds.from) {
+    return Math.max((bounds.to - bounds.from) / 86400000, 1 / 24);
+  }
+  const starts = validStarts(problems);
+  if (starts.length < 2) return undefined;
+  return Math.max((starts[starts.length - 1] - starts[0]) / 86400000, 1 / 24);
+}
+
+function roundMetric(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function buildAlertQuality(problems: DynatraceProblem[], bounds?: TimeframeBounds): PatternTrendEnrichment['alertQuality'] {
+  const timeframeDays = selectedTimeframeDays(problems, bounds);
+  const resolvedWithDuration = problems.filter(problem =>
+    (problem.status === 'RESOLVED' || problem.status === 'CLOSED') &&
+    isFinitePositive(problem.duration)
+  );
+  const shortLivedResolvedCount = resolvedWithDuration.filter(problem =>
+    Number(problem.duration) <= SHORT_LIVED_THRESHOLD_MINUTES
+  ).length;
+  const frequentObserved = problems.filter(problem => problem.isFrequentEvent !== undefined);
+  const frequentEventCount = frequentObserved.filter(problem => problem.isFrequentEvent === true).length;
+
+  return {
+    fireRatePerDay: timeframeDays ? roundMetric(problems.length / timeframeDays) : undefined,
+    shortLivedRate: resolvedWithDuration.length ? roundMetric(shortLivedResolvedCount / resolvedWithDuration.length) : undefined,
+    shortLivedResolvedCount,
+    resolvedOccurrenceCount: resolvedWithDuration.length,
+    frequentEventRatio: frequentObserved.length ? roundMetric(frequentEventCount / frequentObserved.length) : undefined,
+    frequentEventCount,
+    frequentEventObservedCount: frequentObserved.length,
+  };
+}
+
+function dominantSeverity(problems: DynatraceProblem[]): Severity | undefined {
+  const counts = new Map<Severity, number>();
+  problems.forEach(problem => counts.set(problem.severity, (counts.get(problem.severity) ?? 0) + 1));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function hasEntityId(entity: Entity | undefined): boolean {
+  return Boolean(entity?.entityId && String(entity.entityId).trim());
+}
+
+function hasAnyEntityContext(entity: Entity | undefined): boolean {
+  return Boolean(entity && (hasEntityId(entity) || readableEntityName(entity.name) || String(entity.type || '').trim()));
+}
+
+function hasConcreteEntityBinding(entity: Entity | undefined): boolean {
+  return Boolean(hasEntityId(entity) && readableEntityName(entity?.name));
+}
+
+function buildCustomAlertEntityBinding(problems: DynatraceProblem[]): PatternTrendEnrichment['customAlertEntityBinding'] {
+  if (dominantSeverity(problems) !== 'CUSTOM_ALERT') return undefined;
+
+  const customAlerts = problems.filter(problem => problem.severity === 'CUSTOM_ALERT');
+  const concreteCount = customAlerts.filter(problem =>
+    hasConcreteEntityBinding(problem.rootCauseEntity) ||
+    problem.impactedEntities.some(hasConcreteEntityBinding)
+  ).length;
+  const partialCount = customAlerts.filter(problem =>
+    hasAnyEntityContext(problem.rootCauseEntity) ||
+    problem.impactedEntities.some(hasAnyEntityContext)
+  ).length;
+  const rootCauseCount = customAlerts.filter(problem => hasAnyEntityContext(problem.rootCauseEntity)).length;
+  const affectedEntityCount = customAlerts.reduce((sum, problem) => (
+    sum + problem.impactedEntities.filter(hasAnyEntityContext).length
+  ), 0);
+
+  let level: CustomAlertEntityBindingLevel = 'Weak';
+  if (concreteCount > 0) level = 'Strong';
+  else if (partialCount > 0) level = 'Partial';
+
+  const reason = level === 'Strong'
+    ? `${concreteCount} of ${customAlerts.length} custom-alert records have concrete RCA or affected-entity binding.`
+    : level === 'Partial'
+      ? `${partialCount} of ${customAlerts.length} custom-alert records have entity context, but resolved names or types are limited.`
+      : 'No usable RCA or affected entity is available for this custom-alert pattern.';
+
+  const evidence = [
+    'event_category=CUSTOM_ALERT',
+    `custom_alert_records=${customAlerts.length}`,
+    `concrete_entity_bindings=${concreteCount}`,
+    `records_with_entity_context=${partialCount}`,
+    `root_cause_entity_records=${rootCauseCount}`,
+    `affected_entity_mentions=${affectedEntityCount}`,
+  ];
+
+  return { level, reason, evidence };
 }
 
 function buildCategoryTrend(problems: DynatraceProblem[], split: PeriodSplit | null): PatternTrendEnrichment['categoryTrend'] | undefined {
@@ -297,12 +391,14 @@ function dataQuality(enrichment: Omit<PatternTrendEnrichment, 'dataQuality'>): P
   if (!enrichment.mttrTrend || enrichment.mttrTrend.direction === 'insufficient_data') limitations.push('Median MTTR trend needs resolved problems with valid durations in both periods.');
   if (!enrichment.userImpactTrend || enrichment.userImpactTrend.source === 'unavailable') limitations.push('Native affected-user evidence is unavailable for this pattern.');
   if (!enrichment.schedulePattern?.label) limitations.push('Schedule evidence is limited to neutral occurrence timing and does not prove a scheduled job or deployment.');
+  if (enrichment.alertQuality?.frequentEventRatio === undefined) limitations.push('Davis frequent-event evidence is unavailable for this pattern.');
   return {
     creationTrendAvailable: Boolean(enrichment.creationRate && enrichment.creationRate.direction !== 'insufficient_data'),
     lifecycleAvailable: Boolean(enrichment.lifecycle),
     mttrTrendAvailable: Boolean(enrichment.mttrTrend && enrichment.mttrTrend.direction !== 'insufficient_data'),
     userImpactAvailable: Boolean(enrichment.userImpactTrend && enrichment.userImpactTrend.source === 'affected_users'),
     scheduleEvidenceAvailable: Boolean(enrichment.schedulePattern?.label),
+    alertQualityAvailable: Boolean(enrichment.alertQuality && (enrichment.alertQuality.fireRatePerDay !== undefined || enrichment.alertQuality.shortLivedRate !== undefined || enrichment.alertQuality.frequentEventRatio !== undefined)),
     limitations,
   };
 }
@@ -310,6 +406,8 @@ function dataQuality(enrichment: Omit<PatternTrendEnrichment, 'dataQuality'>): P
 export function buildTrendEnrichment(problems: DynatraceProblem[], bounds?: TimeframeBounds): PatternTrendEnrichment {
   const split = splitTimeframe(bounds);
   const partial = {
+    alertQuality: buildAlertQuality(problems, bounds),
+    customAlertEntityBinding: buildCustomAlertEntityBinding(problems),
     creationRate: buildCreationRate(problems, split),
     lifecycle: buildLifecycle(problems, bounds),
     categoryTrend: buildCategoryTrend(problems, split),
@@ -335,9 +433,9 @@ export function enrichPatterns(patterns: ProblemPattern[], bounds?: TimeframeBou
   return patterns.map(pattern => enrichPattern(pattern, bounds));
 }
 
-export function compactTrendEvidence(enrichment?: PatternTrendEnrichment): Record<string, string | number | string[]> | undefined {
+export function compactTrendEvidence(enrichment?: PatternTrendEnrichment): Record<string, string | number | string[] | Record<string, string | number | string[]>> | undefined {
   if (!enrichment) return undefined;
-  const evidence: Record<string, string | number | string[]> = {};
+  const evidence: Record<string, string | number | string[] | Record<string, string | number | string[]>> = {};
   if (enrichment.creationRate?.direction && enrichment.creationRate.direction !== 'insufficient_data') {
     evidence.creationDirection = enrichment.creationRate.direction;
     if (enrichment.creationRate.deltaPercent !== undefined) evidence.creationDeltaPercent = enrichment.creationRate.deltaPercent;
@@ -368,6 +466,24 @@ export function compactTrendEvidence(enrichment?: PatternTrendEnrichment): Recor
     evidence.affectedUsersDirection = enrichment.userImpactTrend.direction;
     if (enrichment.userImpactTrend.deltaPercent !== undefined) evidence.affectedUsersDeltaPercent = enrichment.userImpactTrend.deltaPercent;
   }
+  if (enrichment.alertQuality) {
+    if (enrichment.alertQuality.fireRatePerDay !== undefined) evidence.fireRatePerDay = enrichment.alertQuality.fireRatePerDay;
+    if (enrichment.alertQuality.shortLivedRate !== undefined) {
+      evidence.shortLivedRate = enrichment.alertQuality.shortLivedRate;
+      evidence.shortLivedEvidence = `${enrichment.alertQuality.shortLivedResolvedCount} of ${enrichment.alertQuality.resolvedOccurrenceCount} resolved occurrences <= ${SHORT_LIVED_THRESHOLD_MINUTES}m`;
+    }
+    if (enrichment.alertQuality.frequentEventRatio !== undefined) {
+      evidence.frequentEventRatio = enrichment.alertQuality.frequentEventRatio;
+      evidence.frequentEventEvidence = `${enrichment.alertQuality.frequentEventCount} of ${enrichment.alertQuality.frequentEventObservedCount} records marked frequent by Davis`;
+    }
+  }
+  if (enrichment.customAlertEntityBinding) {
+    evidence.customAlertEntityBinding = {
+      level: enrichment.customAlertEntityBinding.level,
+      reason: enrichment.customAlertEntityBinding.reason,
+      evidence: enrichment.customAlertEntityBinding.evidence,
+    };
+  }
   if (enrichment.dataQuality.limitations.length) evidence.limitations = enrichment.dataQuality.limitations.slice(0, 4);
   return Object.keys(evidence).length ? evidence : undefined;
 }
@@ -386,6 +502,12 @@ export function trendObservation(enrichment?: PatternTrendEnrichment): string | 
   if (enrichment.lifecycle && enrichment.lifecycle.currentlyActive > 0) {
     return `${enrichment.lifecycle.currentlyActive} problems remain active for this pattern.`;
   }
+  if (enrichment.alertQuality?.shortLivedRate !== undefined && enrichment.alertQuality.shortLivedRate >= 0.75) {
+    return `${Math.round(enrichment.alertQuality.shortLivedRate * 100)}% of resolved occurrences closed within ${SHORT_LIVED_THRESHOLD_MINUTES} minutes.`;
+  }
+  if (enrichment.alertQuality?.fireRatePerDay !== undefined && enrichment.alertQuality.fireRatePerDay >= 1) {
+    return `This pattern appears ${enrichment.alertQuality.fireRatePerDay} times per day in the selected timeframe.`;
+  }
   if (enrichment.schedulePattern?.label) return enrichment.schedulePattern.label;
   return null;
 }
@@ -394,7 +516,7 @@ export function objectiveInterpretation(objective: 'cost_impact' | 'alert_optimi
   const observations = [trendObservation(enrichment)].filter(Boolean) as string[];
   if (!enrichment) return { label: 'Insufficient evidence', observations };
   if (objective === 'alert_optimization') {
-    if (enrichment.creationRate?.direction === 'increasing' || enrichment.schedulePattern?.label) {
+    if (enrichment.creationRate?.direction === 'increasing' || enrichment.schedulePattern?.label || (enrichment.alertQuality?.shortLivedRate ?? 0) >= 0.75 || (enrichment.alertQuality?.frequentEventRatio ?? 0) >= 0.5) {
       return { label: 'Review candidate', observations };
     }
     return { label: 'Insufficient evidence', observations };

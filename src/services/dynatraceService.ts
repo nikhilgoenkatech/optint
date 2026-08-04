@@ -313,6 +313,16 @@ function toMinutes(value: unknown): number | undefined {
   return ms ? Math.round(ms / 60000) : undefined;
 }
 
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+}
+
 function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
   const affectedUsers = r['affectedUsers'] ? Number(r['affectedUsers']) : 0;
   const severityMap: Record<string, DynatraceProblem['severity']> = {
@@ -375,6 +385,7 @@ function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
       severity, duration ?? 30, affectedUsers, recurrence
     ),
     problemUrl: `https://${r['__tenantUrl']}/ui/problems/${r['problemId']}`,
+    isFrequentEvent:  toOptionalBoolean(r['isFrequentEvent']),
   };
 }
 

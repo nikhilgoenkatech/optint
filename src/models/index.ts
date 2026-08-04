@@ -17,8 +17,23 @@ export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 export type SystemDirection = 'IMPROVING' | 'STABLE' | 'DEGRADING';
 export type TrendDirectionEnrichment = 'increasing' | 'stable' | 'decreasing' | 'insufficient_data';
 export type MttrTrendDirection = 'improving' | 'stable' | 'worsening' | 'insufficient_data';
+export type CustomAlertEntityBindingLevel = 'Strong' | 'Partial' | 'Weak';
 
 export interface PatternTrendEnrichment {
+  alertQuality?: {
+    fireRatePerDay?: number;
+    shortLivedRate?: number;
+    shortLivedResolvedCount: number;
+    resolvedOccurrenceCount: number;
+    frequentEventRatio?: number;
+    frequentEventCount: number;
+    frequentEventObservedCount: number;
+  };
+  customAlertEntityBinding?: {
+    level: CustomAlertEntityBindingLevel;
+    reason: string;
+    evidence: string[];
+  };
   creationRate?: {
     currentPeriodCount: number;
     previousPeriodCount?: number;
@@ -83,6 +98,7 @@ export interface PatternTrendEnrichment {
     mttrTrendAvailable: boolean;
     userImpactAvailable: boolean;
     scheduleEvidenceAvailable: boolean;
+    alertQualityAvailable: boolean;
     limitations: string[];
   };
 }
@@ -108,6 +124,7 @@ export interface DynatraceProblem {
   recurrenceScore?:    number;   // 0–100
   operationalImpactScore?: number;
   problemUrl?:         string;
+  isFrequentEvent?:    boolean;
   // Infrastructure context (from entity metadata)
   cloud?:              CloudProvider;
   region?:             string;
