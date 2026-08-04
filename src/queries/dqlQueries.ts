@@ -58,6 +58,34 @@ function buildAbsoluteTimeFilter(filters: FilterState, bounds?: { from: number; 
   return `from: ${dqlTimestamp(bounds.from)}, to: ${dqlTimestamp(bounds.to)}`;
 }
 
+function buildProblemFields(): string {
+  return `
+| fields
+    problemId = event.id,
+    displayId = display_id,
+    title = event.name,
+    status = event.status,
+    severityLevel = event.category,
+    startTime = event.start,
+    endTime = event.end,
+    duration = resolved_problem_duration,
+    rootCauseEntityId = root_cause_entity_id,
+    impactedEntityIds = affected_entity_ids,
+    smartscapeAffectedEntityIds = smartscape.affected_entity.ids,
+    affectedEntityNames = smartscape.affected_entity.names,
+    affectedEntityTypes = smartscape.affected_entity.types,
+    rootCauseEntityName = root_cause_entity_name,
+    affectedUsers = dt.davis.affected_users_count,
+    managementZones = management_zones,
+    tags = entity_tags,
+    impactLevel = dt.davis.impact_level,
+    isFrequentEvent = dt.davis.is_frequent_event,
+    isDuplicate = dt.davis.is_duplicate,
+    cloudProvider = cloud.provider,
+    cloudRegion = cloud.region
+`.trimEnd();
+}
+
 function buildSelectedPatternFilter(pattern: {
   problemIds?: string[];
   eventName?: string;
@@ -94,31 +122,24 @@ export const DQL_QUERIES = {
 fetch dt.davis.problems, ${buildTimeFilter(filters.timeRange.from, filters.timeRange.to)}
 ${buildProblemFilters(filters)}
 | filter dt.davis.is_duplicate == false
-| fields
-    problemId = event.id,
-    displayId = display_id,
-    title = event.name,
-    status = event.status,
-    severityLevel = event.category,
-    startTime = event.start,
-    endTime = event.end,
-    duration = resolved_problem_duration,
-    rootCauseEntityId = root_cause_entity_id,
-    impactedEntityIds = affected_entity_ids,
-    smartscapeAffectedEntityIds = smartscape.affected_entity.ids,
-    affectedEntityNames = smartscape.affected_entity.names,
-    affectedEntityTypes = smartscape.affected_entity.types,
-    rootCauseEntityName = root_cause_entity_name,
-    affectedUsers = dt.davis.affected_users_count,
-    managementZones = management_zones,
-    tags = entity_tags,
-    impactLevel = dt.davis.impact_level,
-    isFrequentEvent = dt.davis.is_frequent_event,
-    isDuplicate = dt.davis.is_duplicate,
-    cloudProvider = cloud.provider,
-    cloudRegion = cloud.region
+${buildProblemFields()}
 | sort startTime desc
-| limit 1000
+  `.trim(),
+
+  fetchProblemCount: (filters: FilterState, bounds?: { from: number; to: number }): string => `
+fetch dt.davis.problems, ${buildAbsoluteTimeFilter(filters, bounds)}
+${buildProblemFilters(filters)}
+| filter dt.davis.is_duplicate == false
+| summarize problem_count = countDistinct(event.id)
+  `.trim(),
+
+  fetchProblemsChunk: (filters: FilterState, bounds: { from: number; to: number }, limit = 5000): string => `
+fetch dt.davis.problems, ${buildAbsoluteTimeFilter(filters, bounds)}
+${buildProblemFilters(filters)}
+| filter dt.davis.is_duplicate == false
+${buildProblemFields()}
+| sort startTime asc, problemId asc
+| limit ${limit}
   `.trim(),
 
   /**
