@@ -1,13 +1,13 @@
 {
-  "environmentUrl": "https://hht14598.apps.dynatrace.com",
+  "environmentUrl": "https://ykd61701.sprint.apps.dynatracelabs.com",
   "build": {
     "index": "ui/strato-index.html"
   },
   "app": {
-    "id": "my.dynatrace.opint.strato",
-    "name": "Calibrate (Strato Preview)",
-    "version": "2.5.4",
-    "description": "Strato migration preview - runs alongside my.dynatrace.opint for validation",
+    "id": "my.dynatrace.calibrate",
+    "name": "Calibrate",
+    "version": "2.5.5",
+    "description": "Calibrate — operational intelligence for recurring problem patterns",
     "scopes": [
       {
         "name": "storage:events:read",

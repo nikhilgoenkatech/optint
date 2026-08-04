@@ -67,6 +67,17 @@ function normalize(value: number, values: number[], fallback: number): number {
   return 12 + ((value - min) / (max - min)) * 76;
 }
 
+function normalizeLog(value: number, values: number[], fallback: number): number {
+  const finiteValues = values.filter(v => Number.isFinite(v) && v > 0);
+  if (!finiteValues.length) return fallback;
+  const logValues = finiteValues.map(v => Math.log(v));
+  const logValue = Math.log(Math.max(value, Math.min(...finiteValues)));
+  const min = Math.min(...logValues);
+  const max = Math.max(...logValues);
+  if (min === max) return fallback;
+  return 12 + ((logValue - min) / (max - min)) * 76;
+}
+
 function bubbleRadius(value: number, values: number[]): number {
   const finiteValues = values.filter(Number.isFinite);
   if (!finiteValues.length) return 14;
@@ -99,7 +110,7 @@ function buildMapPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost
       openProblemCount: pattern.openProblemCount,
       priority: priorityFor(pattern),
       severity: pattern.severity,
-      x: normalize(cost, costs, 72),
+      x: normalizeLog(cost, costs, 72),
       y: 12 + (priorityScores.get(pattern.id) ?? 0) * 76,
       radius: bubbleRadius(pattern.recurrenceCount, recurrences),
     };

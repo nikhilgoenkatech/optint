@@ -58,6 +58,17 @@ function normalize(value: number, values: number[], fallback: number): number {
   return 12 + ((value - min) / (max - min)) * 76;
 }
 
+function normalizeLog(value: number, values: number[], fallback: number): number {
+  const finiteValues = values.filter(v => Number.isFinite(v) && v > 0);
+  if (!finiteValues.length) return fallback;
+  const logValues = finiteValues.map(v => Math.log(v));
+  const logValue = Math.log(Math.max(value, Math.min(...finiteValues)));
+  const min = Math.min(...logValues);
+  const max = Math.max(...logValues);
+  if (min === max) return fallback;
+  return 12 + ((logValue - min) / (max - min)) * 76;
+}
+
 function riskFor(pattern: PatternRow): RiskLevel {
   if (pattern.severity === 'High' || pattern.priority === 'Immediate') return 'High';
   if (pattern.severity === 'Medium' || pattern.priority === 'Short term') return 'Medium';
@@ -84,7 +95,7 @@ function buildPoints(patterns: PatternRow[], objective: ObjectiveType = 'cost_im
     blastRadius: pattern.blastRadius,
     trend: pattern.trend,
     priority: riskFor(pattern),
-    x: normalize(pattern.recurrenceCount, recurrences, 70),
+    x: normalizeLog(pattern.recurrenceCount, recurrences, 70),
     y: 12 + (priorityScores.get(pattern.id) ?? 0) * 76,
     radius: bubbleRadius(pattern.recurrenceCount, recurrences),
   }));
