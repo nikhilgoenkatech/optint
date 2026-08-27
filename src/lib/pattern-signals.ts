@@ -19,6 +19,8 @@ export interface PatternSignal<T = string | number | string[] | null> {
 export interface PatternSignals {
   occurrence_count: PatternSignal<number>;
   alert_event_count: PatternSignal<number>;
+  open_incident_count: PatternSignal<number>;
+  resolved_incident_count: PatternSignal<number>;
   operational_cost: PatternSignal<number>;
   potential_savings: PatternSignal<number>;
   affected_users: PatternSignal<number>;
@@ -29,6 +31,11 @@ export interface PatternSignals {
   trend: PatternSignal<string>;
   avg_duration: PatternSignal<string>;
   median_mttr: PatternSignal<string>;
+  first_seen: PatternSignal<string | null>;
+  last_seen: PatternSignal<string | null>;
+  evidence_quality: PatternSignal<string>;
+  investigation_readiness: PatternSignal<string>;
+  fixability: PatternSignal<string>;
   recommendation_type: PatternSignal<string>;
   rca_availability: PatternSignal<'Present' | 'Missing'>;
   root_cause_entity: PatternSignal<string | null>;
@@ -57,6 +64,11 @@ function resolvedDurations(pattern: ProblemPattern): number[] {
     .filter(problem => problem.status === 'RESOLVED')
     .map(problem => Number(problem.duration))
     .filter(value => Number.isFinite(value) && value > 0);
+}
+
+function formatTimestamp(value: number): string | null {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return new Date(value).toISOString();
 }
 
 export function configuredPatternCost(pattern: ProblemPattern, config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG): number {
@@ -89,6 +101,8 @@ export function extractPatternSignals(
   const durations = resolvedDurations(pattern);
   const avgDuration = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
   const medianDuration = medianPositive(durations);
+  const openCount = pattern.problems.filter(problem => problem.status === 'OPEN').length;
+  const resolvedCount = pattern.problems.filter(problem => problem.status === 'RESOLVED' || problem.status === 'CLOSED').length;
 
   return {
     occurrence_count: {
@@ -100,6 +114,16 @@ export function extractPatternSignals(
       value: pattern.problems.length,
       label: 'Problem records',
       lineage: { sourceField: 'ProblemPattern.problems.length', transformation: 'count normalized Davis records in pattern' },
+    },
+    open_incident_count: {
+      value: openCount,
+      label: 'Open incidents',
+      lineage: { sourceField: 'ProblemPattern.problems.status', transformation: 'count selected pattern problems with OPEN status' },
+    },
+    resolved_incident_count: {
+      value: resolvedCount,
+      label: 'Resolved incidents',
+      lineage: { sourceField: 'ProblemPattern.problems.status', transformation: 'count selected pattern problems with RESOLVED or CLOSED status' },
     },
     operational_cost: {
       value: operationalCost,
@@ -150,6 +174,31 @@ export function extractPatternSignals(
       value: formatMinutes(medianDuration),
       label: 'Median MTTR',
       lineage: { sourceField: 'resolved_problem_duration', transformation: 'median valid resolved durations only', missingReason: durations.length ? undefined : 'No valid resolved durations' },
+    },
+    first_seen: {
+      value: formatTimestamp(pattern.firstSeen),
+      label: 'First seen',
+      lineage: { sourceField: 'ProblemPattern.firstSeen', transformation: 'earliest selected pattern occurrence timestamp' },
+    },
+    last_seen: {
+      value: formatTimestamp(pattern.lastSeen),
+      label: 'Last seen',
+      lineage: { sourceField: 'ProblemPattern.lastSeen', transformation: 'latest selected pattern occurrence timestamp' },
+    },
+    evidence_quality: {
+      value: pattern.evidenceQuality,
+      label: 'Evidence quality',
+      lineage: { sourceField: 'ProblemPattern.evidenceQuality', transformation: 'client-side evidence quality classification from observed pattern signals' },
+    },
+    investigation_readiness: {
+      value: pattern.investigationReadiness,
+      label: 'Investigation readiness',
+      lineage: { sourceField: 'ProblemPattern.investigationReadiness', transformation: 'client-side readiness classification from RCA/entity/timing evidence' },
+    },
+    fixability: {
+      value: pattern.fixability,
+      label: 'Fixability',
+      lineage: { sourceField: 'ProblemPattern.fixability', transformation: 'client-side classification from observed actionability signals' },
     },
     recommendation_type: {
       value: pattern.recommendation.type,

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { publicClient, type RecommenderResponse } from '@dynatrace-sdk/client-davis-copilot';
 import { Flex, Surface, Divider } from '@dynatrace/strato-components/layouts';
 import { Heading, Text } from '@dynatrace/strato-components/typography';
 import { Button } from '@dynatrace/strato-components/buttons';
@@ -129,6 +130,7 @@ type RecommendationResult =
 type RecommendationState = {
   status: RecommendationStatus;
   result?: RecommendationResult;
+  rawResponse?: string;
   errorMessage?: string;
 };
 
@@ -165,13 +167,21 @@ function signalLabel(signal: string): string {
     affected_services: 'Affected services',
     affected_users: 'Affected users',
     avg_duration: 'Avg MTTR',
+    evidence_quality: 'Evidence quality',
     event_category: 'Failure type',
+    first_seen: 'First seen',
+    fixability: 'Fixability',
+    investigation_readiness: 'Investigation readiness',
+    last_seen: 'Last seen',
+    open_incident_count: 'Open incidents',
     occurrence_count: 'Occurrences',
     operational_cost: 'Operational cost',
     potential_savings: 'Recoverable value',
+    problem_context: 'Problem context',
     rca_availability: 'Root cause evidence',
     recommendation_type: 'Recommended lever',
     root_cause_entity: 'Root cause entity',
+    resolved_incident_count: 'Resolved incidents',
     scope_tier: 'Blast radius',
     trend: 'Trend',
     fireRatePerDay: 'Fire rate per day',
@@ -847,7 +857,7 @@ function buildRecommendation(pattern: PatternDetail, kind: GenerationKind = 'rec
   return buildDeveloperResult(pattern, base);
 }
 
-const PROMPT_EXCLUDED_SIGNALS = ['operational_cost', 'potential_savings', 'avg_duration'];
+const PROMPT_EXCLUDED_SIGNALS = ['operational_cost', 'potential_savings'];
 
 function buildRawPrompt(pattern: PatternDetail, kind: GenerationKind): string {
   const evidence = Object.fromEntries(
@@ -861,6 +871,57 @@ function buildRawPrompt(pattern: PatternDetail, kind: GenerationKind): string {
     recommendedAction: pattern.recommendedAction,
     kind,
   });
+}
+
+function extractAssistResponseText(response: RecommenderResponse): string {
+  if (Array.isArray(response)) {
+    const errorEvent = response.find(event => event.event === 'error');
+    if (errorEvent?.data && 'message' in errorEvent.data) {
+      throw new Error(String(errorEvent.data.message));
+    }
+    const endEvent = response.find(event => event.event === 'end');
+    if (endEvent?.data && 'answer' in endEvent.data && endEvent.data.answer) {
+      return String(endEvent.data.answer);
+    }
+    return response
+      .filter(event => event.event === 'tokens' && event.data && 'tokens' in event.data)
+      .flatMap(event => event.data && 'tokens' in event.data && Array.isArray(event.data.tokens) ? event.data.tokens : [])
+      .join('');
+  }
+
+  if (response.status !== 'SUCCESSFUL' && response.status !== 'SUCCESSFUL_WITH_WARNINGS') {
+    throw new Error('Dynatrace Assist was unable to generate a response.');
+  }
+  return response.text;
+}
+
+function parseAssistJson(rawText: string): RecommendationResult | { error: string } {
+  const trimmed = rawText.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() ?? trimmed.slice(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1);
+  if (!candidate || candidate[0] !== '{') {
+    throw new Error('Dynatrace Assist returned an unexpected response format.');
+  }
+  const parsed = JSON.parse(candidate) as RecommendationResult | { error?: string };
+  if ('error' in parsed && parsed.error) return { error: String(parsed.error) };
+  return parsed as RecommendationResult;
+}
+
+async function generateWithDynatraceAssist(pattern: PatternDetail, kind: GenerationKind): Promise<{ result: RecommendationResult; rawResponse: string } | null> {
+  const prompt = buildRawPrompt(pattern, kind);
+  const response = await publicClient.recommenderConversation({
+    body: {
+      text: prompt,
+      context: [
+        { type: 'document-retrieval', value: 'disabled' },
+        { type: 'instruction', value: 'Return only valid JSON that matches the requested schema. Do not add markdown or prose outside JSON.' },
+      ],
+    },
+  });
+  const rawResponse = extractAssistResponseText(response);
+  const parsed = parseAssistJson(rawResponse);
+  if ('error' in parsed) return null;
+  return { result: parsed, rawResponse };
 }
 
 function AssistAttribution({ state }: { state: RecommendationState }) {
@@ -930,7 +991,7 @@ function RawResponse({ state }: { state: RecommendationState }) {
       </button>
       {open && (
         <pre style={{ marginTop: 6, padding: 10, background: 'var(--dt-colors-background-container-neutral-subdued,#f7f8fa)', border: '1px solid var(--dt-colors-border-neutral-subdued,#d5d8df)', borderRadius: 6, fontSize: 10, lineHeight: 1.5, color: MUTED, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflowY: 'auto' }}>
-          {JSON.stringify(state.result, null, 2)}
+          {state.rawResponse || JSON.stringify(state.result, null, 2)}
         </pre>
       )}
     </div>
@@ -1212,6 +1273,94 @@ function DisclosureRow({ label, items }: { label: string; items: string[] }) {
   );
 }
 
+function ExecutiveActionSummary({ actions }: { actions: ExecutiveAssistResult['decisionOptions'] }) {
+  if (!actions.length) return null;
+  const orderedTiers: RecommendationPriority[] = ['IMMEDIATE', 'SHORT_TERM', 'STRATEGIC'];
+  const primaryActions = orderedTiers
+    .map(priority => actions.find(action => action.priority === priority))
+    .filter((action): action is ExecutiveAssistResult['decisionOptions'][number] => Boolean(action));
+  const fallbackActions = actions.filter(action => !primaryActions.includes(action)).slice(0, 3 - primaryActions.length);
+  const cards: ActionCardItem[] = [...primaryActions, ...fallbackActions].slice(0, 3).map(action => ({
+    title: action.title,
+    priority: action.priority,
+    strength: action.recommendationStrength,
+    capability: action.dynatraceCapability,
+    effort: action.effort,
+    evidenceUsed: action.evidenceUsed,
+  }));
+  return (
+    <PanelSection title="Recommended actions">
+      <TieredActions items={cards} />
+    </PanelSection>
+  );
+}
+
+function ExecutiveFullDetails({ result }: { result: ExecutiveAssistResult }) {
+  const [open, setOpen] = React.useState(false);
+  const detailItems = [
+    ...result.businessSignals.map(signal => `${signal.signal}: ${signal.value} - ${signal.whyItMatters}`),
+    ...result.decisionOptions.map(option => `${displayPriority(option.priority)}: ${option.title} - ${option.businessRationale}`),
+  ];
+  if (!detailItems.length) return null;
+  return (
+    <div style={{ borderTop: '1px solid var(--dt-colors-border-neutral-subdued,#eee)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '6px 0',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 11,
+          color: MUTED,
+        }}
+      >
+        <span>Full Assist details <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>{detailItems.length}</span></span>
+        <span>{open ? '^' : 'v'}</span>
+      </button>
+      {open && (
+        <Flex flexDirection="column" gap={6} style={{ paddingBottom: 8 }}>
+          {detailItems.map((item, index) => (
+            <Text key={index} textStyle="small" style={{ color: MUTED }}>{item}</Text>
+          ))}
+        </Flex>
+      )}
+    </div>
+  );
+}
+
+function ExecutiveSummaryDisclosure({ summary }: { summary: string }) {
+  const [open, setOpen] = React.useState(false);
+  if (!summary) return null;
+  return (
+    <div style={{ borderTop: '1px solid var(--dt-colors-border-neutral-subdued,#eee)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '6px 0',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 11,
+          color: MUTED,
+        }}
+      >
+        <span>Executive summary</span>
+        <span>{open ? '^' : 'v'}</span>
+      </button>
+      {open && <Text textStyle="small" style={{ color: MUTED, paddingBottom: 8 }}>{summary}</Text>}
+    </div>
+  );
+}
+
 function buildSignalSnapshot(
   evidence: PatternDetail['assistContext']['evidence'],
   keys: string[],
@@ -1306,21 +1455,13 @@ function GeneratedOutput({ state, pattern, kind }: { state: RecommendationState;
 
   // ── Executive ─────────────────────────────────────────────────────────────
   if (isExecutiveResult(state.result)) {
-    const signals = buildSignalSnapshot(ev, ['operational_cost', 'avg_duration', 'occurrence_count', 'trend', 'rca_availability', 'affected_entity_count']);
-    const actions: ActionCardItem[] = state.result.decisionOptions.map(o => ({
-      title: o.title,
-      priority: o.priority,
-      strength: o.recommendationStrength,
-      capability: o.dynatraceCapability,
-      effort: o.effort,
-      evidenceUsed: o.evidenceUsed,
-    }));
     return (
       <Flex flexDirection="column" gap={8}>
-        {signals.length > 0 && <SignalSnapshot signals={signals} />}
-        <TieredActions items={actions} />
+        <ExecutiveActionSummary actions={state.result.decisionOptions} />
+        <ExecutiveSummaryDisclosure summary={state.result.executiveSummary} />
         <DisclosureRow label="Risks" items={state.result.risks} />
         <DisclosureRow label="Data gaps" items={state.result.dataGaps} />
+        <ExecutiveFullDetails result={state.result} />
       </Flex>
     );
   }
@@ -1757,13 +1898,16 @@ export function PatternDetailPanel({ pattern, onClose, timeWindow, dqlNotebookCo
           : setRecommendation;
     try {
       setState({ status: 'loading' });
-      await new Promise(resolve => setTimeout(resolve, 250));
-      const result = buildRecommendation(pattern, kind);
-      setState(result ? { status: 'ready', result } : { status: 'insufficient' });
+      const assistOutput = await generateWithDynatraceAssist(pattern, kind);
+      setState(assistOutput ? { status: 'ready', result: assistOutput.result, rawResponse: assistOutput.rawResponse } : { status: 'insufficient' });
     } catch (error) {
       setState({
         status: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Assist unavailable. Try again.',
+        errorMessage: error instanceof SyntaxError
+          ? 'Dynatrace Assist returned an unexpected response format.'
+          : error instanceof Error
+            ? error.message
+            : 'Assist unavailable. Try again.',
       });
     }
   }

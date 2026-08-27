@@ -73,9 +73,9 @@ Do not speculate beyond the supplied signals. Do not recommend infrastructure or
 // Per-objective task overrides
 // ------------------------------------
 
-const COST_IMPACT_TASK = `TASK: Reduce recurring operational cost, customer impact, and engineering effort.
-Focus on recurrence and prevention. Do not recommend alert tuning.
-Generate at least 3 recommendations spanning IMMEDIATE, SHORT_TERM, and STRATEGIC priorities where signal evidence supports it.`;
+const COST_IMPACT_TASK = `TASK: Reduce recurring operational effort, customer impact, and repeated incident handling.
+Focus on recurrence, affected users, duration, open incidents, and prevention. Modeled dollar values are not supplied to Assist.
+Generate exactly 3 concise recommendations when signal evidence allows it: one IMMEDIATE, one SHORT_TERM, and one STRATEGIC.`;
 
 const ALERT_OPTIMIZATION_TASK = `TASK: Alert tuning only.
 Focus on detector config changes, routing, suppression windows, alert profiles, event filters, and alert quality.
@@ -126,7 +126,8 @@ const EXECUTIVE_SCHEMA = `RESPONSE FORMAT — return ONLY valid JSON:
   "risks": ["missing or unresolved evidence only"],
   "dataGaps": ["string"]
 }
-Return 3 decisionOptions covering IMMEDIATE, SHORT_TERM, and STRATEGIC where signal evidence allows.`;
+Return exactly 3 decisionOptions where signal evidence allows: one IMMEDIATE, one SHORT_TERM, and one STRATEGIC.
+Keep each title short and action-oriented. Put supporting detail in businessRationale, not the title.`;
 
 const SRE_SCHEMA = `RESPONSE FORMAT — return ONLY valid JSON:
 {
@@ -212,6 +213,56 @@ function schemaFor(persona: PersonaType): string {
   return DEVELOPER_SCHEMA;
 }
 
+function truncate(value: string, max = 120): string {
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+function formatEntity(entity: { entityId?: string; name?: string; type?: string }): string {
+  const name = entity.name && entity.name.trim() ? entity.name.trim() : 'Unnamed entity';
+  const type = entity.type || 'ENTITY';
+  const id = entity.entityId ? ` (${entity.entityId})` : '';
+  return truncate(`${type}: ${name}${id}`);
+}
+
+function buildProblemContext(pattern: ProblemPattern): Record<string, string | number | string[]> {
+  const sampledProblems = pattern.problems.slice(0, 8).map(problem => {
+    const impacted = problem.impactedEntities.slice(0, 4).map(formatEntity);
+    const extraImpacted = problem.impactedEntities.length > impacted.length
+      ? `; +${problem.impactedEntities.length - impacted.length} more`
+      : '';
+    const rca = problem.rootCauseEntity ? formatEntity(problem.rootCauseEntity) : 'Missing';
+    return [
+      `problemId=${problem.problemId}`,
+      `status=${problem.status}`,
+      `category=${problem.severity}`,
+      `start=${Number.isFinite(problem.startTime) ? new Date(problem.startTime).toISOString() : 'absent'}`,
+      `end=${problem.endTime && Number.isFinite(problem.endTime) ? new Date(problem.endTime).toISOString() : 'absent'}`,
+      `affectedUsers=${problem.affectedUsers ?? 0}`,
+      `impactedEntities=${impacted.length ? impacted.join('; ') + extraImpacted : 'absent'}`,
+      `rootCauseEntity=${rca}`,
+    ].join(' | ');
+  });
+  const impactedEntities = [...new Map(
+    pattern.problems
+      .flatMap(problem => problem.impactedEntities)
+      .filter(entity => entity.entityId || entity.name)
+      .map(entity => [entity.entityId || entity.name, formatEntity(entity)])
+  ).values()].slice(0, 20);
+  const rootCauseEntities = [...new Map(
+    pattern.problems
+      .map(problem => problem.rootCauseEntity)
+      .filter((entity): entity is NonNullable<typeof entity> => Boolean(entity?.entityId || entity?.name))
+      .map(entity => [entity.entityId || entity.name, formatEntity(entity)])
+  ).values()].slice(0, 10);
+
+  return {
+    sampledProblems,
+    impactedEntities,
+    rootCauseEntities,
+    omittedProblemCount: Math.max(0, pattern.problems.length - sampledProblems.length),
+  };
+}
+
 // ------------------------------------
 // Evidence builder
 // Maps pattern or raw problems to signal JSON
@@ -221,18 +272,30 @@ function buildEvidenceJson(req: AISummaryRequest): object {
   const { problems, costEstimates, totalCost, pattern } = req;
 
   if (pattern) {
+    const openCount = pattern.problems.filter(problem => problem.status === 'OPEN').length;
+    const resolvedCount = pattern.problems.filter(problem => problem.status === 'RESOLVED' || problem.status === 'CLOSED').length;
+    const affectedEntityCount = new Set(pattern.problems.flatMap(problem => problem.impactedEntities.map(entity => entity.entityId).filter(Boolean))).size;
     const evidence: Record<string, PromptEvidenceValue> = {
       occurrence_count:      pattern.occurrences,
       alert_event_count:     pattern.problems.length,
+      open_incident_count:   openCount,
+      resolved_incident_count: resolvedCount,
       affected_users:        pattern.totalUsers,
-      affected_entity_count: pattern.affectedServices.length,
+      affected_entity_count: affectedEntityCount || pattern.affectedServices.length,
       affected_services:     pattern.affectedServices.join(', ') || 'absent',
       event_category:        pattern.severity,
       trend:                 pattern.trend,
+      avg_duration:          Number.isFinite(pattern.avgMTTR) && pattern.avgMTTR > 0 ? `${Math.round(pattern.avgMTTR)}m` : 'absent',
+      first_seen:            Number.isFinite(pattern.firstSeen) && pattern.firstSeen > 0 ? new Date(pattern.firstSeen).toISOString() : 'absent',
+      last_seen:             Number.isFinite(pattern.lastSeen) && pattern.lastSeen > 0 ? new Date(pattern.lastSeen).toISOString() : 'absent',
+      evidence_quality:      pattern.evidenceQuality,
+      investigation_readiness: pattern.investigationReadiness,
+      fixability:            pattern.fixability,
       recommendation_type:   pattern.recommendation.type,
       rca_availability:      pattern.hasRCA ? 'Present' : 'Missing',
       root_cause_entity:     pattern.dimensions.primaryRootCause ?? 'absent',
       problem_ids:           pattern.problems.map(problem => problem.problemId).filter(Boolean).slice(0, 10),
+      problem_context:       buildProblemContext(pattern),
     };
     const trendEvidence = compactTrendEvidence(pattern.trendEnrichment);
     if (trendEvidence) evidence.trendEvidence = trendEvidence;
@@ -250,6 +313,8 @@ function buildEvidenceJson(req: AISummaryRequest): object {
   return {
     occurrence_count:      problems.length,
     alert_event_count:     problems.length,
+    open_incident_count:   problems.filter(problem => problem.status === 'OPEN').length,
+    resolved_incident_count: problems.filter(problem => problem.status === 'RESOLVED' || problem.status === 'CLOSED').length,
     affected_users:        totalUsers,
     affected_entity_count: entities.size,
     affected_services:     services.join(', ') || 'absent',

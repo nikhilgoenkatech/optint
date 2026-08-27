@@ -66,6 +66,56 @@ function buildTimeline(pattern: ProblemPattern): PatternTimelineBucket[] {
     .map(([label, count]) => ({ label, count }));
 }
 
+function truncate(value: string, max = 120): string {
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+function formatEntity(entity: { entityId?: string; name?: string; type?: string }): string {
+  const name = entity.name && entity.name.trim() ? entity.name.trim() : 'Unnamed entity';
+  const type = entity.type || 'ENTITY';
+  const id = entity.entityId ? ` (${entity.entityId})` : '';
+  return truncate(`${type}: ${name}${id}`);
+}
+
+function buildProblemContext(pattern: ProblemPattern) {
+  const sampledProblems = pattern.problems.slice(0, 8).map(problem => {
+    const impacted = problem.impactedEntities.slice(0, 4).map(formatEntity);
+    const extraImpacted = problem.impactedEntities.length > impacted.length
+      ? `; +${problem.impactedEntities.length - impacted.length} more`
+      : '';
+    const rca = problem.rootCauseEntity ? formatEntity(problem.rootCauseEntity) : 'Missing';
+    return [
+      `problemId=${problem.problemId}`,
+      `status=${problem.status}`,
+      `category=${problem.severity}`,
+      `start=${Number.isFinite(problem.startTime) ? new Date(problem.startTime).toISOString() : 'absent'}`,
+      `end=${problem.endTime && Number.isFinite(problem.endTime) ? new Date(problem.endTime).toISOString() : 'absent'}`,
+      `affectedUsers=${problem.affectedUsers ?? 0}`,
+      `impactedEntities=${impacted.length ? impacted.join('; ') + extraImpacted : 'absent'}`,
+      `rootCauseEntity=${rca}`,
+    ].join(' | ');
+  });
+  const impactedEntities = [...new Map(
+    pattern.problems
+      .flatMap(problem => problem.impactedEntities)
+      .filter(entity => entity.entityId || entity.name)
+      .map(entity => [entity.entityId || entity.name, formatEntity(entity)])
+  ).values()].slice(0, 20);
+  const rootCauseEntities = [...new Map(
+    pattern.problems
+      .map(problem => problem.rootCauseEntity)
+      .filter((entity): entity is NonNullable<typeof entity> => Boolean(entity?.entityId || entity?.name))
+      .map(entity => [entity.entityId || entity.name, formatEntity(entity)])
+  ).values()].slice(0, 10);
+
+  return {
+    sampledProblems,
+    impactedEntities,
+    rootCauseEntities,
+    omittedProblemCount: Math.max(0, pattern.problems.length - sampledProblems.length),
+  };
+}
+
 export function patternToRow(pattern: ProblemPattern, config: ExtendedCostConfig = DEFAULT_EXTENDED_COST_CONFIG): PatternRow {
   const signals = extractPatternSignals(pattern, config);
   const openProblemCount = pattern.problems.filter(problem => problem.status === 'OPEN').length;
@@ -114,6 +164,7 @@ export function patternToDetail(
   const evidence = signalsToEvidence(signals);
   const trendEvidence = compactTrendEvidence(pattern.trendEnrichment);
   if (trendEvidence) evidence.trendEvidence = trendEvidence;
+  evidence.problem_context = buildProblemContext(pattern);
   const lineage = Object.fromEntries(Object.entries(signals).map(([key, signal]) => [key, signal.lineage]));
 
   return {
