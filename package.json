@@ -11,22 +11,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dynatrace-sdk/app-environment": "^1.0.0",
-    "@dynatrace-sdk/client-query": "^1.0.0",
-    "@dynatrace-sdk/client-classic-environment-v2": "^5.2.3",
+    "@dynatrace-sdk/app-environment": "^1.1.5",
+    "@dynatrace-sdk/client-classic-environment-v2": "^8.0.0",
     "@dynatrace-sdk/client-davis-copilot": "^1.0.0",
     "@dynatrace-sdk/client-iam": "^1.0.0",
-    "@dynatrace/strato-components": "3.8.0",
-    "@dynatrace/strato-design-tokens": "1.5.1",
-    "@dynatrace/strato-icons": "2.3.1",
+    "@dynatrace-sdk/client-query": "^1.27.0",
+    "@dynatrace/strato-components": "^3.12.1",
+    "@dynatrace/strato-design-tokens": "^1.6.0",
+    "@dynatrace/strato-icons": "^2.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "dt-app": "^1.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
+    "dt-app": "^1.15.0",
     "typescript": "^5.0.0"
   }
 }
