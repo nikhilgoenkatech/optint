@@ -10,11 +10,9 @@ import { queryExecutionClient }    from '@dynatrace-sdk/client-query';
 //                                    from '@dynatrace-sdk/client-classic-environment-v2';
 
 import {
-  FilterState, DynatraceProblem, OperationalMetrics,
-  WeeklySnapshot, CostEstimate, CostConfig,
+  FilterState, DynatraceProblem,
 } from '../models';
 import { DQL_QUERIES, computeRecurrenceScore, computeOperationalImpactScore } from '../queries/dqlQueries';
-import { DEFAULT_COST_CONFIG, estimateCost } from '../cost/CostModel';
 import { entityTypeFromId, normalizeEntity, normalizeEntityName } from '../lib/entity-normalization';
 import { DqlMttrTrendRecord } from '../lib/mttr-trend-validation';
 
@@ -211,54 +209,6 @@ export async function fetchPatternMTTRTrendRecords(query: string): Promise<DqlMt
   }));
 }
 
-// ── Fetch KPIs ─────────────────────────────────────────────
-
-export async function fetchKPIs(filters: FilterState): Promise<OperationalMetrics> {
-  // Production:
-  // const result = await queryExecutionClient().queryExecute({
-  //   body: { query: DQL_QUERIES.fetchKPIs(filters) }
-  // });
-  // const r = result.result?.records?.[0] ?? {};
-  // return mapRecordToKPIs(r);
-  throw new Error('DynatraceService: not connected');
-}
-
-// ── Write weekly snapshot as Business Event ────────────────
-// Called by Dynatrace Workflow every Monday at 08:00 UTC
-
-export async function writeWeeklySnapshot(snapshot: WeeklySnapshot): Promise<void> {
-  // Production:
-  // await businessEventsIngestClient().ingest({
-  //   body: [{
-  //     'event.type':     'opint.weekly_snapshot',
-  //     'event.provider': 'opint',
-  //     'event.kind':     'BIZ_EVENT',
-  //     timestamp:        new Date().toISOString(),
-  //     weekStart:        snapshot.weekStart,
-  //     totalProblems:    snapshot.totalProblems,
-  //     avgMTTR:          snapshot.avgMTTR,
-  //     recurringCount:   snapshot.recurringCount,
-  //     missingRCA:       snapshot.missingRCA,
-  //     estimatedCost:    snapshot.estimatedCost,
-  //     noisyAlerts:      snapshot.noisyAlerts,
-  //   }]
-  // });
-  throw new Error('DynatraceService: not connected');
-}
-
-// ── Fetch stored weekly snapshots from Grail ───────────────
-
-export async function fetchWeeklySnapshots(): Promise<WeeklySnapshot[]> {
-  // Production:
-  // const result = await queryExecutionClient().queryExecute({
-  //   body: { query: DQL_QUERIES.fetchStoredSnapshots() }
-  // });
-  // return (result.result?.records ?? []).map(mapRecordToSnapshot);
-  throw new Error('DynatraceService: not connected');
-}
-
-// ── Record → model mappers ─────────────────────────────────
-
 function toEpochMs(value: unknown): number | undefined {
   if (!value) return undefined;
   if (typeof value === 'number') return value > 1e15 ? Math.floor(value / 1e6) : value;
@@ -389,33 +339,4 @@ function mapRecordToProblem(r: Record<string, unknown>): DynatraceProblem {
   };
 }
 
-function mapRecordToKPIs(r: Record<string, unknown>): OperationalMetrics {
-  return {
-    totalProblems:      Number(r['totalProblems']      ?? 0),
-    openProblems:       Number(r['openProblems']       ?? 0),
-    resolvedProblems:   Number(r['resolvedProblems']   ?? 0),
-    repetitiveProblems: 0, // computed client-side by pattern engine
-    missingRCACount:    Number(r['missingRCA']         ?? 0),
-    avgMTTR:            Number(r['avgMTTR']            ?? 0),
-    p95MTTR:            Number(r['p95MTTR']            ?? 0),
-    totalAffectedUsers: Number(r['totalAffectedUsers'] ?? 0),
-    noisyAlertCount:    0, // computed client-side
-    estimatedCost:      0, // computed client-side by CostModel
-    recurringWaste:     0, // computed client-side
-    mttrTrend:          'STABLE',
-  };
-}
 
-function mapRecordToSnapshot(r: Record<string, unknown>): WeeklySnapshot {
-  const weekStart = Number(r['weekStart'] ?? 0);
-  return {
-    weekStart,
-    week:           new Date(weekStart).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' }),
-    totalProblems:  Number(r['totalProblems']  ?? 0),
-    avgMTTR:        Number(r['avgMTTR']        ?? 0),
-    recurringCount: Number(r['recurringCount'] ?? 0),
-    missingRCA:     Number(r['missingRCA']     ?? 0),
-    estimatedCost:  Number(r['estimatedCost']  ?? 0),
-    noisyAlerts:    Number(r['noisyAlerts']    ?? 0),
-  };
-}
