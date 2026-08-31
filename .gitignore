@@ -2,5 +2,7 @@ node_modules/
 dist/
 dist-test/
 .dt-app/
+.dt-app*/
+.dt-app*.log
 .env
 *.local
