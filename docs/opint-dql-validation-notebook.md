@@ -1,6 +1,6 @@
-# OpInt DQL Validation Notebook
+# Calibrate DQL Validation Notebook
 
-Purpose: help reviewers validate the data shown in OpInt without changing app logic. This notebook documents the DQL query surfaces, the persona screens they feed, client-side transformations, assumptions, and edge-case tests.
+Purpose: help reviewers validate the data shown in Calibrate without changing app logic. This notebook documents the DQL query surfaces, the persona screens they feed, client-side transformations, assumptions, and edge-case tests.
 
 ## Query Inventory
 

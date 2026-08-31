@@ -1,115 +1,99 @@
 # Calibrate Pattern Priority README
 
-This README explains, with a small example dataset, how Calibrate turns Davis problem records into recurring patterns and visible priorities.
+This README gives a simple example of how Calibrate turns Davis problem records into recurring patterns and priority candidates.
 
 ## How Patterns Are Built
 
-Calibrate starts with raw Davis problem records.
+Calibrate starts with non-duplicate Davis problem records.
 
-For each problem, it builds a pattern signature from:
+For each problem, it considers observed fields such as:
 
-- normalized problem title
-- root cause entity name, when available
-- otherwise the primary impacted entity
+- problem title,
+- event category,
+- root-cause entity when available,
+- affected service, host, monitor, or entity,
+- start and end time,
+- duration,
+- affected users,
+- status,
+- management zone and tag context.
 
-If two or more problems share the same signature, Calibrate treats them as a recurring pattern.
+When two or more records describe the same recurring issue, Calibrate groups them into a pattern. The pattern is then evaluated for cost impact and alert optimization.
 
-One-off records are not promoted into patterns.
+## Example Dataset
 
-For each pattern, Calibrate calculates:
-
-- occurrences
-- open incidents
-- operational cost
-- recoverable value
-- affected entities and services
-- RCA present or missing
-- trend
-- evidence quality
-- investigation readiness
-- priority
-
-## Example Problem Dataset
-
-| ID | Title | RCA / Entity | Status | Category | Start | Duration | Users | Entities | Cost |
-| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| P1 | Checkout failure rate increase | checkout-service | RESOLVED | ERROR | Day 1 | 20m | 800 | 4 | $2,000 |
-| P2 | Checkout failure rate increase | checkout-service | OPEN | ERROR | Day 3 | - | 600 | 4 | $1,800 |
-| P3 | Checkout failure rate increase | checkout-service | RESOLVED | ERROR | Day 6 | 18m | 700 | 4 | $2,100 |
-| P4 | Browser monitor global outage | Missing | RESOLVED | AVAILABILITY | Day 2 | 5m | 0 | 10 | $675 |
-| P5 | Browser monitor global outage | Missing | RESOLVED | AVAILABILITY | Day 3 | 4m | 0 | 10 | $675 |
-| P6 | Browser monitor global outage | Missing | RESOLVED | AVAILABILITY | Day 4 | 4m | 0 | 10 | $675 |
-| P7 | CPU spike on worker pod | worker-pod | RESOLVED | RESOURCE | Day 1 | 8m | 0 | 1 | $100 |
-| P8 | CPU spike on worker pod | worker-pod | RESOLVED | RESOURCE | Day 7 | 8m | 0 | 1 | $100 |
+| ID | Title | RCA / Entity | Status | Category | Timing | Users | Entities |
+|---|---|---|---|---|---|---:|---:|
+| P1 | Checkout failure rate increase | checkout-service | Resolved | Error | Day 1, 10:00 | 800 | 4 |
+| P2 | Checkout failure rate increase | checkout-service | Active | Error | Day 3, 10:00 | 600 | 4 |
+| P3 | Checkout failure rate increase | checkout-service | Resolved | Error | Day 6, 10:00 | 700 | 4 |
+| P4 | Browser monitor global outage | browser monitor | Resolved | Availability | Day 2, 02:00 | 0 | 1 |
+| P5 | Browser monitor global outage | browser monitor | Resolved | Availability | Day 3, 02:00 | 0 | 1 |
+| P6 | Browser monitor global outage | browser monitor | Resolved | Availability | Day 4, 02:00 | 0 | 1 |
+| P7 | CPU usage close to limits | worker host | Resolved | Resource contention | Day 1, 08:00 | 0 | 1 |
+| P8 | CPU usage close to limits | worker host | Resolved | Resource contention | Day 7, 08:00 | 0 | 1 |
 
 ## Pattern Output
 
-| Pattern | Records Grouped | Why Grouped | Occurrences | Trend | Cost | Priority |
-| --- | ---: | --- | ---: | --- | ---: | --- |
-| Checkout failure rate increase | P1, P2, P3 | same title + same RCA | 3 | Increasing | $5,900 | Immediate |
-| Browser monitor global outage | P4, P5, P6 | same title + impacted entity fallback | 3 | Increasing | $2,025 | Immediate |
-| CPU spike on worker pod | P7, P8 | same title + same RCA/entity | 2 | Stable | $200 | Short term / Monitor |
+| Pattern | Records Grouped | Why Grouped | Occurrences | Customer Impact | Operational Signal |
+|---|---|---|---:|---:|---|
+| Checkout failure rate increase | P1, P2, P3 | Same title and same service/RCA | 3 | High | Recurring customer-facing error |
+| Browser monitor global outage | P4, P5, P6 | Same title and same monitor/entity | 3 | Low observed user impact | Repeated availability alert at the same time |
+| CPU usage close to limits | P7, P8 | Same title and same host/entity | 2 | Low observed user impact | Repeated resource signal |
 
-## Current Priority Logic
+## Priority Interpretation
 
-Visible priority is assigned after recurring patterns are created.
+Calibrate priority is based on repeated pattern behavior, not total tenant alert count.
 
-| Priority | Rule |
-| --- | --- |
-| Immediate | operational cost >= $10,000 OR trend is Increasing |
-| Short term | recurrence score >= 60 OR occurrences >= 3 |
-| Monitor | evidence quality is Low |
-| Strategic | otherwise |
+| Signal | Why It Matters |
+|---|---|
+| Recurrence | Shows the issue is repeating, not isolated |
+| Open incidents | Indicates current unresolved risk |
+| Affected users | Shows customer-facing impact where available |
+| Affected entities | Shows blast radius or operational spread |
+| Duration / MTTR | Shows how long teams spend recovering |
+| Trend | Shows whether the pattern is increasing, stable, or decreasing |
+| RCA availability | Shows whether the team has a clear starting point |
+| Evidence quality | Shows whether the supplied data is strong enough to act on |
+| Investigation readiness | Shows whether the pattern has enough context for ownership and remediation |
 
-In the example:
+## Cost Impact Example
 
-- Checkout becomes Immediate because the trend is Increasing, even though cost is below $10,000.
-- Browser monitor becomes Immediate because the trend is Increasing.
-- CPU spike has recurrence but low cost and Stable trend, so it is not Immediate.
+For Cost Impact, the checkout pattern would usually rank above the CPU pattern because it has:
+
+- recurring failures,
+- affected users,
+- active risk,
+- a clear service/RCA context.
+
+The browser monitor pattern may still rank highly if it repeats many times or creates operational effort, but the absence of affected users should be called out clearly.
+
+## Alert Optimization Example
+
+For Alert Optimization, the browser monitor pattern may become a strong candidate because it has:
+
+- repeated alerts,
+- timing concentration,
+- low observed user impact,
+- a specific monitor/entity to investigate.
+
+This does not mean the alert should be suppressed automatically. Calibrate should help the team review whether routing, thresholds, maintenance windows, or ownership need adjustment.
 
 ## Important Distinction
 
 Priority is not based on total alerts across the whole environment.
 
-Priority is based on repeated occurrences inside a specific pattern.
-
 For example:
 
-- 100 total alerts in the environment do not make every pattern high priority.
-- A specific pattern repeating 6 times with rising trend can become high priority.
-- A noisy but low-impact pattern can still be important for alert optimization, but it should not automatically become a business-cost priority.
-
-## Objective Difference
-
-The grouping stays the same across objectives.
-
-The active objective changes the decision lens.
-
-### Cost Impact
-
-For `cost_impact`, Calibrate interprets the pattern around:
-
-- operational cost
-- recoverable value
-- user or entity impact
-- recurrence-driven operational burden
-
-### Alert Optimization
-
-For `alert_optimization`, Calibrate interprets the pattern around:
-
-- repeated alerts
-- short-lived or noisy recurrence
-- low-value alert candidates
-- tuning, routing, or scoping opportunities
+- 500 total tenant alerts do not make every pattern high priority.
+- A specific pattern repeated 70 times may be important because fixing one source can remove many repeated incidents.
+- A high-frequency alert with customer impact is not automatically noise.
+- A low-impact repeated alert may be useful as an alert optimization candidate.
 
 ## How To Explain This To A Team
 
-A simple way to describe the model:
+A simple explanation:
 
-> Calibrate first asks, "Have we seen the same problem pattern more than once?"
->
-> Then it asks, "For the selected objective, which repeated pattern deserves attention first?"
+> Calibrate first asks whether the same problem keeps happening. Then it asks whether that repeated pattern matters for the selected objective.
 
-The system does not rank individual alerts in isolation. It ranks recurring patterns.
-
+The output is intended to guide prioritization. Final action should still be reviewed with the owning team and validated against tenant context.
