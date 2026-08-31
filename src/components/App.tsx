@@ -120,6 +120,7 @@ export function App() {
   const [costConfig, setCostConfig] = useState<ExtendedCostConfig>(DEFAULT_EXTENDED_COST_CONFIG);
   const [weightsConfig, setWeightsConfig] = useState<WeightsConfig>(DEFAULT_WEIGHTS);
   const [configOpen, setConfigOpen] = useState(false);
+  const [openSourceNoticeOpen, setOpenSourceNoticeOpen] = useState(false);
   const [developerScopeId, setDeveloperScopeId] = useState('');
 
   useEffect(() => {
@@ -316,6 +317,52 @@ export function App() {
               {PERSONA_LABELS[p]}
             </button>
           ))}
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            type="button"
+            aria-expanded={openSourceNoticeOpen}
+            onClick={() => setOpenSourceNoticeOpen((open) => !open)}
+            onBlur={() => window.setTimeout(() => setOpenSourceNoticeOpen(false), 120)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 600,
+              padding: '4px 0',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Open source app <span aria-hidden="true">i</span>
+          </button>
+          {openSourceNoticeOpen && (
+            <div
+              role="status"
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 34,
+                width: 340,
+                zIndex: 30,
+                padding: '10px 12px',
+                border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
+                borderRadius: 6,
+                background: 'var(--dt-colors-background-container-neutral-default, #fff)',
+                color: 'var(--dt-colors-text-neutral-default, #23282d)',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
+                fontSize: 12,
+                fontWeight: 400,
+                lineHeight: 1.45,
+              }}
+            >
+              Calibrate is an open-source app and is not an officially maintained Dynatrace product.
+              For issues, enhancements, or support, use the project repository instead of Dynatrace
+              Support or Dynatrace product teams.
+            </div>
+          )}
         </div>
 
       </div>

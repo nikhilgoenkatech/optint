@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export function CalibrateLogo() {
-  const [noticeOpen, setNoticeOpen] = useState(false);
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
       <svg
         role="img"
         aria-label="Calibrate"
@@ -45,56 +43,7 @@ export function CalibrateLogo() {
         }}>
           Signal - Intelligence - Action
         </span>
-        <button
-          type="button"
-          aria-expanded={noticeOpen}
-          onClick={(event) => {
-            event.stopPropagation();
-            setNoticeOpen((open) => !open);
-          }}
-          onBlur={() => window.setTimeout(() => setNoticeOpen(false), 120)}
-          style={{
-            alignSelf: 'flex-start',
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--dt-colors-text-neutral-subdued, #74777a)',
-            cursor: 'pointer',
-            fontSize: 10,
-            fontWeight: 600,
-            lineHeight: 1.2,
-            margin: '3px 0 0',
-            padding: 0,
-            textDecoration: noticeOpen ? 'underline' : 'none',
-          }}
-        >
-          Open source app <span aria-hidden="true">i</span>
-        </button>
       </div>
-      {noticeOpen && (
-        <div
-          role="status"
-          style={{
-            position: 'absolute',
-            left: 38,
-            top: 42,
-            width: 320,
-            zIndex: 30,
-            padding: '10px 12px',
-            border: '1px solid var(--dt-colors-border-neutral-default, #cfd3d8)',
-            borderRadius: 6,
-            background: 'var(--dt-colors-background-container-neutral-default, #fff)',
-            color: 'var(--dt-colors-text-neutral-default, #23282d)',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
-            fontSize: 12,
-            fontWeight: 400,
-            lineHeight: 1.45,
-          }}
-        >
-          Calibrate is an open-source app and is not an officially maintained Dynatrace product.
-          For issues, enhancements, or support, use the project repository instead of Dynatrace
-          Support or Dynatrace product teams.
-        </div>
-      )}
     </div>
   );
 }
