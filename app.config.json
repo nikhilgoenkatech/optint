@@ -6,7 +6,7 @@
   "app": {
     "id": "my.dynatrace.calibrate",
     "name": "Calibrate",
-    "version": "2.5.24",
+    "version": "2.5.25",
     "description": "Calibrate - operational intelligence for recurring problem patterns",
     "scopes": [
       {

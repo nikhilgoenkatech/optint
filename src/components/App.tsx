@@ -336,7 +336,25 @@ export function App() {
               whiteSpace: 'nowrap',
             }}
           >
-            Open source app <span aria-hidden="true">i</span>
+            Open source app
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 13,
+                height: 13,
+                marginLeft: 4,
+                border: '1px solid currentColor',
+                borderRadius: '50%',
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              i
+            </span>
           </button>
           {openSourceNoticeOpen && (
             <div
