@@ -129,7 +129,15 @@ If an expected pattern is missing, check the timeframe and whether the underlyin
 
 ## Pattern Movement Animation
 
-The file `pattern-animation.html` (project root) provides an animated walkthrough for use in demos or customer conversations. Open it in a browser — it starts paused on Scene 1, then click anywhere to begin.
+Two formats are available for use in demos or customer conversations:
+
+- **Interactive (HTML):** `pattern-animation.html` in the project root — open in a browser, click to start, includes live signal panels.
+- **GIF:** `docs/media/Pattern-example.gif` — paste into Slack, email, or a deck. Loops automatically.
+- **Video:** `docs/media/Pattern-example.mp4` — for screen share or PowerPoint.
+
+![Pattern movement animation](media/Pattern-example.gif)
+
+The file `pattern-animation.html` (project root) provides the full interactive walkthrough. Open it in a browser — it starts paused on Scene 1, then click anywhere to begin.
 
 **How to use it in a conversation:**
 

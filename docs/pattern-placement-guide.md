@@ -158,9 +158,13 @@ If a pattern you expect to see is missing, check the timeframe and whether the p
 
 ## Pattern Movement Animation
 
-An animated explainer (`pattern-animation.html` in the project root) walks through four scenes showing how the same pattern moves across the matrix as signals change.
+An animated explainer walks through four scenes showing how the same pattern moves across the matrix as signals change. Two formats are available:
 
-Open the file in a browser. It starts paused on Scene 1 — click anywhere to begin.
+- **Interactive (HTML):** `pattern-animation.html` in the project root. Open in a browser, click anywhere to start. Includes live signal panels that update each scene.
+- **GIF (embed anywhere):** `docs/media/Pattern-example.gif` — loops automatically, no interaction needed.
+- **Video (screen share / deck):** `docs/media/Pattern-example.mp4`
+
+![Pattern movement animation](media/Pattern-example.gif)
 
 **What the animation shows:**
 
