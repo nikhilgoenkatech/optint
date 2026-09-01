@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Calibrate — Cost Impact Pattern Movement</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 32px; }
+  .card { width: 740px; background: #161b22; border-radius: 14px; border: 1px solid #30363d; padding: 24px; }
+  .hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-name { font-size: 14px; font-weight: 700; color: #c9d1d9; }
+  .brand-sub  { font-size: 8px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #1496ff; }
+  .badge { font-size: 11px; font-weight: 600; padding: 4px 14px; border-radius: 999px; background: rgba(20,150,255,0.15); color: #1496ff; border: 1px solid rgba(20,150,255,0.35); }
+
+  .chart { position: relative; height: 280px; border: 1px solid #30363d; border-radius: 10px; background: #0d1117; overflow: visible; margin-bottom: 8px; }
+  .vline { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.06); }
+  .hline { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.06); }
+  .ql { position: absolute; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #484f58; pointer-events: none; }
+  .axis-x { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #484f58; }
+
+  .bubble { position: absolute; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; transform: translate(-50%, 50%); transition: left 1.3s cubic-bezier(0.4,0,0.2,1), bottom 1.3s cubic-bezier(0.4,0,0.2,1), border-color 0.5s, background 0.5s, color 0.5s, box-shadow 0.5s; }
+  .b-co { width: 44px; height: 44px; background: rgba(196,26,0,0.18); border: 2px solid #c41a00; color: #c41a00; box-shadow: 0 0 0 4px rgba(196,26,0,0.08); }
+  .b-cp { width: 26px; height: 26px; background: rgba(26,122,74,0.18); border: 2px solid #1a7a4a; color: #1a7a4a; }
+  .b-in { width: 40px; height: 40px; background: rgba(83,74,183,0.13); border: 2px dashed #534ab7; color: #534ab7; }
+  .ftag { position: absolute; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; pointer-events: none; transform: translateX(-50%); transition: left 1.3s cubic-bezier(0.4,0,0.2,1), bottom 1.3s cubic-bezier(0.4,0,0.2,1), opacity 0.4s; }
+
+  .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+  .sig-box { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; }
+  .sig-title { font-size: 10px; font-weight: 700; color: #484f58; letter-spacing: .7px; text-transform: uppercase; margin-bottom: 7px; display: flex; align-items: center; gap: 6px; }
+  .sig-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .sig-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 11px; }
+  .sig-key { color: #484f58; min-width: 58px; font-size: 10px; }
+  .pill { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; transition: background .4s, color .4s, border-color .4s, box-shadow .4s; }
+  .p-gray   { background: rgba(255,255,255,0.05); color: #8b949e; border: 1px solid #30363d; }
+  .p-green  { background: rgba(26,122,74,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+  .p-red    { background: rgba(196,26,0,0.13); color: #c41a00; border: 1px solid rgba(196,26,0,0.25); }
+  .p-orange { background: rgba(249,115,22,0.13); color: #f97316; border: 1px solid rgba(249,115,22,0.3); }
+  .changed  { box-shadow: 0 0 0 2px currentColor; }
+
+  .ann { padding: 12px 16px; border-left: 3px solid #1496ff; border-radius: 0 8px 8px 0; background: rgba(255,255,255,0.03); font-size: 12px; color: #8b949e; line-height: 1.7; transition: border-color 0.4s; margin-top: 4px; }
+  .ann strong { color: #c9d1d9; }
+  .ann em { color: #9391e4; font-style: normal; font-weight: 600; }
+  .footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .sl { font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: #484f58; }
+  .dots { display: flex; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #30363d; transition: background 0.3s; }
+  .dot.on { background: #1496ff; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="14" stroke="rgba(20,150,255,0.25)" stroke-width="1.5"/><path d="M20 6 A14 14 0 0 1 34 20" stroke="#1496ff" stroke-width="1.5" fill="none"/><path d="M34 20 A14 14 0 0 1 20 34" stroke="#73be28" stroke-width="1.5" fill="none"/><path d="M20 34 A14 14 0 0 1 6 20" stroke="rgba(20,150,255,0.35)" stroke-width="1.5" fill="none"/><path d="M6 20 A14 14 0 0 1 20 6" stroke="rgba(115,190,40,0.3)" stroke-width="1.5" fill="none"/><circle cx="20" cy="20" r="2.5" fill="#73be28"/></svg>
+      <div><div class="brand-name">Calibrate</div><div class="brand-sub">Signal · Intelligence · Action</div></div>
+    </div>
+    <span class="badge">Cost Impact</span>
+  </div>
+
+  <div class="chart" id="chart">
+    <div class="vline"></div><div class="hline"></div>
+    <!-- Quadrants matching the actual app -->
+    <span class="ql" style="top:8px;left:10px;">Plan &amp; Fund</span>
+    <span class="ql" style="top:8px;right:10px;">Act Now</span>
+    <span class="ql" style="bottom:8px;left:10px;">Deprioritize</span>
+    <span class="ql" style="bottom:8px;right:10px;">Quick Win</span>
+    <span class="axis-x">higher operational cost →</span>
+
+    <div id="bin" class="bubble b-in">IN</div>
+    <div id="bco" class="bubble b-co">CO</div>
+    <div id="bbm" class="bubble" style="width:34px;height:34px;">BM</div>
+    <div id="bcp" class="bubble b-cp">CP</div>
+
+    <div class="ftag" id="trca"   style="background:rgba(26,122,74,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35);opacity:0;">✓ RCA</div>
+    <div class="ftag" id="tnorca" style="background:rgba(83,74,183,.15);color:#9391e4;border:1px solid rgba(83,74,183,.35);opacity:0;">✗ No RCA</div>
+    <div class="ftag" id="ttrend" style="background:rgba(249,115,22,.15);color:#f97316;border:1px solid rgba(249,115,22,.35);opacity:0;">↑ Trend</div>
+    <div class="ftag" id="topen"  style="background:rgba(196,26,0,.15);color:#c41a00;border:1px solid rgba(196,26,0,.3);opacity:0;">● Incident</div>
+  </div>
+
+  <div class="sig-grid">
+    <div class="sig-box">
+      <div class="sig-title"><span class="sig-dot" style="background:#b45309;"></span>BM — Browser monitor</div>
+      <div class="sig-row"><span class="sig-key">Recurrence</span><span class="pill p-gray">3× nightly</span></div>
+      <div class="sig-row"><span class="sig-key">Users</span><span class="pill p-gray">0 affected</span></div>
+      <div class="sig-row"><span class="sig-key">Trend</span><span class="pill" id="s-trend">Stable</span></div>
+      <div class="sig-row"><span class="sig-key">RCA</span><span class="pill p-green">✓ Identified</span></div>
+      <div class="sig-row"><span class="sig-key">Incident</span><span class="pill" id="s-inc">None</span></div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title"><span class="sig-dot" style="background:transparent;border:2px dashed #534ab7;border-radius:50%;display:inline-block;width:8px;height:8px;"></span>IN — Infra outage</div>
+      <div class="sig-row"><span class="sig-key">Recurrence</span><span class="pill p-orange">5× / 12 hosts</span></div>
+      <div class="sig-row"><span class="sig-key">Users</span><span class="pill p-gray">Broad blast radius</span></div>
+      <div class="sig-row"><span class="sig-key">Trend</span><span class="pill p-orange">↑ Increasing</span></div>
+      <div class="sig-row"><span class="sig-key">RCA</span><span class="pill p-red">✗ Missing</span></div>
+      <div class="sig-row"><span class="sig-key">Owner</span><span class="pill p-red">✗ Unknown</span></div>
+    </div>
+  </div>
+
+  <div class="ann" id="ann"></div>
+
+  <div id="start-btn" style="text-align:center;margin-top:8px;"><span style="font-size:11px;font-weight:600;padding:6px 20px;border-radius:999px;background:rgba(20,150,255,0.15);color:#1496ff;border:1px solid rgba(20,150,255,0.4);cursor:pointer;letter-spacing:0.5px;">▶ Click anywhere to start</span></div>
+
+  <div class="footer">
+    <span class="sl" id="sl">Scene 1 of 4</span>
+    <div class="dots"><div class="dot" id="d0"></div><div class="dot" id="d1"></div><div class="dot" id="d2"></div><div class="dot" id="d3"></div></div>
+  </div>
+</div>
+
+<script>
+// Quadrant map (matching actual app):
+// top-left    = Plan & Fund   → left ~26%, bottom ~72%
+// top-right   = Act Now       → left ~76%, bottom ~74%
+// bottom-left = Deprioritize  → left ~26%, bottom ~14%
+// bottom-right= Quick Win     → left ~72%, bottom ~20%
+const S=[
+  {co:{l:'76%',b:'74%'},bm:{l:'72%',b:'20%'},cp:{l:'26%',b:'14%'},inn:{l:'26%',b:'72%'},
+   bmC:'#b45309',bmBg:'rgba(180,83,9,.16)',bmGlow:'none',
+   tags:[{id:'trca',l:'72%',b:'calc(20% + 28px)',on:1},{id:'tnorca',l:'26%',b:'calc(72% + 30px)',on:1},{id:'ttrend',on:0},{id:'topen',on:0}],
+   trend:{cls:'p-gray',txt:'Stable'},inc:{cls:'p-gray',txt:'None'},
+   ac:'#1496ff',sl:'Scene 1 of 4',
+   ann:'<strong>Starting state.</strong> CO at Act Now (top-right): users affected, open incident, clear RCA — high impact and highly actionable. BM at Quick Win (bottom-right): repeats nightly but 0 users. <strong>RCA is identified</strong> — actionable, just low business signal. IN at Plan &amp; Fund (top-left): broad blast radius, high recurrence, but <strong>no RCA and no owner</strong> — high impact, low actionability.'},
+  {co:{l:'76%',b:'74%'},bm:{l:'70%',b:'42%'},cp:{l:'26%',b:'14%'},inn:{l:'26%',b:'72%'},
+   bmC:'#f97316',bmBg:'rgba(249,115,22,.14)',bmGlow:'0 0 0 3px rgba(249,115,22,.1)',
+   tags:[{id:'trca',l:'70%',b:'calc(42% + 28px)',on:1},{id:'tnorca',l:'26%',b:'calc(72% + 30px)',on:1},{id:'ttrend',l:'70%',b:'calc(42% + 46px)',on:1},{id:'topen',on:0}],
+   trend:{cls:'p-orange changed',txt:'↑ Increasing'},inc:{cls:'p-gray',txt:'None'},
+   ac:'#1496ff',sl:'Scene 2 of 4',
+   ann:'<strong>Trend flips to Increasing.</strong> New recurrences this week — BM moves up. It stays right (actionable) because <strong>RCA is still identified</strong>. IN stays left: trend was already Increasing, still no RCA or owner — trend alone cannot move a pattern right.'},
+  {co:{l:'76%',b:'74%'},bm:{l:'78%',b:'68%'},cp:{l:'26%',b:'14%'},inn:{l:'26%',b:'72%'},
+   bmC:'#c41a00',bmBg:'rgba(196,26,0,.16)',bmGlow:'0 0 0 4px rgba(196,26,0,.1)',
+   tags:[{id:'trca',l:'78%',b:'calc(68% + 28px)',on:1},{id:'tnorca',l:'26%',b:'calc(72% + 30px)',on:1},{id:'ttrend',l:'78%',b:'calc(68% + 46px)',on:1},{id:'topen',l:'78%',b:'calc(68% + 64px)',on:1}],
+   trend:{cls:'p-orange',txt:'↑ Increasing'},inc:{cls:'p-red changed',txt:'● Open'},
+   ac:'#c41a00',sl:'Scene 3 of 4',
+   ann:'<strong>Open incident added.</strong> Active incident + increasing trend pushes BM to <strong>Act Now</strong> (top-right). The <strong>RCA signal is what keeps it right</strong> — the team knows exactly what to fix. IN stays Plan &amp; Fund: same high impact, still no RCA and no owner — cannot cross to the right.'},
+  {co:{l:'76%',b:'74%'},bm:{l:'72%',b:'20%'},cp:{l:'26%',b:'14%'},inn:{l:'26%',b:'72%'},
+   bmC:'#b45309',bmBg:'rgba(180,83,9,.16)',bmGlow:'none',
+   tags:[{id:'trca',l:'72%',b:'calc(20% + 28px)',on:1},{id:'tnorca',l:'26%',b:'calc(72% + 30px)',on:1},{id:'ttrend',on:0},{id:'topen',on:0}],
+   trend:{cls:'p-gray',txt:'Stable'},inc:{cls:'p-gray',txt:'None'},
+   ac:'#3fb950',sl:'Scene 4 of 4',
+   ann:'<strong>Resolved — BM returns to Quick Win.</strong> Trend stable, incident closed, RCA still identified. <strong>IN never moved</strong> — stays Plan &amp; Fund until root cause and ownership are established. Vertical axis = <em>cost impact</em>. Horizontal axis = <em>actionability</em> (RCA + evidence + ownership).'}
+];
+let cur=0;
+function go(i){
+  const s=S[i],p=(id,l,b)=>{const e=document.getElementById(id);e.style.left=l;e.style.bottom=b;};
+  p('bco',s.co.l,s.co.b);p('bin',s.inn.l,s.inn.b);p('bcp',s.cp.l,s.cp.b);
+  const bm=document.getElementById('bbm');
+  p('bbm',s.bm.l,s.bm.b);
+  bm.style.border='2px solid '+s.bmC;bm.style.background=s.bmBg;bm.style.color=s.bmC;bm.style.boxShadow=s.bmGlow;
+  s.tags.forEach(t=>{const e=document.getElementById(t.id);if(t.l)e.style.left=t.l;if(t.b)e.style.bottom=t.b;e.style.opacity=t.on?'1':'0';});
+  const st=document.getElementById('s-trend'),si=document.getElementById('s-inc');
+  st.className='pill '+s.trend.cls;st.textContent=s.trend.txt;
+  si.className='pill '+s.inc.cls;si.textContent=s.inc.txt;
+  const ann=document.getElementById('ann');
+  ann.innerHTML=s.ann;ann.style.borderColor=s.ac;
+  document.getElementById('sl').textContent=s.sl;
+  for(let j=0;j<4;j++)document.getElementById('d'+j).className='dot'+(j===i?' on':'');
+}
+go(0);
+let timer=null;
+function startAnim(){
+  if(timer) return;
+  timer=setInterval(()=>{cur=(cur+1)%4;go(cur);},6000);
+  const btn=document.getElementById('start-btn');
+  if(btn) btn.style.display='none';
+}
+document.addEventListener('click',startAnim,{once:true});
+</script>
+</body>
+</html>
