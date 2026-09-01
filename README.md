@@ -96,8 +96,3 @@ docs/
     └── Pattern-example.mp4             Video version for screen share or decks
 ```
 
-## Key Integrations
-
-- **Davis Copilot**: enable on the tenant, then wire the adapter or use the existing UI call path in `app.js`
-- **ServiceNow**: enable the Dynatrace integration so ticket refs appear on problems
-- **Weekly snapshots**: write via Dynatrace Workflow every Monday, stored as Business Events in Grail
